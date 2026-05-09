@@ -21,6 +21,7 @@ import com.soumil.moneytracker.data.model.CardType
 import com.soumil.moneytracker.data.model.CategorySlice
 import com.soumil.moneytracker.data.model.DashboardState
 import com.soumil.moneytracker.data.model.ImportReport
+import com.soumil.moneytracker.data.model.MonthBudgetSummary
 import com.soumil.moneytracker.data.model.ParsedScheduledTransaction
 import com.soumil.moneytracker.data.model.SubscriptionDraft
 import com.soumil.moneytracker.data.model.SubscriptionState
@@ -58,6 +59,14 @@ class FinanceRepository(
     val postedTransactions: Flow<List<TransactionRecord>> = transactionDao.observePostedTransactions()
     val subscriptions: Flow<List<SubscriptionRecord>> = subscriptionDao.observeSubscriptions()
     val currentBudget: Flow<BudgetEntity?> = budgetDao.observeOverallBudget(currentMonthKey())
+    val allBudgets: Flow<List<BudgetEntity>> = budgetDao.observeOverallBudgets()
+
+    val budgetHistory: Flow<List<MonthBudgetSummary>> = combine(
+        postedTransactions,
+        allBudgets,
+    ) { posted, budgets ->
+        buildBudgetHistory(posted, budgets)
+    }
 
     val dashboard: Flow<DashboardState> = combine(
         postedTransactions,
@@ -222,6 +231,7 @@ class FinanceRepository(
             fingerprint = fingerprint,
             status = TransactionStatus.POSTED,
             note = draft.note?.takeIf { it.isNotBlank() },
+            countsTowardBudget = draft.countsTowardBudget,
         )
         transactionDao.insert(transaction)
     }
@@ -239,19 +249,46 @@ class FinanceRepository(
                 confidence = 1.0,
                 status = TransactionStatus.POSTED,
                 note = draft.note?.trim()?.takeIf { it.isNotEmpty() },
+                countsTowardBudget = draft.countsTowardBudget,
             ),
         )
     }
 
     suspend fun addSubscription(draft: SubscriptionDraft) {
+        val merchantName = draft.merchant.trim()
         subscriptionDao.insert(
             SubscriptionEntity(
-                merchant = draft.merchant.trim(),
+                merchant = merchantName,
                 amount = draft.amount,
                 billingCycleDays = draft.billingCycleDays,
                 nextDueAtMillis = draft.nextDueAtMillis,
                 accountId = draft.accountId,
                 state = SubscriptionState.ACTIVE,
+            ),
+        )
+        val fingerprint = hashFingerprint(
+            sender = "SUBSCRIPTION",
+            body = listOf(
+                merchantName,
+                draft.amount,
+                draft.nextDueAtMillis,
+                draft.accountId ?: "noaccount",
+            ).joinToString("|"),
+            receivedAtMillis = draft.nextDueAtMillis,
+        )
+        transactionDao.insert(
+            TransactionEntity(
+                amount = draft.amount,
+                direction = TransactionDirection.DEBIT,
+                occurredAtMillis = draft.nextDueAtMillis,
+                merchant = merchantName,
+                category = TransactionCategory.SUBSCRIPTION,
+                accountId = draft.accountId,
+                sourceSender = "SUBSCRIPTION",
+                smsBody = null,
+                confidence = 1.0,
+                fingerprint = fingerprint,
+                status = TransactionStatus.POSTED,
             ),
         )
     }
@@ -271,6 +308,10 @@ class FinanceRepository(
 
     suspend fun deleteTransaction(transactionId: Long) {
         transactionDao.deleteById(transactionId)
+    }
+
+    suspend fun setTransactionBudgetInclusion(transactionId: Long, countsTowardBudget: Boolean) {
+        transactionDao.updateBudgetInclusion(transactionId, countsTowardBudget)
     }
 
     suspend fun processIncomingSms(
@@ -371,7 +412,9 @@ class FinanceRepository(
             YearMonth.from(it.toLocalDate()) == currentMonth
         }
         val spendTransactions = currentMonthTransactions.filter {
-            it.direction == TransactionDirection.DEBIT && it.category != TransactionCategory.TRANSFER
+            it.direction == TransactionDirection.DEBIT &&
+                it.category != TransactionCategory.TRANSFER &&
+                it.countsTowardBudget
         }
         val monthSpent = spendTransactions.sumOf(TransactionRecord::amount)
         val monthIncome = currentMonthTransactions
@@ -393,7 +436,11 @@ class FinanceRepository(
                 date = date,
                 income = dayTransactions.filter { it.direction == TransactionDirection.CREDIT }.sumOf(TransactionRecord::amount),
                 expense = dayTransactions
-                    .filter { it.direction == TransactionDirection.DEBIT && it.category != TransactionCategory.TRANSFER }
+                    .filter {
+                        it.direction == TransactionDirection.DEBIT &&
+                            it.category != TransactionCategory.TRANSFER &&
+                            it.countsTowardBudget
+                    }
                     .sumOf(TransactionRecord::amount),
             )
         }
@@ -412,6 +459,42 @@ class FinanceRepository(
     }
 
     private fun currentMonthKey(): String = YearMonth.now().toString()
+
+    private fun buildBudgetHistory(
+        postedTransactions: List<TransactionRecord>,
+        budgets: List<BudgetEntity>,
+    ): List<MonthBudgetSummary> {
+        val groupedTransactions = postedTransactions.groupBy { record ->
+            YearMonth.from(
+                Instant.ofEpochMilli(record.occurredAtMillis)
+                    .atZone(ZoneId.systemDefault())
+                    .toLocalDate(),
+            )
+        }
+        val budgetByMonth = budgets.associateBy { it.monthKey }
+        val months = (groupedTransactions.keys + budgetByMonth.keys.mapNotNull { runCatching { YearMonth.parse(it) }.getOrNull() })
+            .toSortedSet(compareByDescending { it })
+
+        val monthFormatter = java.time.format.DateTimeFormatter.ofPattern("LLLL yyyy")
+        return months.map { yearMonth ->
+            val key = yearMonth.toString()
+            val monthTransactions = groupedTransactions[yearMonth].orEmpty()
+            val spent = monthTransactions
+                .filter {
+                    it.direction == TransactionDirection.DEBIT &&
+                        it.category != TransactionCategory.TRANSFER &&
+                        it.countsTowardBudget
+                }
+                .sumOf(TransactionRecord::amount)
+            MonthBudgetSummary(
+                yearMonthKey = key,
+                monthLabel = yearMonth.format(monthFormatter),
+                budgetLimit = budgetByMonth[key]?.amountLimit,
+                spent = spent,
+                transactions = monthTransactions.sortedByDescending(TransactionRecord::occurredAtMillis),
+            )
+        }
+    }
 
     private fun defaultAccountName(
         kind: AccountKind,

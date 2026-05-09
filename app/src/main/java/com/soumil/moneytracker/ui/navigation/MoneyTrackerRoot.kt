@@ -10,11 +10,14 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -25,10 +28,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -61,6 +66,7 @@ import com.soumil.moneytracker.ui.components.BudgetDialog
 import com.soumil.moneytracker.ui.components.DeleteAccountDialog
 import com.soumil.moneytracker.ui.components.DeleteTransactionDialog
 import com.soumil.moneytracker.ui.components.InitialSetupDialog
+import com.soumil.moneytracker.ui.screen.BudgetHistoryScreen
 import com.soumil.moneytracker.ui.screen.HomeScreen
 import com.soumil.moneytracker.ui.screen.MoreScreen
 import com.soumil.moneytracker.ui.screen.SettingsScreen
@@ -74,6 +80,7 @@ fun MoneyTrackerRoot(
     val navController = rememberNavController()
     val snackbarHostState = remember { SnackbarHostState() }
     val dashboard by viewModel.dashboard.collectAsStateWithLifecycle()
+    val budgetHistory by viewModel.budgetHistory.collectAsStateWithLifecycle()
     val transactions by viewModel.filteredTransactions.collectAsStateWithLifecycle()
     val accounts by viewModel.accounts.collectAsStateWithLifecycle()
     val budget by viewModel.currentBudget.collectAsStateWithLifecycle()
@@ -116,33 +123,15 @@ fun MoneyTrackerRoot(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        bottomBar = {
-            TrackerBottomBar(
-                currentRoute = currentRoute,
-                onNavigate = { destination ->
-                    navController.navigate(destination.route) {
-                        popUpTo(navController.graph.startDestinationId) {
-                            saveState = true
-                        }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                },
-                onAddTransaction = {
-                    editingTransaction = null
-                    transactionDialogKey += 1
-                    showAddTransactionDialog = true
-                },
-            )
-        },
-    ) { innerPadding ->
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
         NavHost(
             navController = navController,
             startDestination = AppDestination.Home.route,
-            modifier = Modifier.padding(innerPadding),
+            modifier = Modifier.fillMaxSize(),
         ) {
             composable(AppDestination.Home.route) {
                 HomeScreen(
@@ -157,6 +146,26 @@ fun MoneyTrackerRoot(
                         editingTransaction = null
                         transactionDialogKey += 1
                         showAddTransactionDialog = true
+                    },
+                    onBudgetClick = {
+                        navController.navigate(AppDestination.BudgetHistory.route)
+                    },
+                )
+            }
+            composable(AppDestination.BudgetHistory.route) {
+                BudgetHistoryScreen(
+                    history = budgetHistory,
+                    initiallyExpandedKey = budgetHistory.firstOrNull()?.yearMonthKey,
+                    onBack = {
+                        navController.navigate(AppDestination.Home.route) {
+                            popUpTo(AppDestination.BudgetHistory.route) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    },
+                    onEditTransaction = { transaction ->
+                        showAddTransactionDialog = false
+                        editingTransaction = transaction
+                        transactionDialogKey += 1
                     },
                 )
             }
@@ -179,6 +188,12 @@ fun MoneyTrackerRoot(
                     },
                     onDeleteTransaction = { transaction ->
                         pendingDeleteTransaction = transaction
+                    },
+                    onToggleBudgetInclusion = { transaction ->
+                        viewModel.setTransactionBudgetInclusion(
+                            transactionId = transaction.id,
+                            countsTowardBudget = !transaction.countsTowardBudget,
+                        )
                     },
                 )
             }
@@ -227,6 +242,32 @@ fun MoneyTrackerRoot(
                 )
             }
         }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 110.dp),
+        )
+
+        TrackerBottomBar(
+            currentRoute = currentRoute,
+            onNavigate = { destination ->
+                navController.navigate(destination.route) {
+                    popUpTo(navController.graph.startDestinationId) {
+                        saveState = true
+                    }
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            },
+            onAddTransaction = {
+                editingTransaction = null
+                transactionDialogKey += 1
+                showAddTransactionDialog = true
+            },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 
     if (showBudgetDialog) {
@@ -346,6 +387,7 @@ private fun TransactionRecord.toDraft(): TransactionDraft {
         accountId = accountId,
         note = note,
         occurredAtMillis = occurredAtMillis,
+        countsTowardBudget = countsTowardBudget,
     )
 }
 
@@ -384,19 +426,42 @@ private fun TrackerBottomBar(
     onAddTransaction: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val barShape = RoundedCornerShape(32.dp)
+    val baseColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f)
+    val highlightBrush = Brush.verticalGradient(
+        colors = listOf(
+            Color.White.copy(alpha = 0.35f),
+            Color.Transparent,
+        ),
+    )
+    val rimBrush = Brush.verticalGradient(
+        colors = listOf(
+            Color.White.copy(alpha = 0.70f),
+            MaterialTheme.colorScheme.outline.copy(alpha = 0.55f),
+        ),
+    )
+
     Box(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 22.dp, vertical = 10.dp),
+            .padding(horizontal = 18.dp, vertical = 14.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(30.dp),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
-            shadowElevation = 14.dp,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)),
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .shadow(
+                    elevation = 24.dp,
+                    shape = barShape,
+                    clip = false,
+                    ambientColor = Color.Black.copy(alpha = 0.40f),
+                    spotColor = Color.Black.copy(alpha = 0.55f),
+                )
+                .clip(barShape)
+                .background(baseColor)
+                .background(brush = highlightBrush)
+                .border(BorderStroke(1.2.dp, rimBrush), barShape),
         ) {
             Row(
                 modifier = Modifier

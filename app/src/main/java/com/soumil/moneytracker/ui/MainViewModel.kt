@@ -12,6 +12,7 @@ import com.soumil.moneytracker.data.db.TransactionRecord
 import com.soumil.moneytracker.data.model.AccountDraft
 import com.soumil.moneytracker.data.model.AccountKind
 import com.soumil.moneytracker.data.model.DashboardState
+import com.soumil.moneytracker.data.model.MonthBudgetSummary
 import com.soumil.moneytracker.data.model.SubscriptionDraft
 import com.soumil.moneytracker.data.model.SubscriptionState
 import com.soumil.moneytracker.data.model.TransactionCategory
@@ -58,6 +59,12 @@ class MainViewModel(
         initialValue = null,
     )
 
+    val budgetHistory: StateFlow<List<MonthBudgetSummary>> = repository.budgetHistory.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList(),
+    )
+
     val isInitialSetupComplete: StateFlow<Boolean> = repository.isInitialSetupComplete.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
@@ -82,6 +89,12 @@ class MainViewModel(
     ) { transactions, filter ->
         when (filter) {
             TransactionFilter.ALL -> transactions
+            TransactionFilter.BUDGET -> transactions.filter {
+                it.status == TransactionStatus.POSTED &&
+                    it.direction == TransactionDirection.DEBIT &&
+                    it.category != TransactionCategory.TRANSFER &&
+                    it.countsTowardBudget
+            }
             TransactionFilter.SPENT -> transactions.filter {
                 it.direction == TransactionDirection.DEBIT && it.status == TransactionStatus.POSTED
             }
@@ -249,6 +262,21 @@ class MainViewModel(
                 emitMessage("Review item approved.")
             }.onFailure {
                 emitMessage("Could not approve the review item.")
+            }
+        }
+    }
+
+    fun setTransactionBudgetInclusion(transactionId: Long, countsTowardBudget: Boolean) {
+        viewModelScope.launch {
+            runCatching {
+                repository.setTransactionBudgetInclusion(transactionId, countsTowardBudget)
+            }.onSuccess {
+                emitMessage(
+                    if (countsTowardBudget) "Transaction added to budget."
+                    else "Transaction excluded from budget.",
+                )
+            }.onFailure {
+                emitMessage("Could not update budget inclusion.")
             }
         }
     }

@@ -1,6 +1,8 @@
 package com.soumil.moneytracker.ui.screen
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,10 +12,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.AssistChip
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -39,11 +45,12 @@ fun HomeScreen(
     onImportRecentSms: () -> Unit,
     onSetBudgetClick: () -> Unit,
     onAddTransactionClick: () -> Unit,
+    onBudgetClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 18.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 120.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
@@ -80,27 +87,36 @@ fun HomeScreen(
                     subtitle = "Budget-led dashboard with auto-tracked SMS transactions",
                     containerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.9f),
                 ) {
-                    Text(
-                        text = dashboard.monthSpent.asCurrency(),
-                        style = MaterialTheme.typography.headlineLarge,
-                    )
-                    Text(
-                        text = "Spent this month",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    BudgetGauge(
-                        spent = dashboard.monthSpent,
-                        budget = dashboard.budgetLimit,
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        AssistChip(
-                            onClick = onSetBudgetClick,
-                            label = { Text(if (dashboard.budgetLimit == null) "Set budget" else "Update budget") },
-                        )
-                        AssistChip(
-                            onClick = onAddTransactionClick,
-                            label = { Text("Add transaction") },
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = dashboard.monthSpent.asCurrency(),
+                                style = MaterialTheme.typography.headlineLarge,
+                            )
+                            Text(
+                                text = "Spent this month",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        IconButton(onClick = onSetBudgetClick) {
+                            Icon(
+                                imageVector = Icons.Outlined.Edit,
+                                contentDescription = if (dashboard.budgetLimit == null) {
+                                    "Set budget"
+                                } else {
+                                    "Update budget"
+                                },
+                            )
+                        }
+                    }
+                    Box(modifier = Modifier.clickable(onClick = onBudgetClick)) {
+                        BudgetGauge(
+                            spent = dashboard.monthSpent,
+                            budget = dashboard.budgetLimit,
                         )
                     }
                 }

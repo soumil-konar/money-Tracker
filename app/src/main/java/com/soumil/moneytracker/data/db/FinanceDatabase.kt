@@ -16,7 +16,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         SubscriptionEntity::class,
         ScheduledTransactionEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 @TypeConverters(FinanceTypeConverters::class)
@@ -77,12 +77,20 @@ abstract class FinanceDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `transactions` ADD COLUMN `countsTowardBudget` INTEGER NOT NULL DEFAULT 1",
+                )
+            }
+        }
+
         fun create(context: Context): FinanceDatabase =
             Room.databaseBuilder(
                 context,
                 FinanceDatabase::class.java,
                 "money-tracker.db",
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
     }
 }

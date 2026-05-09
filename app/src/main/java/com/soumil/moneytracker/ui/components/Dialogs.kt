@@ -20,17 +20,21 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -57,6 +61,9 @@ import com.soumil.moneytracker.data.model.TransactionCategory
 import com.soumil.moneytracker.data.model.TransactionDirection
 import com.soumil.moneytracker.data.model.TransactionDraft
 import com.soumil.moneytracker.ui.asCurrency
+import com.soumil.moneytracker.ui.asFullDate
+import java.time.LocalDate
+import java.time.ZoneId
 
 @Composable
 fun BudgetDialog(
@@ -111,6 +118,9 @@ fun AddTransactionDialog(
     }
     var selectedAccountId by rememberSaveable(dialogKey) {
         mutableStateOf(initialDraft?.accountId ?: accounts.firstOrNull()?.id)
+    }
+    var countsTowardBudget by rememberSaveable(dialogKey) {
+        mutableStateOf(initialDraft?.countsTowardBudget ?: true)
     }
     var accountExpanded by remember { mutableStateOf(false) }
     var categoryExpanded by remember { mutableStateOf(false) }
@@ -261,6 +271,27 @@ fun AddTransactionDialog(
         )
         Row(
             modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Count toward budget",
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    text = "Excluded transactions still appear in the ledger but skip the budget gauge.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(
+                checked = countsTowardBudget,
+                onCheckedChange = { countsTowardBudget = it },
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             OutlinedButton(
@@ -282,6 +313,7 @@ fun AddTransactionDialog(
                             accountId = selectedAccount?.id,
                             note = note.trim(),
                             occurredAtMillis = initialDraft?.occurredAtMillis ?: System.currentTimeMillis(),
+                            countsTowardBudget = countsTowardBudget,
                         ),
                     )
                 },
@@ -420,9 +452,31 @@ fun AddSubscriptionDialog(
     var merchant by rememberSaveable { mutableStateOf("") }
     var amount by rememberSaveable { mutableStateOf("") }
     var cycleDays by rememberSaveable { mutableStateOf("30") }
-    var dueInDays by rememberSaveable { mutableStateOf("30") }
+    val defaultDueMillis = remember {
+        LocalDate.now().plusDays(30).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    }
+    var nextDueMillis by rememberSaveable { mutableStateOf(defaultDueMillis) }
+    var showDatePicker by remember { mutableStateOf(false) }
     var accountExpanded by remember { mutableStateOf(false) }
     var selectedAccount by remember { mutableStateOf(accounts.firstOrNull()) }
+
+    if (showDatePicker) {
+        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = nextDueMillis)
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let { nextDueMillis = it }
+                    showDatePicker = false
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
+            },
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -448,12 +502,12 @@ fun AddSubscriptionDialog(
                         label = { Text("Cycle days") },
                         modifier = Modifier.weight(1f),
                     )
-                    OutlinedTextField(
-                        value = dueInDays,
-                        onValueChange = { dueInDays = it },
-                        label = { Text("Due in days") },
+                    OutlinedButton(
+                        onClick = { showDatePicker = true },
                         modifier = Modifier.weight(1f),
-                    )
+                    ) {
+                        Text("Next due: ${nextDueMillis.asFullDate()}")
+                    }
                 }
                 ExposedDropdownMenuBox(
                     expanded = accountExpanded,
@@ -496,14 +550,13 @@ fun AddSubscriptionDialog(
                 onClick = {
                     val parsedAmount = amount.replace(",", "").toDoubleOrNull() ?: return@Button
                     val parsedCycle = cycleDays.toIntOrNull() ?: return@Button
-                    val parsedDueInDays = dueInDays.toIntOrNull() ?: return@Button
                     if (merchant.isBlank()) return@Button
                     onConfirm(
                         SubscriptionDraft(
                             merchant = merchant.trim(),
                             amount = parsedAmount,
                             billingCycleDays = parsedCycle,
-                            nextDueAtMillis = System.currentTimeMillis() + parsedDueInDays * 24L * 60 * 60 * 1000,
+                            nextDueAtMillis = nextDueMillis,
                             accountId = selectedAccount?.id,
                         ),
                     )

@@ -22,6 +22,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.MoneyOff
+import androidx.compose.material.icons.outlined.Savings
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -40,8 +42,10 @@ import androidx.compose.ui.unit.dp
 import com.soumil.moneytracker.data.db.AccountEntity
 import com.soumil.moneytracker.data.db.TransactionRecord
 import com.soumil.moneytracker.data.model.AccountKind
+import com.soumil.moneytracker.data.model.TransactionDirection
 import com.soumil.moneytracker.data.model.TransactionFilter
 import com.soumil.moneytracker.data.model.TransactionStatus
+import com.soumil.moneytracker.ui.asCurrency
 import com.soumil.moneytracker.ui.asMonthYear
 import com.soumil.moneytracker.ui.components.MotionReveal
 import com.soumil.moneytracker.ui.components.SectionCard
@@ -57,6 +61,7 @@ fun TransactionsScreen(
     onApproveReview: (Long) -> Unit,
     onEditTransaction: (TransactionRecord) -> Unit,
     onDeleteTransaction: (TransactionRecord) -> Unit,
+    onToggleBudgetInclusion: (TransactionRecord) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var selectedCardAccountId by rememberSaveable(filter) { mutableStateOf<Long?>(null) }
@@ -70,7 +75,7 @@ fun TransactionsScreen(
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 120.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
@@ -159,7 +164,10 @@ fun TransactionsScreen(
             groupedTransactions.forEach { (monthYear, monthTransactions) ->
                 item(key = "month-$monthYear") {
                     MotionReveal(index = 4) {
-                        MonthYearDivider(label = monthYear)
+                        MonthYearDivider(
+                            label = monthYear,
+                            total = monthTransactions.signedTotal(),
+                        )
                     }
                 }
                 itemsIndexed(monthTransactions, key = { _, transaction -> transaction.id }) { index, transaction ->
@@ -187,8 +195,10 @@ fun TransactionsScreen(
                                         Text("Approve")
                                     }
                                     TransactionCardActions(
+                                        transaction = transaction,
                                         onEdit = { onEditTransaction(transaction) },
                                         onDelete = { onDeleteTransaction(transaction) },
+                                        onToggleBudgetInclusion = { onToggleBudgetInclusion(transaction) },
                                     )
                                 }
                             } else {
@@ -197,8 +207,10 @@ fun TransactionsScreen(
                                     horizontalArrangement = Arrangement.End,
                                 ) {
                                     TransactionCardActions(
+                                        transaction = transaction,
                                         onEdit = { onEditTransaction(transaction) },
                                         onDelete = { onDeleteTransaction(transaction) },
+                                        onToggleBudgetInclusion = { onToggleBudgetInclusion(transaction) },
                                     )
                                 }
                             }
@@ -213,8 +225,19 @@ fun TransactionsScreen(
 @Composable
 private fun MonthYearDivider(
     label: String,
+    total: Double,
     modifier: Modifier = Modifier,
 ) {
+    val totalColor = when {
+        total > 0 -> MaterialTheme.colorScheme.tertiary
+        total < 0 -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val totalLabel = when {
+        total > 0 -> "+${total.asCurrency()}"
+        total < 0 -> "-${(-total).asCurrency()}"
+        else -> 0.0.asCurrency()
+    }
     Row(
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -231,19 +254,53 @@ private fun MonthYearDivider(
                 .height(1.dp)
                 .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
         )
+        Text(
+            text = totalLabel,
+            style = MaterialTheme.typography.titleMedium,
+            color = totalColor,
+        )
+    }
+}
+
+private fun List<TransactionRecord>.signedTotal(): Double = sumOf { record ->
+    when (record.direction) {
+        TransactionDirection.CREDIT -> record.amount
+        TransactionDirection.DEBIT -> -record.amount
     }
 }
 
 @Composable
 private fun TransactionCardActions(
+    transaction: TransactionRecord,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
+    onToggleBudgetInclusion: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val countsTowardBudget = transaction.countsTowardBudget
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        TransactionActionButton(
+            icon = if (countsTowardBudget) Icons.Outlined.Savings else Icons.Outlined.MoneyOff,
+            contentDescription = if (countsTowardBudget) {
+                "Exclude from budget"
+            } else {
+                "Add to budget"
+            },
+            tint = if (countsTowardBudget) {
+                MaterialTheme.colorScheme.tertiary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            containerColor = if (countsTowardBudget) {
+                MaterialTheme.colorScheme.tertiary.copy(alpha = 0.18f)
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant
+            },
+            onClick = onToggleBudgetInclusion,
+        )
         TransactionActionButton(
             icon = Icons.Outlined.Edit,
             contentDescription = "Edit transaction",

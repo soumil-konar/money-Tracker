@@ -56,6 +56,7 @@ data class TransactionEntity(
     val fingerprint: String,
     val status: TransactionStatus,
     val note: String? = null,
+    val countsTowardBudget: Boolean = true,
     val createdAtMillis: Long = System.currentTimeMillis(),
 )
 
@@ -136,6 +137,7 @@ data class TransactionRecord(
     val confidence: Double,
     val status: TransactionStatus,
     val note: String?,
+    val countsTowardBudget: Boolean,
     val accountName: String?,
     val accountKind: AccountKind?,
 )

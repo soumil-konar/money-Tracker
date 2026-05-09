@@ -49,12 +49,21 @@ enum class ScheduledTransactionKind(val label: String) {
 
 enum class TransactionFilter(val label: String) {
     ALL("All"),
+    BUDGET("Budget"),
     SPENT("Spent"),
     INCOME("Income"),
     UPI("UPI"),
     CARD("Card"),
     REVIEW("Needs Review"),
 }
+
+data class MonthBudgetSummary(
+    val yearMonthKey: String,
+    val monthLabel: String,
+    val budgetLimit: Double?,
+    val spent: Double,
+    val transactions: List<com.soumil.moneytracker.data.db.TransactionRecord>,
+)
 
 data class ParsedSmsTransaction(
     val amount: Double?,
@@ -129,6 +138,7 @@ data class TransactionDraft(
     val accountId: Long?,
     val note: String? = null,
     val occurredAtMillis: Long = System.currentTimeMillis(),
+    val countsTowardBudget: Boolean = true,
 )
 
 data class AccountDraft(
