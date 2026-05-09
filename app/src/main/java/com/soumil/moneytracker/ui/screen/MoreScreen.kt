@@ -34,6 +34,7 @@ fun MoreScreen(
     onAddBankClick: () -> Unit,
     onAddCardClick: () -> Unit,
     onEditAccount: (AccountEntity) -> Unit,
+    onDeleteAccount: (AccountEntity) -> Unit,
     onAcceptSuggestion: (Long) -> Unit,
     onDismissSuggestion: (Long) -> Unit,
     modifier: Modifier = Modifier,
@@ -152,6 +153,7 @@ fun MoreScreen(
                             AccountItem(
                                 account = account,
                                 onEdit = { onEditAccount(account) },
+                                onDelete = { onDeleteAccount(account) },
                             )
                         }
                     }
@@ -180,6 +182,7 @@ fun MoreScreen(
                             AccountItem(
                                 account = account,
                                 onEdit = { onEditAccount(account) },
+                                onDelete = { onDeleteAccount(account) },
                             )
                         }
                     }

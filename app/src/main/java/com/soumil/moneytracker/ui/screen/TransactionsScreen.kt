@@ -20,10 +20,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.soumil.moneytracker.data.db.AccountEntity
 import com.soumil.moneytracker.data.db.TransactionRecord
+import com.soumil.moneytracker.data.model.AccountKind
 import com.soumil.moneytracker.data.model.TransactionFilter
 import com.soumil.moneytracker.data.model.TransactionStatus
 import com.soumil.moneytracker.ui.asMonthYear
@@ -34,6 +40,7 @@ import com.soumil.moneytracker.ui.components.TransactionItem
 fun TransactionsScreen(
     filter: TransactionFilter,
     transactions: List<TransactionRecord>,
+    cardAccounts: List<AccountEntity>,
     onFilterSelected: (TransactionFilter) -> Unit,
     onAddTransactionClick: () -> Unit,
     onApproveReview: (Long) -> Unit,
@@ -41,7 +48,14 @@ fun TransactionsScreen(
     onDeleteTransaction: (TransactionRecord) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val groupedTransactions = transactions.groupBy { it.occurredAtMillis.asMonthYear() }
+    var selectedCardAccountId by rememberSaveable(filter) { mutableStateOf<Long?>(null) }
+    val visibleTransactions = if (filter == TransactionFilter.CARD && selectedCardAccountId != null) {
+        transactions.filter { it.accountId == selectedCardAccountId }
+    } else {
+        transactions
+    }
+    val groupedTransactions = visibleTransactions.groupBy { it.occurredAtMillis.asMonthYear() }
+    val selectableCards = cardAccounts.filter { it.kind == AccountKind.CARD }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -75,13 +89,41 @@ fun TransactionsScreen(
             }
         }
 
+        if (filter == TransactionFilter.CARD && selectableCards.isNotEmpty()) {
+            item {
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    item {
+                        FilterChip(
+                            selected = selectedCardAccountId == null,
+                            onClick = { selectedCardAccountId = null },
+                            label = { Text("All cards") },
+                        )
+                    }
+                    items(selectableCards, key = { it.id }) { account ->
+                        FilterChip(
+                            selected = selectedCardAccountId == account.id,
+                            onClick = { selectedCardAccountId = account.id },
+                            label = {
+                                Text(
+                                    account.lastFourDigits?.let { "${account.name} ending $it" } ?: account.name,
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+        }
+
         item {
             OutlinedButton(onClick = onAddTransactionClick) {
                 Text("Add manual transaction")
             }
         }
 
-        if (transactions.isEmpty()) {
+        if (visibleTransactions.isEmpty()) {
             item {
                 SectionCard(
                     title = "No transactions yet",

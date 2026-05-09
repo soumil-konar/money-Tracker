@@ -200,6 +200,18 @@ class MainViewModel(
         }
     }
 
+    fun deleteAccount(accountId: Long) {
+        viewModelScope.launch {
+            runCatching {
+                repository.deleteAccount(accountId)
+            }.onSuccess {
+                emitMessage("Account removed.")
+            }.onFailure {
+                emitMessage("Could not remove the account.")
+            }
+        }
+    }
+
     fun markInitialSetupComplete() {
         repository.markInitialSetupComplete()
         emitMessage("Bank and card setup saved.")

@@ -342,6 +342,74 @@ fun DeleteTransactionDialog(
     }
 }
 
+@Composable
+fun DeleteAccountDialog(
+    account: AccountEntity,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    val metadata = when (account.kind) {
+        AccountKind.CARD -> listOfNotNull(
+            account.cardType?.label,
+            account.institutionName,
+            account.lastFourDigits?.let { "ending $it" },
+            "RuPay".takeIf { account.isRupayCreditCard },
+        ).joinToString(" | ")
+
+        else -> listOfNotNull(
+            account.kind.name.lowercase().replaceFirstChar { it.uppercase() },
+            account.institutionName,
+            account.lastFourDigits?.let { "A/C $it" },
+        ).joinToString(" | ")
+    }
+
+    TrackerDialogScaffold(
+        eyebrow = "Account Removal",
+        title = "Delete account",
+        subtitle = "This removes the account or card profile from setup and future matching. Existing transactions stay in the ledger but lose this account label.",
+        onDismiss = onDismiss,
+    ) {
+        Surface(
+            shape = RoundedCornerShape(22.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    text = account.name,
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                if (metadata.isNotBlank()) {
+                    Text(
+                        text = metadata,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            OutlinedButton(
+                onClick = onDismiss,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Cancel")
+            }
+            Button(
+                onClick = onConfirm,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Delete")
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddSubscriptionDialog(

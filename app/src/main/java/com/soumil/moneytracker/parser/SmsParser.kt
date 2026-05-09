@@ -45,17 +45,20 @@ class SmsParser {
         "paid",
         "purchase",
         "withdrawn",
-        "dr",
     )
 
     private val creditKeywords = listOf(
         "credited",
         "received",
         "refund",
-        "salary",
         "deposited",
-        "cr",
+        "salary",
+        "reversal",
+        "reversed",
     )
+
+    private val debitAbbreviationRegex = Regex("(?i)\\bdr\\b")
+    private val creditAbbreviationRegex = Regex("(?i)\\bcr\\b")
 
     private val actualPaymentKeywords = listOf(
         "debited",
@@ -77,6 +80,21 @@ class SmsParser {
         "statement generated",
         "payment due",
         "due date",
+        "statement",
+    )
+
+    private val cardRepaymentKeywords = listOf(
+        "credit card bill payment",
+        "credit card payment",
+        "card bill payment",
+        "bill payment",
+        "statement payment",
+        "payment received towards",
+        "payment received for",
+        "payment made towards",
+        "received towards",
+        "paid towards",
+        "payment towards",
     )
 
     private val mandateKeywords = listOf(
@@ -119,23 +137,35 @@ class SmsParser {
     )
 
     private val merchantRegexes = listOf(
-        Regex("(?i)(?:to|at|towards|for|in favour of|in favor of)\\s+([a-z0-9 &._-]{3,60})"),
-        Regex("(?i)(?:from)\\s+([a-z0-9 &._-]{3,60})"),
-        Regex("(?i)(?:via upi to)\\s+([a-z0-9 &._-]{3,60})"),
-        Regex("(?i)(?:merchant|biller)\\s*[:.-]?\\s*([a-z0-9 &._-]{3,60})"),
+        Regex("(?i)(?:to|at|towards|for|in favour of|in favor of)\\s+([a-z0-9@ &._-]{3,80})"),
+        Regex("(?i)(?:from)\\s+([a-z0-9@ &._-]{3,80})"),
+        Regex("(?i)(?:via upi to)\\s+([a-z0-9@ &._-]{3,80})"),
+        Regex("(?i)(?:merchant|biller)\\s*[:.-]?\\s*([a-z0-9@ &._-]{3,80})"),
     )
 
     private val scheduledDateRegexes = listOf(
         Regex("(?i)(?:scheduled on|scheduled for|presented on|auto[ -]?debit on|autopay on|due on|due date|debit on|will be debited on|to be debited on)\\s*[:.-]?\\s*([0-9]{1,2}[/-][0-9]{1,2}[/-][0-9]{2,4})"),
         Regex("(?i)(?:scheduled on|scheduled for|presented on|auto[ -]?debit on|autopay on|due on|due date|debit on|will be debited on|to be debited on)\\s*[:.-]?\\s*([0-9]{1,2}[\\s-][A-Za-z]{3,9}[\\s-][0-9]{2,4})"),
+        Regex("(?i)(?:scheduled on|scheduled for|presented on|auto[ -]?debit on|autopay on|due on|due date|debit on|will be debited on|to be debited on)\\s*[:.-]?\\s*([0-9]{1,2}[A-Za-z]{3,9}[0-9]{2,4})"),
         Regex("(?i)(?:scheduled on|scheduled for|presented on|auto[ -]?debit on|autopay on|due on|due date|debit on|will be debited on|to be debited on)\\s*[:.-]?\\s*([0-9]{1,2}[\\s-][A-Za-z]{3,9})"),
-        Regex("(?i)(?:on)\\s*([0-9]{1,2}[/-][0-9]{1,2}[/-][0-9]{2,4})"),
-        Regex("(?i)(?:on)\\s*([0-9]{1,2}[\\s-][A-Za-z]{3,9}[\\s-][0-9]{2,4})"),
+    )
+
+    private val transactionDateRegexes = listOf(
+        Regex("(?i)(?:on\\s+date|on|dated)\\s*[:.-]?\\s*([0-9]{1,2}[/-][0-9]{1,2}[/-][0-9]{2,4})"),
+        Regex("(?i)(?:on\\s+date|on|dated)\\s*[:.-]?\\s*([0-9]{1,2}[/-][0-9]{1,2})\\b"),
+        Regex("(?i)(?:on\\s+date|on|dated)\\s*[:.-]?\\s*([0-9]{1,2}[\\s-][A-Za-z]{3,9}[\\s-][0-9]{2,4})"),
+        Regex("(?i)(?:on\\s+date|on|dated)\\s*[:.-]?\\s*([0-9]{1,2}[A-Za-z]{3,9}[0-9]{2,4})"),
+        Regex("(?i)(?:on\\s+date|on|dated)\\s*[:.-]?\\s*([0-9]{1,2}[\\s-][A-Za-z]{3,9})"),
+    )
+
+    private val bankAccountLastFourRegexes = listOf(
+        Regex("(?i)(?:a/c|acct|account)\\s*[xX*]*\\s*([0-9]{4})"),
+        Regex("(?i)(?:a/c|acct|account)[\\s:-]*[xX*]{1,4}([0-9]{4})"),
     )
 
     private val cardLastFourRegexes = listOf(
         Regex("(?i)(?:credit|debit|rupay credit)?\\s*card(?:\\s+no\\.?|\\s+number|\\s+ending|\\s+ending with|\\s+xx|\\s+xxxx)?[\\s:.-]*[*xX]*([0-9]{4})"),
-        Regex("(?i)(?:on|using|for)\\s+card[\\s:.-]*[*xX]*([0-9]{4})"),
+        Regex("(?i)(?:on|using|for)\\s+(?:[a-z ]+)?card[\\s:.-]*[*xX]*([0-9]{4})"),
         Regex("(?i)(?:visa|mastercard|rupay)[\\s:.-]*[*xX]*([0-9]{4})"),
     )
 
@@ -145,9 +175,16 @@ class SmsParser {
         "d/M/yy",
         "d-M-yy",
         "d MMM yyyy",
+        "d MMM yy",
         "d MMMM yyyy",
+        "d MMMM yy",
         "d-MMM-yyyy",
+        "d-MMM-yy",
         "d-MMMM-yyyy",
+        "dMMMyyyy",
+        "dMMMyy",
+        "ddMMMyyyy",
+        "ddMMMyy",
     )
 
     fun parse(sender: String, body: String): ParsedSmsTransaction {
@@ -167,11 +204,12 @@ class SmsParser {
     fun parseMessage(sender: String, body: String): ParsedSmsMessage {
         val normalized = body.lowercase()
         val institutionName = inferInstitutionName(sender = sender, body = body)
+        val bankAccountLastFourDigits = extractBankAccountLastFour(body)
         val cardLastFourDigits = extractCardLastFour(body)
         val cardType = inferCardType(normalized)
         val isUpiPayment = isUpiMessage(normalized)
         val hasCardSignal = hasCardSignal(normalized, cardLastFourDigits, cardType)
-        val isCardBillPayment = isCreditCardBillPayment(normalized)
+        val isCardBillPayment = isCreditCardBillPayment(normalized, hasCardSignal)
         val accountKind = inferAccountKind(
             sender = sender,
             body = body,
@@ -188,6 +226,7 @@ class SmsParser {
             body = body,
             normalized = normalized,
             institutionName = institutionName,
+            bankAccountLastFourDigits = bankAccountLastFourDigits,
             cardLastFourDigits = cardLastFourDigits,
             cardType = cardType,
             accountKind = accountKind,
@@ -195,6 +234,10 @@ class SmsParser {
             hasCardSignal = hasCardSignal,
         )?.let {
             return ParsedSmsMessage(scheduledTransaction = it)
+        }
+
+        if (isCardStatementOnly(normalized, hasCardSignal, isCardBillPayment)) {
+            return ParsedSmsMessage(shouldIgnore = true)
         }
 
         if (requestOnlyKeywords.any(normalized::contains) && actualPaymentKeywords.none(normalized::contains)) {
@@ -208,8 +251,9 @@ class SmsParser {
         val amount = extractAmount(body)
         val direction = when {
             isCardBillPayment -> TransactionDirection.DEBIT
-            else -> extractDirection(normalized)
+            else -> extractDirection(normalized) ?: inferCardTransactionDirection(normalized, hasCardSignal)
         }
+        val occurredAtMillis = extractTransactionDate(body)
 
         if (amount == null || direction == null) {
             return ParsedSmsMessage(shouldIgnore = true)
@@ -227,6 +271,7 @@ class SmsParser {
         val isCardPayment = hasCardSignal && !isCardBillPayment
         val accountLabel = inferAccountLabel(
             institutionName = institutionName,
+            bankAccountLastFourDigits = bankAccountLastFourDigits,
             accountKind = accountKind,
             cardType = cardType,
             cardLastFourDigits = cardLastFourDigits,
@@ -249,6 +294,7 @@ class SmsParser {
         if (isUpiPayment || isCardPayment || normalized.contains("a/c") || normalized.contains("payment")) {
             confidence += 0.1
         }
+        if (occurredAtMillis != null) confidence += 0.05
         if (isCardBillPayment) confidence += 0.08
 
         return ParsedSmsMessage(
@@ -262,6 +308,8 @@ class SmsParser {
                 confidence = min(confidence, 0.98),
                 shouldIgnore = false,
                 institutionName = institutionName,
+                occurredAtMillis = occurredAtMillis,
+                bankAccountLastFourDigits = bankAccountLastFourDigits,
                 cardLastFourDigits = cardLastFourDigits,
                 cardType = cardType,
                 isUpiPayment = isUpiPayment,
@@ -276,6 +324,7 @@ class SmsParser {
         body: String,
         normalized: String,
         institutionName: String?,
+        bankAccountLastFourDigits: String?,
         cardLastFourDigits: String?,
         cardType: CardType?,
         accountKind: AccountKind,
@@ -297,6 +346,7 @@ class SmsParser {
         )
         val accountLabel = inferAccountLabel(
             institutionName = institutionName,
+            bankAccountLastFourDigits = bankAccountLastFourDigits,
             accountKind = accountKind,
             cardType = cardType,
             cardLastFourDigits = cardLastFourDigits,
@@ -323,6 +373,7 @@ class SmsParser {
             kind = ScheduledTransactionKind.MANDATE,
             confidence = min(confidence, 0.98),
             institutionName = institutionName,
+            bankAccountLastFourDigits = bankAccountLastFourDigits,
             cardLastFourDigits = cardLastFourDigits,
             cardType = cardType,
             isUpiPayment = isUpiPayment,
@@ -359,9 +410,35 @@ class SmsParser {
     }
 
     private fun extractDirection(normalized: String): TransactionDirection? {
-        if (debitKeywords.any(normalized::contains)) return TransactionDirection.DEBIT
-        if (creditKeywords.any(normalized::contains)) return TransactionDirection.CREDIT
+        if (hasCreditDirectionKeyword(normalized)) return TransactionDirection.CREDIT
+        if (hasDebitDirectionKeyword(normalized)) return TransactionDirection.DEBIT
         return null
+    }
+
+    private fun inferCardTransactionDirection(
+        normalized: String,
+        hasCardSignal: Boolean,
+    ): TransactionDirection? {
+        if (!hasCardSignal) return null
+        if (hasCreditDirectionKeyword(normalized)) return TransactionDirection.CREDIT
+        return when {
+            normalized.contains("txn rs") -> TransactionDirection.DEBIT
+            normalized.contains("txn of") -> TransactionDirection.DEBIT
+            normalized.contains("by upi") -> TransactionDirection.DEBIT
+            normalized.contains("via upi") -> TransactionDirection.DEBIT
+            normalized.contains(" at ") -> TransactionDirection.DEBIT
+            normalized.contains("purchase") -> TransactionDirection.DEBIT
+            normalized.contains("spent") -> TransactionDirection.DEBIT
+            else -> null
+        }
+    }
+
+    private fun hasCreditDirectionKeyword(normalized: String): Boolean {
+        return creditKeywords.any(normalized::contains) || creditAbbreviationRegex.containsMatchIn(normalized)
+    }
+
+    private fun hasDebitDirectionKeyword(normalized: String): Boolean {
+        return debitKeywords.any(normalized::contains) || debitAbbreviationRegex.containsMatchIn(normalized)
     }
 
     private fun extractMerchant(body: String): String? {
@@ -369,13 +446,18 @@ class SmsParser {
             regex.find(body)?.groupValues?.getOrNull(1)
         } ?: return null
 
-        return match
+        return sanitizeMerchant(match)
+    }
+
+    private fun sanitizeMerchant(rawValue: String): String? {
+        return rawValue
             .replace(
                 Regex(
-                    "(?i)(upi|ref|info|avl|bal|available balance|due date|scheduled on|scheduled for|presented on|will be debited|will be presented|from a/c|from acct|from account).*",
+                    "(?i)(?:\\bby\\s+upi\\b|\\bvia\\s+upi\\b|\\bupi\\b|\\bref(?:no)?\\b|\\binfo\\b|\\bavl\\b|\\bbal\\b|\\bavailable balance\\b|\\bdue date\\b|\\bscheduled on\\b|\\bscheduled for\\b|\\bpresented on\\b|\\bwill be debited\\b|\\bwill be presented\\b|\\bfrom a/c\\b|\\bfrom acct\\b|\\bfrom account\\b|\\bon date\\b|\\bon\\s+[0-9]{1,2}[/-][0-9]{1,2}(?:[/-][0-9]{2,4})?\\b|\\bon\\s+[0-9]{1,2}[A-Za-z]{3,9}[0-9]{2,4}\\b|\\bon\\s+[0-9]{1,2}[\\s-][A-Za-z]{3,9}(?:[\\s-][0-9]{2,4})?\\b).*",
                 ),
                 "",
             )
+            .replace(Regex("(?i)\\bby\\b$"), "")
             .replace(Regex("\\s+"), " ")
             .trim(' ', '.', ',', '-', ':')
             .takeIf { it.length >= 3 }
@@ -385,6 +467,20 @@ class SmsParser {
         val token = scheduledDateRegexes.firstNotNullOfOrNull { regex ->
             regex.find(body)?.groupValues?.getOrNull(1)
         } ?: return null
+        return parseDateToken(token, preferFuture = true)
+    }
+
+    private fun extractTransactionDate(body: String): Long? {
+        val token = transactionDateRegexes.firstNotNullOfOrNull { regex ->
+            regex.find(body)?.groupValues?.getOrNull(1)
+        } ?: return null
+        return parseDateToken(token, preferFuture = false)
+    }
+
+    private fun parseDateToken(
+        token: String,
+        preferFuture: Boolean,
+    ): Long? {
         val cleaned = token
             .replace(",", " ")
             .replace(Regex("(?i)(st|nd|rd|th)"), "")
@@ -400,33 +496,53 @@ class SmsParser {
             }
         }
 
-        parseDateWithoutYear(cleaned)?.let { date ->
+        parseDateWithoutYear(cleaned, preferFuture)?.let { date ->
             return date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
         }
         return null
     }
 
-    private fun parseDateWithoutYear(value: String): LocalDate? {
+    private fun parseDateWithoutYear(
+        value: String,
+        preferFuture: Boolean,
+    ): LocalDate? {
         val today = LocalDate.now()
+        val compactAlpha = Regex("(?i)^([0-9]{1,2})([A-Za-z]{3,9})$")
+            .matchEntire(value)
+        if (compactAlpha != null) {
+            val day = compactAlpha.groupValues[1].toIntOrNull() ?: return null
+            val month = parseMonth(compactAlpha.groupValues[2]) ?: return null
+            return candidateDate(day = day, month = month, today = today, preferFuture = preferFuture)
+        }
+
         val numericParts = value.split(Regex("[/-]"))
         if (numericParts.size == 2 && numericParts.all { part -> part.all(Char::isDigit) }) {
             val day = numericParts[0].toIntOrNull() ?: return null
             val month = numericParts[1].toIntOrNull() ?: return null
-            return candidateDate(day = day, month = month, today = today)
+            return candidateDate(day = day, month = month, today = today, preferFuture = preferFuture)
         }
 
         val textParts = value.split(Regex("[\\s-]+"))
         if (textParts.size == 2) {
             val day = textParts[0].toIntOrNull() ?: return null
             val month = parseMonth(textParts[1]) ?: return null
-            return candidateDate(day = day, month = month, today = today)
+            return candidateDate(day = day, month = month, today = today, preferFuture = preferFuture)
         }
         return null
     }
 
-    private fun candidateDate(day: Int, month: Int, today: LocalDate): LocalDate? {
+    private fun candidateDate(
+        day: Int,
+        month: Int,
+        today: LocalDate,
+        preferFuture: Boolean,
+    ): LocalDate? {
         val initial = runCatching { LocalDate.of(today.year, month, day) }.getOrNull() ?: return null
-        return if (initial.isBefore(today.minusDays(3))) initial.plusYears(1) else initial
+        return if (preferFuture) {
+            if (initial.isBefore(today.minusDays(3))) initial.plusYears(1) else initial
+        } else {
+            if (initial.isAfter(today.plusDays(3))) initial.minusYears(1) else initial
+        }
     }
 
     private fun parseMonth(token: String): Int? {
@@ -447,6 +563,14 @@ class SmsParser {
         }
     }
 
+    private fun extractBankAccountLastFour(body: String): String? {
+        return bankAccountLastFourRegexes.firstNotNullOfOrNull { regex ->
+            regex.find(body)?.groupValues?.getOrNull(1)
+        }?.filter(Char::isDigit)
+            ?.takeLast(4)
+            ?.takeIf { it.length == 4 }
+    }
+
     private fun hasCardSignal(
         normalized: String,
         cardLastFourDigits: String?,
@@ -457,6 +581,7 @@ class SmsParser {
             listOf(
                 "credit card",
                 "debit card",
+                "bank card",
                 "card ending",
                 "card xx",
                 "card xxxx",
@@ -494,19 +619,24 @@ class SmsParser {
         ).any(normalized::contains)
     }
 
-    private fun isCreditCardBillPayment(normalized: String): Boolean {
-        val hasCardSignal = listOf("credit card", "card ending", "card xx", "card xxxx", "card x").any(normalized::contains)
-        val hasPaymentSignal = listOf(
-            "credit card bill payment",
-            "credit card payment",
-            "card payment",
-            "payment towards your credit card",
-            "payment received towards your credit card",
-            "payment received for your credit card",
-            "paid towards your credit card",
-        ).any(normalized::contains)
+    private fun isCreditCardBillPayment(
+        normalized: String,
+        hasCardSignal: Boolean,
+    ): Boolean {
+        if (!hasCardSignal) return false
+        val hasPaymentSignal = cardRepaymentKeywords.any(normalized::contains)
         val isStatementReminder = statementOnlyKeywords.any(normalized::contains) && actualPaymentKeywords.none(normalized::contains)
-        return hasCardSignal && hasPaymentSignal && !isStatementReminder
+        return hasPaymentSignal && !isStatementReminder
+    }
+
+    private fun isCardStatementOnly(
+        normalized: String,
+        hasCardSignal: Boolean,
+        isCardBillPayment: Boolean,
+    ): Boolean {
+        if (!hasCardSignal || isCardBillPayment) return false
+        return statementOnlyKeywords.any(normalized::contains) &&
+            actualPaymentKeywords.none(normalized::contains)
     }
 
     private fun extractCardBillMerchant(
@@ -537,7 +667,7 @@ class SmsParser {
             listOf("airtel", "jio", "electricity", "water", "rent", "bill").any(source::contains) -> TransactionCategory.BILLS
             listOf("netflix", "spotify", "prime", "youtube", "hotstar", "apple.com").any(source::contains) -> TransactionCategory.SUBSCRIPTION
             listOf("amazon", "flipkart", "myntra", "shopping").any(source::contains) -> TransactionCategory.SHOPPING
-            source.contains("upi") || source.contains("transfer") || source.contains("neft") || source.contains("imps") -> TransactionCategory.TRANSFER
+            source.contains("upi") || source.contains("transfer") || source.contains("neft") || source.contains("imps") || source.contains("trf") -> TransactionCategory.TRANSFER
             else -> TransactionCategory.OTHER
         }
     }
@@ -558,12 +688,17 @@ class SmsParser {
 
     private fun inferAccountLabel(
         institutionName: String?,
+        bankAccountLastFourDigits: String?,
         accountKind: AccountKind,
         cardType: CardType?,
         cardLastFourDigits: String?,
     ): String? {
         return when (accountKind) {
-            AccountKind.BANK -> institutionName
+            AccountKind.BANK -> listOfNotNull(
+                institutionName,
+                bankAccountLastFourDigits?.let { "A/C $it" },
+            ).joinToString(" ").ifBlank { null }
+
             AccountKind.CARD -> listOfNotNull(
                 institutionName,
                 cardType?.label,

@@ -43,6 +43,7 @@ class SmsParserTest {
         assertEquals(TransactionDirection.CREDIT, result.direction)
         assertEquals(TransactionCategory.SALARY, result.inferredCategory)
         assertEquals(85000.0, result.amount ?: 0.0, 0.0)
+        assertNotNull(result.occurredAtMillis)
     }
 
     @Test
@@ -113,6 +114,7 @@ class SmsParserTest {
         assertEquals(CardType.DEBIT, result.cardType)
         assertEquals("4321", result.cardLastFourDigits)
         assertTrue(result.isCardPayment)
+        assertNotNull(result.occurredAtMillis)
     }
 
     @Test
@@ -126,9 +128,72 @@ class SmsParserTest {
         assertEquals(AccountKind.CARD, result.accountKind)
         assertEquals(CardType.CREDIT, result.cardType)
         assertEquals("8765", result.cardLastFourDigits)
+        assertEquals(TransactionDirection.DEBIT, result.direction)
         assertTrue(result.isUpiPayment)
         assertTrue(result.isCardPayment)
         assertEquals(TransactionCategory.FOOD, result.inferredCategory)
+    }
+
+    @Test
+    fun `parses card transaction format with card digits and inline date`() {
+        val result = parser.parse(
+            sender = "HDFCBK",
+            body = "Txn Rs.20.00 On HDFC Bank Card 2159 At Vyapar.169705261244@hdfcb by UPI 153652450137 On 08-05",
+        )
+
+        assertFalse(result.shouldIgnore)
+        assertEquals(20.0, result.amount ?: 0.0, 0.0)
+        assertEquals(TransactionDirection.DEBIT, result.direction)
+        assertEquals(AccountKind.CARD, result.accountKind)
+        assertEquals("2159", result.cardLastFourDigits)
+        assertTrue(result.isUpiPayment)
+        assertTrue(result.isCardPayment)
+        assertEquals("Vyapar.169705261244@hdfcb", result.merchant)
+        assertNotNull(result.occurredAtMillis)
+    }
+
+    @Test
+    fun `parses bank upi transfer with normalized account digits and body date`() {
+        val result = parser.parse(
+            sender = "SBIUPI",
+            body = "Dear UPI user A/C X6009 debited by 158.00 on date 07May26 trf to ZERODHA BROKING Refno 134847343423",
+        )
+
+        assertFalse(result.shouldIgnore)
+        assertEquals(158.0, result.amount ?: 0.0, 0.0)
+        assertEquals(TransactionDirection.DEBIT, result.direction)
+        assertEquals(AccountKind.BANK, result.accountKind)
+        assertEquals("6009", result.bankAccountLastFourDigits)
+        assertEquals("ZERODHA BROKING", result.merchant)
+        assertNotNull(result.occurredAtMillis)
+    }
+
+    @Test
+    fun `treats generic card repayment with last four digits as bank transfer`() {
+        val result = parser.parse(
+            sender = "HDFCBK",
+            body = "Payment of INR 12450 received towards your HDFC Bank Card 2159 from A/c XX8899 on 09-05-2026.",
+        )
+
+        assertFalse(result.shouldIgnore)
+        assertEquals(12450.0, result.amount ?: 0.0, 0.0)
+        assertEquals(TransactionDirection.DEBIT, result.direction)
+        assertEquals(AccountKind.BANK, result.accountKind)
+        assertEquals(TransactionCategory.TRANSFER, result.inferredCategory)
+        assertEquals("2159", result.cardLastFourDigits)
+        assertTrue(result.isCardBillPayment)
+    }
+
+    @Test
+    fun `ignores statement reminders for tracked cards`() {
+        val result = parser.parseMessage(
+            sender = "HDFCBK",
+            body = "Your HDFC Bank Card 2159 statement generated. Total amount due Rs.12450 due date 18-05-2026.",
+        )
+
+        assertTrue(result.shouldIgnore)
+        assertNull(result.transaction)
+        assertNull(result.scheduledTransaction)
     }
 }
 

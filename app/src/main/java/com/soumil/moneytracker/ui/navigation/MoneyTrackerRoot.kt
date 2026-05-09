@@ -5,13 +5,27 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItemDefaults
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -23,7 +37,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -43,6 +60,7 @@ import com.soumil.moneytracker.ui.components.AddSubscriptionDialog
 import com.soumil.moneytracker.ui.components.AccountEditorDialog
 import com.soumil.moneytracker.ui.components.AddTransactionDialog
 import com.soumil.moneytracker.ui.components.BudgetDialog
+import com.soumil.moneytracker.ui.components.DeleteAccountDialog
 import com.soumil.moneytracker.ui.components.DeleteTransactionDialog
 import com.soumil.moneytracker.ui.components.InitialSetupDialog
 import com.soumil.moneytracker.ui.screen.HomeScreen
@@ -74,6 +92,7 @@ fun MoneyTrackerRoot(
     var showAddSubscriptionDialog by remember { mutableStateOf(false) }
     var editingTransaction by remember { mutableStateOf<TransactionRecord?>(null) }
     var pendingDeleteTransaction by remember { mutableStateOf<TransactionRecord?>(null) }
+    var pendingDeleteAccount by remember { mutableStateOf<AccountEntity?>(null) }
     var transactionDialogKey by remember { mutableStateOf(0) }
     var dismissSetupForSession by remember { mutableStateOf(false) }
     var editingAccount by remember { mutableStateOf<AccountEntity?>(null) }
@@ -103,47 +122,23 @@ fun MoneyTrackerRoot(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
-            Surface(
-                color = MaterialTheme.colorScheme.onBackground,
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(32.dp),
-                modifier = Modifier
-                    .padding(horizontal = 24.dp, vertical = 16.dp)
-                    .offset(y = (-4).dp),
-            ) {
-                NavigationBar(
-                    containerColor = androidx.compose.ui.graphics.Color.Transparent,
-                    tonalElevation = 0.dp,
-                ) {
-                    bottomDestinations.forEach { destination ->
-                        NavigationBarItem(
-                            selected = currentRoute == destination.route,
-                            onClick = {
-                                navController.navigate(destination.route) {
-                                    popUpTo(navController.graph.startDestinationId) {
-                                        saveState = true
-                                    }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            icon = {
-                                Icon(
-                                    imageVector = destination.icon,
-                                    contentDescription = destination.label,
-                                )
-                            },
-                            label = { Text(destination.label) },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = MaterialTheme.colorScheme.onPrimary,
-                                selectedTextColor = MaterialTheme.colorScheme.onPrimary,
-                                indicatorColor = MaterialTheme.colorScheme.primary,
-                                unselectedIconColor = MaterialTheme.colorScheme.secondary,
-                                unselectedTextColor = MaterialTheme.colorScheme.secondary,
-                            ),
-                        )
+            TrackerBottomBar(
+                currentRoute = currentRoute,
+                onNavigate = { destination ->
+                    navController.navigate(destination.route) {
+                        popUpTo(navController.graph.startDestinationId) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = true
                     }
-                }
-            }
+                },
+                onAddTransaction = {
+                    editingTransaction = null
+                    transactionDialogKey += 1
+                    showAddTransactionDialog = true
+                },
+            )
         },
     ) { innerPadding ->
         NavHost(
@@ -171,6 +166,7 @@ fun MoneyTrackerRoot(
                 TransactionsScreen(
                     filter = filter,
                     transactions = transactions,
+                    cardAccounts = accounts.filter { it.kind == AccountKind.CARD },
                     onFilterSelected = viewModel::setFilter,
                     onAddTransactionClick = {
                         editingTransaction = null
@@ -217,6 +213,9 @@ fun MoneyTrackerRoot(
                         editingAccount = account
                         accountDialogDraft = account.toDraft()
                         accountDialogKey += 1
+                    },
+                    onDeleteAccount = { account ->
+                        pendingDeleteAccount = account
                     },
                     onAcceptSuggestion = viewModel::acceptSuggestedSubscription,
                     onDismissSuggestion = viewModel::dismissSuggestedSubscription,
@@ -275,6 +274,17 @@ fun MoneyTrackerRoot(
             onConfirm = {
                 viewModel.deleteTransaction(transaction.id)
                 pendingDeleteTransaction = null
+            },
+        )
+    }
+
+    pendingDeleteAccount?.let { account ->
+        DeleteAccountDialog(
+            account = account,
+            onDismiss = { pendingDeleteAccount = null },
+            onConfirm = {
+                viewModel.deleteAccount(account.id)
+                pendingDeleteAccount = null
             },
         )
     }
@@ -367,4 +377,156 @@ private fun android.content.Context.smsPermissionArray(): Array<String> {
         permissions += Manifest.permission.POST_NOTIFICATIONS
     }
     return permissions.toTypedArray()
+}
+
+@Composable
+private fun TrackerBottomBar(
+    currentRoute: String?,
+    onNavigate: (AppDestination) -> Unit,
+    onAddTransaction: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 18.dp, vertical = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(34.dp),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.76f),
+            shadowElevation = 20.dp,
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.46f)),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        brush = Brush.linearGradient(
+                            listOf(
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
+                                MaterialTheme.colorScheme.secondary.copy(alpha = 0.18f),
+                                MaterialTheme.colorScheme.tertiary.copy(alpha = 0.08f),
+                            ),
+                        ),
+                    ),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    BottomDockItem(
+                        destination = AppDestination.Home,
+                        selected = currentRoute == AppDestination.Home.route,
+                        onClick = { onNavigate(AppDestination.Home) },
+                    )
+                    BottomDockItem(
+                        destination = AppDestination.Transactions,
+                        selected = currentRoute == AppDestination.Transactions.route,
+                        onClick = { onNavigate(AppDestination.Transactions) },
+                    )
+                    AddDockItem(onClick = onAddTransaction)
+                    BottomDockItem(
+                        destination = AppDestination.More,
+                        selected = currentRoute == AppDestination.More.route,
+                        onClick = { onNavigate(AppDestination.More) },
+                    )
+                    BottomDockItem(
+                        destination = AppDestination.Settings,
+                        selected = currentRoute == AppDestination.Settings.route,
+                        onClick = { onNavigate(AppDestination.Settings) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RowScope.BottomDockItem(
+    destination: AppDestination,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val contentColor = if (selected) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Surface(
+        modifier = Modifier.weight(1f),
+        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent,
+        shape = RoundedCornerShape(22.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Icon(
+                imageVector = destination.icon,
+                contentDescription = destination.label,
+                tint = contentColor,
+            )
+            Text(
+                text = destination.label,
+                style = MaterialTheme.typography.labelSmall,
+                color = contentColor,
+            )
+            if (selected) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .background(MaterialTheme.colorScheme.secondary, CircleShape),
+                )
+            } else {
+                Spacer(modifier = Modifier.height(6.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddDockItem(
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .padding(horizontal = 4.dp)
+            .offset(y = (-12).dp),
+        shape = CircleShape,
+        color = Color.Transparent,
+        shadowElevation = 18.dp,
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.36f)),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(60.dp)
+                .background(
+                    brush = Brush.linearGradient(
+                        listOf(
+                            MaterialTheme.colorScheme.primary,
+                            MaterialTheme.colorScheme.secondary,
+                        ),
+                    ),
+                    shape = CircleShape,
+                )
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Add,
+                contentDescription = "Add transaction",
+                tint = Color.White,
+            )
+        }
+    }
 }

@@ -29,6 +29,9 @@ interface AccountDao {
 
     @Update
     suspend fun update(account: AccountEntity)
+
+    @Query("DELETE FROM accounts WHERE id = :accountId")
+    suspend fun deleteById(accountId: Long)
 }
 
 @Dao

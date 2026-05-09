@@ -181,6 +181,11 @@ class FinanceRepository(
         )
     }
 
+    suspend fun deleteAccount(accountId: Long) {
+        accountDao.findById(accountId) ?: return
+        accountDao.deleteById(accountId)
+    }
+
     suspend fun setMonthlyBudget(amount: Double) {
         val monthKey = currentMonthKey()
         budgetDao.deleteOverallBudget(monthKey)
@@ -415,7 +420,10 @@ class FinanceRepository(
         lastFourDigits: String? = null,
     ): String {
         return when (kind) {
-            AccountKind.BANK -> institutionName ?: "Bank Account"
+            AccountKind.BANK -> listOfNotNull(
+                institutionName,
+                lastFourDigits?.let { "A/C $it" },
+            ).joinToString(" ").ifBlank { "Bank Account" }
             AccountKind.CARD -> listOfNotNull(
                 institutionName,
                 cardType?.label,
@@ -471,6 +479,7 @@ class FinanceRepository(
             accountLabel = parsed.accountLabel,
             accountKind = parsed.accountKind,
             institutionName = parsed.institutionName,
+            bankAccountLastFourDigits = parsed.bankAccountLastFourDigits,
             cardLastFourDigits = parsed.cardLastFourDigits,
             cardType = parsed.cardType,
             isCardBillPayment = parsed.isCardBillPayment,
@@ -480,7 +489,7 @@ class FinanceRepository(
             TransactionEntity(
                 amount = parsed.amount,
                 direction = parsed.direction,
-                occurredAtMillis = receivedAtMillis,
+                occurredAtMillis = parsed.occurredAtMillis ?: receivedAtMillis,
                 merchant = parsed.merchant ?: fallbackMerchant(sender, parsed.direction),
                 category = parsed.inferredCategory,
                 accountId = accountId,
@@ -512,6 +521,7 @@ class FinanceRepository(
             accountLabel = parsed.accountLabel,
             accountKind = parsed.accountKind,
             institutionName = parsed.institutionName,
+            bankAccountLastFourDigits = parsed.bankAccountLastFourDigits,
             cardLastFourDigits = parsed.cardLastFourDigits,
             cardType = parsed.cardType,
             isCardBillPayment = false,
@@ -552,16 +562,31 @@ class FinanceRepository(
         accountLabel: String?,
         accountKind: AccountKind,
         institutionName: String?,
+        bankAccountLastFourDigits: String?,
         cardLastFourDigits: String?,
         cardType: CardType?,
         isCardBillPayment: Boolean,
     ): Long? {
         val existingAccounts = accountDao.getAccounts()
         val normalizedInstitution = normalizeInstitutionName(institutionName)
+        val normalizedBankLastFour = normalizeLastFourDigits(bankAccountLastFourDigits)
         val normalizedLastFour = normalizeLastFourDigits(cardLastFourDigits)
 
         if (isCardBillPayment) {
+            findConfiguredBankAccount(
+                accounts = existingAccounts,
+                lastFourDigits = normalizedBankLastFour,
+                institutionName = normalizedInstitution,
+            )?.let { return it.id }
             findPrimaryBankAccount(existingAccounts, normalizedInstitution)?.let { return it.id }
+        }
+
+        if (accountKind == AccountKind.BANK) {
+            findConfiguredBankAccount(
+                accounts = existingAccounts,
+                lastFourDigits = normalizedBankLastFour,
+                institutionName = normalizedInstitution,
+            )?.let { return it.id }
         }
 
         if (normalizedLastFour != null) {
@@ -575,11 +600,20 @@ class FinanceRepository(
 
         return when (accountKind) {
             AccountKind.BANK -> {
-                val bankAccount = findPrimaryBankAccount(existingAccounts, normalizedInstitution)
+                val bankAccount = findConfiguredBankAccount(
+                    accounts = existingAccounts,
+                    lastFourDigits = normalizedBankLastFour,
+                    institutionName = normalizedInstitution,
+                ) ?: findPrimaryBankAccount(existingAccounts, normalizedInstitution)
                 bankAccount?.id ?: resolveAccount(
-                    name = accountLabel ?: defaultAccountName(AccountKind.BANK, normalizedInstitution),
+                    name = accountLabel ?: defaultAccountName(
+                        kind = AccountKind.BANK,
+                        institutionName = normalizedInstitution,
+                        lastFourDigits = normalizedBankLastFour,
+                    ),
                     kind = AccountKind.BANK,
                     institutionName = normalizedInstitution,
+                    lastFourDigits = normalizedBankLastFour,
                 )
             }
 
@@ -683,6 +717,25 @@ class FinanceRepository(
         }
     }
 
+    private fun findConfiguredBankAccount(
+        accounts: List<AccountEntity>,
+        lastFourDigits: String?,
+        institutionName: String?,
+    ): AccountEntity? {
+        val normalizedLastFour = normalizeLastFourDigits(lastFourDigits) ?: return null
+        val normalizedInstitution = normalizeInstitutionName(institutionName)
+        return accounts.firstOrNull { account ->
+            account.kind == AccountKind.BANK &&
+                (account.lastFourDigits == normalizedLastFour || account.name.contains(normalizedLastFour)) &&
+                (normalizedInstitution == null ||
+                    account.institutionName == null ||
+                    normalizeInstitutionName(account.institutionName) == normalizedInstitution)
+        } ?: accounts.firstOrNull { account ->
+            account.kind == AccountKind.BANK &&
+                (account.lastFourDigits == normalizedLastFour || account.name.contains(normalizedLastFour))
+        }
+    }
+
     private fun findConfiguredCardAccount(
         accounts: List<AccountEntity>,
         lastFourDigits: String?,
@@ -735,7 +788,12 @@ class FinanceRepository(
                 else -> null
             },
             cardType = normalizedCardType,
-            lastFourDigits = if (draft.kind == AccountKind.CARD) normalizedLastFour else null,
+            lastFourDigits = when (draft.kind) {
+                AccountKind.BANK,
+                AccountKind.CARD -> normalizedLastFour
+
+                else -> null
+            },
             isRupayCreditCard = draft.kind == AccountKind.CARD &&
                 normalizedCardType == CardType.CREDIT &&
                 draft.isRupayCreditCard,

@@ -46,7 +46,6 @@ import com.soumil.moneytracker.data.model.AccountKind
 import com.soumil.moneytracker.data.model.TransactionDirection
 import com.soumil.moneytracker.data.model.TransactionStatus
 import com.soumil.moneytracker.ui.asCurrency
-import com.soumil.moneytracker.ui.asDayMonth
 import com.soumil.moneytracker.ui.asFullDate
 
 @Composable
@@ -203,7 +202,7 @@ fun TransactionItem(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = listOfNotNull(transaction.category.label, transaction.accountName, transaction.occurredAtMillis.asDayMonth())
+                text = listOfNotNull(transaction.category.label, transaction.accountName)
                     .joinToString(" | "),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -220,6 +219,11 @@ fun TransactionItem(
                 style = MaterialTheme.typography.titleMedium,
                 color = accent,
                 fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = transaction.occurredAtMillis.asFullDate(),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (transaction.status == TransactionStatus.REVIEW) {
                 Surface(
@@ -350,6 +354,7 @@ fun ScheduledTransactionItem(
 fun AccountItem(
     account: AccountEntity,
     onEdit: () -> Unit,
+    onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val accent = if (account.kind == AccountKind.CARD) {
@@ -368,6 +373,7 @@ fun AccountItem(
         else -> listOfNotNull(
             account.kind.name.lowercase().replaceFirstChar { it.uppercase() },
             account.institutionName,
+            account.lastFourDigits?.let { "A/C $it" },
         ).joinToString(" | ")
     }.ifBlank {
         account.kind.name.lowercase().replaceFirstChar { it.uppercase() }
@@ -417,8 +423,13 @@ fun AccountItem(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            OutlinedButton(onClick = onEdit) {
-                Text("Edit")
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onEdit) {
+                    Text("Edit")
+                }
+                OutlinedButton(onClick = onDelete) {
+                    Text("Delete")
+                }
             }
         }
     }
