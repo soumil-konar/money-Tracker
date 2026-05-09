@@ -6,18 +6,13 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -30,7 +25,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -39,7 +33,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -390,58 +383,44 @@ private fun TrackerBottomBar(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 18.dp, vertical = 10.dp),
+            .padding(horizontal = 22.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center,
     ) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(34.dp),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.76f),
-            shadowElevation = 20.dp,
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.46f)),
+            shape = RoundedCornerShape(30.dp),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+            shadowElevation = 14.dp,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)),
         ) {
-            Box(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(
-                        brush = Brush.linearGradient(
-                            listOf(
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
-                                MaterialTheme.colorScheme.secondary.copy(alpha = 0.18f),
-                                MaterialTheme.colorScheme.tertiary.copy(alpha = 0.08f),
-                            ),
-                        ),
-                    ),
+                    .padding(horizontal = 8.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    BottomDockItem(
-                        destination = AppDestination.Home,
-                        selected = currentRoute == AppDestination.Home.route,
-                        onClick = { onNavigate(AppDestination.Home) },
-                    )
-                    BottomDockItem(
-                        destination = AppDestination.Transactions,
-                        selected = currentRoute == AppDestination.Transactions.route,
-                        onClick = { onNavigate(AppDestination.Transactions) },
-                    )
-                    AddDockItem(onClick = onAddTransaction)
-                    BottomDockItem(
-                        destination = AppDestination.More,
-                        selected = currentRoute == AppDestination.More.route,
-                        onClick = { onNavigate(AppDestination.More) },
-                    )
-                    BottomDockItem(
-                        destination = AppDestination.Settings,
-                        selected = currentRoute == AppDestination.Settings.route,
-                        onClick = { onNavigate(AppDestination.Settings) },
-                    )
-                }
+                BottomDockItem(
+                    destination = AppDestination.Home,
+                    selected = currentRoute == AppDestination.Home.route,
+                    onClick = { onNavigate(AppDestination.Home) },
+                )
+                BottomDockItem(
+                    destination = AppDestination.Transactions,
+                    selected = currentRoute == AppDestination.Transactions.route,
+                    onClick = { onNavigate(AppDestination.Transactions) },
+                )
+                AddDockItem(onClick = onAddTransaction)
+                BottomDockItem(
+                    destination = AppDestination.More,
+                    selected = currentRoute == AppDestination.More.route,
+                    onClick = { onNavigate(AppDestination.More) },
+                )
+                BottomDockItem(
+                    destination = AppDestination.Settings,
+                    selected = currentRoute == AppDestination.Settings.route,
+                    onClick = { onNavigate(AppDestination.Settings) },
+                )
             }
         }
     }
@@ -453,80 +432,68 @@ private fun RowScope.BottomDockItem(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    val contentColor = if (selected) {
+    val iconTint = if (selected) {
         MaterialTheme.colorScheme.primary
     } else {
         MaterialTheme.colorScheme.onSurfaceVariant
     }
-    Surface(
+    Box(
         modifier = Modifier.weight(1f),
-        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent,
-        shape = RoundedCornerShape(22.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onClick)
-                .padding(vertical = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Icon(
-                imageVector = destination.icon,
-                contentDescription = destination.label,
-                tint = contentColor,
-            )
-            Text(
-                text = destination.label,
-                style = MaterialTheme.typography.labelSmall,
-                color = contentColor,
-            )
-            if (selected) {
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .background(MaterialTheme.colorScheme.secondary, CircleShape),
-                )
+        Surface(
+            shape = CircleShape,
+            color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent,
+            border = if (selected) {
+                BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.18f))
             } else {
-                Spacer(modifier = Modifier.height(6.dp))
+                null
+            },
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clickable(onClick = onClick),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = destination.icon,
+                    contentDescription = destination.label,
+                    tint = iconTint,
+                    modifier = Modifier.size(22.dp),
+                )
             }
         }
     }
 }
 
 @Composable
-private fun AddDockItem(
+private fun RowScope.AddDockItem(
     onClick: () -> Unit,
 ) {
-    Surface(
-        modifier = Modifier
-            .padding(horizontal = 4.dp)
-            .offset(y = (-12).dp),
-        shape = CircleShape,
-        color = Color.Transparent,
-        shadowElevation = 18.dp,
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.36f)),
+    Box(
+        modifier = Modifier.weight(1f),
+        contentAlignment = Alignment.Center,
     ) {
-        Box(
-            modifier = Modifier
-                .size(60.dp)
-                .background(
-                    brush = Brush.linearGradient(
-                        listOf(
-                            MaterialTheme.colorScheme.primary,
-                            MaterialTheme.colorScheme.secondary,
-                        ),
-                    ),
-                    shape = CircleShape,
-                )
-                .clickable(onClick = onClick),
-            contentAlignment = Alignment.Center,
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.primary,
+            shadowElevation = 10.dp,
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.28f)),
         ) {
-            Icon(
-                imageVector = Icons.Outlined.Add,
-                contentDescription = "Add transaction",
-                tint = Color.White,
-            )
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clickable(onClick = onClick),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Add,
+                    contentDescription = "Add transaction",
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
         }
     }
 }
