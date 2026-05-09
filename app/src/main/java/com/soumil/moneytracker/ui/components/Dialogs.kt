@@ -31,6 +31,7 @@ import com.soumil.moneytracker.data.model.SubscriptionDraft
 import com.soumil.moneytracker.data.model.TransactionCategory
 import com.soumil.moneytracker.data.model.TransactionDirection
 import com.soumil.moneytracker.data.model.TransactionDraft
+import com.soumil.moneytracker.ui.asCurrency
 
 @Composable
 fun BudgetDialog(
@@ -69,19 +70,30 @@ fun AddTransactionDialog(
     accounts: List<AccountEntity>,
     onDismiss: () -> Unit,
     onConfirm: (TransactionDraft) -> Unit,
+    title: String = "Add transaction",
+    confirmLabel: String = "Save",
+    initialDraft: TransactionDraft? = null,
+    dialogKey: Int = 0,
 ) {
-    var merchant by rememberSaveable { mutableStateOf("") }
-    var amount by rememberSaveable { mutableStateOf("") }
-    var note by rememberSaveable { mutableStateOf("") }
-    var selectedDirection by rememberSaveable { mutableStateOf(TransactionDirection.DEBIT) }
-    var selectedCategory by rememberSaveable { mutableStateOf(TransactionCategory.OTHER) }
-    var selectedAccount by remember { mutableStateOf(accounts.firstOrNull()) }
+    var merchant by rememberSaveable(dialogKey) { mutableStateOf(initialDraft?.merchant.orEmpty()) }
+    var amount by rememberSaveable(dialogKey) { mutableStateOf(initialDraft?.amount?.toInputAmount().orEmpty()) }
+    var note by rememberSaveable(dialogKey) { mutableStateOf(initialDraft?.note.orEmpty()) }
+    var selectedDirection by rememberSaveable(dialogKey) {
+        mutableStateOf(initialDraft?.direction ?: TransactionDirection.DEBIT)
+    }
+    var selectedCategory by rememberSaveable(dialogKey) {
+        mutableStateOf(initialDraft?.category ?: TransactionCategory.OTHER)
+    }
+    var selectedAccountId by rememberSaveable(dialogKey) {
+        mutableStateOf(initialDraft?.accountId ?: accounts.firstOrNull()?.id)
+    }
     var accountExpanded by remember { mutableStateOf(false) }
     var categoryExpanded by remember { mutableStateOf(false) }
+    val selectedAccount = accounts.firstOrNull { it.id == selectedAccountId } ?: accounts.firstOrNull()
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add transaction") },
+        title = { Text(title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
@@ -159,7 +171,7 @@ fun AddTransactionDialog(
                             DropdownMenuItem(
                                 text = { Text(account.name) },
                                 onClick = {
-                                    selectedAccount = account
+                                    selectedAccountId = account.id
                                     accountExpanded = false
                                 },
                             )
@@ -187,11 +199,36 @@ fun AddTransactionDialog(
                             category = selectedCategory,
                             accountId = selectedAccount?.id,
                             note = note.trim(),
+                            occurredAtMillis = initialDraft?.occurredAtMillis ?: System.currentTimeMillis(),
                         ),
                     )
                 },
             ) {
-                Text("Save")
+                Text(confirmLabel)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+    )
+}
+
+@Composable
+fun DeleteTransactionDialog(
+    merchant: String,
+    amount: Double,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Delete transaction") },
+        text = { Text("Delete $merchant for ${amount.asCurrency()}? This cannot be undone.") },
+        confirmButton = {
+            Button(onClick = onConfirm) {
+                Text("Delete")
             }
         },
         dismissButton = {
@@ -320,5 +357,13 @@ private fun DirectionChoice(
 ) {
     Button(onClick = onClick, enabled = !selected) {
         Text(label)
+    }
+}
+
+private fun Double.toInputAmount(): String {
+    return if (this % 1.0 == 0.0) {
+        toLong().toString()
+    } else {
+        toString()
     }
 }

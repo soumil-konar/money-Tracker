@@ -42,6 +42,8 @@ enum class TransactionFilter(val label: String) {
     ALL("All"),
     SPENT("Spent"),
     INCOME("Income"),
+    UPI("UPI"),
+    CARD("Card"),
     REVIEW("Needs Review"),
 }
 

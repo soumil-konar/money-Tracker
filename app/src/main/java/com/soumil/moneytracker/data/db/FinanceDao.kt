@@ -29,7 +29,7 @@ interface AccountDao {
 interface TransactionDao {
     @Query(
         """
-        SELECT t.id, t.amount, t.direction, t.occurredAtMillis, t.merchant, t.category, t.sourceSender,
+        SELECT t.id, t.amount, t.direction, t.occurredAtMillis, t.merchant, t.category, t.accountId, t.sourceSender,
                t.smsBody, t.confidence, t.status, t.note, a.name AS accountName, a.kind AS accountKind
         FROM transactions t
         LEFT JOIN accounts a ON t.accountId = a.id
@@ -40,7 +40,7 @@ interface TransactionDao {
 
     @Query(
         """
-        SELECT t.id, t.amount, t.direction, t.occurredAtMillis, t.merchant, t.category, t.sourceSender,
+        SELECT t.id, t.amount, t.direction, t.occurredAtMillis, t.merchant, t.category, t.accountId, t.sourceSender,
                t.smsBody, t.confidence, t.status, t.note, a.name AS accountName, a.kind AS accountKind
         FROM transactions t
         LEFT JOIN accounts a ON t.accountId = a.id

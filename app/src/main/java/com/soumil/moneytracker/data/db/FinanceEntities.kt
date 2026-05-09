@@ -94,6 +94,7 @@ data class TransactionRecord(
     val occurredAtMillis: Long,
     val merchant: String,
     val category: TransactionCategory,
+    val accountId: Long?,
     val sourceSender: String,
     val smsBody: String?,
     val confidence: Double,

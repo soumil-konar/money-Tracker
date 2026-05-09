@@ -8,9 +8,11 @@ import com.soumil.moneytracker.data.db.AccountEntity
 import com.soumil.moneytracker.data.db.BudgetEntity
 import com.soumil.moneytracker.data.db.SubscriptionRecord
 import com.soumil.moneytracker.data.db.TransactionRecord
+import com.soumil.moneytracker.data.model.AccountKind
 import com.soumil.moneytracker.data.model.DashboardState
 import com.soumil.moneytracker.data.model.SubscriptionDraft
 import com.soumil.moneytracker.data.model.SubscriptionState
+import com.soumil.moneytracker.data.model.TransactionDirection
 import com.soumil.moneytracker.data.model.TransactionDraft
 import com.soumil.moneytracker.data.model.TransactionFilter
 import com.soumil.moneytracker.data.model.TransactionStatus
@@ -65,8 +67,22 @@ class MainViewModel(
     ) { transactions, filter ->
         when (filter) {
             TransactionFilter.ALL -> transactions
-            TransactionFilter.SPENT -> transactions.filter { it.direction == com.soumil.moneytracker.data.model.TransactionDirection.DEBIT && it.status == TransactionStatus.POSTED }
-            TransactionFilter.INCOME -> transactions.filter { it.direction == com.soumil.moneytracker.data.model.TransactionDirection.CREDIT && it.status == TransactionStatus.POSTED }
+            TransactionFilter.SPENT -> transactions.filter {
+                it.direction == TransactionDirection.DEBIT && it.status == TransactionStatus.POSTED
+            }
+            TransactionFilter.INCOME -> transactions.filter {
+                it.direction == TransactionDirection.CREDIT && it.status == TransactionStatus.POSTED
+            }
+            TransactionFilter.UPI -> transactions.filter {
+                it.direction == TransactionDirection.DEBIT &&
+                    it.status == TransactionStatus.POSTED &&
+                    it.accountKind == AccountKind.UPI
+            }
+            TransactionFilter.CARD -> transactions.filter {
+                it.direction == TransactionDirection.DEBIT &&
+                    it.status == TransactionStatus.POSTED &&
+                    it.accountKind == AccountKind.CARD
+            }
             TransactionFilter.REVIEW -> transactions.filter { it.status == TransactionStatus.REVIEW }
         }
     }.stateIn(
@@ -124,6 +140,18 @@ class MainViewModel(
         }
     }
 
+    fun updateTransaction(transactionId: Long, draft: TransactionDraft) {
+        viewModelScope.launch {
+            runCatching {
+                repository.updateTransaction(transactionId, draft)
+            }.onSuccess {
+                emitMessage("Transaction updated.")
+            }.onFailure {
+                emitMessage("Could not update the transaction.")
+            }
+        }
+    }
+
     fun addSubscription(draft: SubscriptionDraft) {
         viewModelScope.launch {
             runCatching {
@@ -148,10 +176,10 @@ class MainViewModel(
         }
     }
 
-    fun dismissTransaction(transactionId: Long) {
+    fun deleteTransaction(transactionId: Long) {
         viewModelScope.launch {
             runCatching {
-                repository.dismissTransaction(transactionId)
+                repository.deleteTransaction(transactionId)
             }.onSuccess {
                 emitMessage("Transaction removed.")
             }.onFailure {

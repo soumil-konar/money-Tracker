@@ -107,6 +107,23 @@ class FinanceRepository(
         transactionDao.insert(transaction)
     }
 
+    suspend fun updateTransaction(transactionId: Long, draft: TransactionDraft) {
+        val existing = transactionDao.getById(transactionId)
+            ?: error("Transaction $transactionId not found")
+        transactionDao.update(
+            existing.copy(
+                amount = draft.amount,
+                direction = draft.direction,
+                merchant = draft.merchant.trim(),
+                category = draft.category,
+                accountId = draft.accountId,
+                confidence = 1.0,
+                status = TransactionStatus.POSTED,
+                note = draft.note?.trim()?.takeIf { it.isNotEmpty() },
+            ),
+        )
+    }
+
     suspend fun addSubscription(draft: SubscriptionDraft) {
         subscriptionDao.insert(
             SubscriptionEntity(
@@ -133,7 +150,7 @@ class FinanceRepository(
         transactionDao.updateStatus(transactionId, TransactionStatus.POSTED.name)
     }
 
-    suspend fun dismissTransaction(transactionId: Long) {
+    suspend fun deleteTransaction(transactionId: Long) {
         transactionDao.deleteById(transactionId)
     }
 

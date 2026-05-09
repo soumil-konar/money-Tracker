@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
@@ -32,7 +33,8 @@ fun TransactionsScreen(
     onFilterSelected: (TransactionFilter) -> Unit,
     onAddTransactionClick: () -> Unit,
     onApproveReview: (Long) -> Unit,
-    onDismissTransaction: (Long) -> Unit,
+    onEditTransaction: (TransactionRecord) -> Unit,
+    onDeleteTransaction: (TransactionRecord) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -53,11 +55,11 @@ fun TransactionsScreen(
         }
 
         item {
-            Row(
+            LazyRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                TransactionFilter.entries.forEach { candidate ->
+                items(TransactionFilter.entries) { candidate ->
                     FilterChip(
                         selected = filter == candidate,
                         onClick = { onFilterSelected(candidate) },
@@ -95,19 +97,33 @@ fun TransactionsScreen(
                     ).joinToString(" | "),
                 ) {
                     TransactionItem(transaction = transaction)
-                    if (transaction.status == TransactionStatus.REVIEW) {
-                        Spacer(modifier = Modifier.height(14.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Button(onClick = { onApproveReview(transaction.id) }) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        if (transaction.status == TransactionStatus.REVIEW) {
+                            Button(
+                                onClick = { onApproveReview(transaction.id) },
+                                modifier = Modifier.weight(1f),
+                            ) {
                                 Text("Approve")
                             }
-                            OutlinedButton(onClick = { onDismissTransaction(transaction.id) }) {
-                                Text("Dismiss")
-                            }
+                        }
+                        OutlinedButton(
+                            onClick = { onEditTransaction(transaction) },
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text("Edit")
+                        }
+                        OutlinedButton(
+                            onClick = { onDeleteTransaction(transaction) },
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text("Delete")
                         }
                     }
                 }
             }
         }
     }
-}

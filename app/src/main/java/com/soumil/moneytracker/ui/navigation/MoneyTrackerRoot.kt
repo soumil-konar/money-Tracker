@@ -33,10 +33,13 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.soumil.moneytracker.data.db.TransactionRecord
+import com.soumil.moneytracker.data.model.TransactionDraft
 import com.soumil.moneytracker.ui.MainViewModel
 import com.soumil.moneytracker.ui.components.AddSubscriptionDialog
 import com.soumil.moneytracker.ui.components.AddTransactionDialog
 import com.soumil.moneytracker.ui.components.BudgetDialog
+import com.soumil.moneytracker.ui.components.DeleteTransactionDialog
 import com.soumil.moneytracker.ui.screen.HomeScreen
 import com.soumil.moneytracker.ui.screen.MoreScreen
 import com.soumil.moneytracker.ui.screen.SettingsScreen
@@ -60,6 +63,9 @@ fun MoneyTrackerRoot(
     var showBudgetDialog by remember { mutableStateOf(false) }
     var showAddTransactionDialog by remember { mutableStateOf(false) }
     var showAddSubscriptionDialog by remember { mutableStateOf(false) }
+    var editingTransaction by remember { mutableStateOf<TransactionRecord?>(null) }
+    var pendingDeleteTransaction by remember { mutableStateOf<TransactionRecord?>(null) }
+    var transactionDialogKey by remember { mutableStateOf(0) }
     var smsPermissionGranted by remember { mutableStateOf(context.hasSmsPermissions()) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -141,7 +147,11 @@ fun MoneyTrackerRoot(
                     },
                     onImportRecentSms = { viewModel.importRecentSms(context.contentResolver) },
                     onSetBudgetClick = { showBudgetDialog = true },
-                    onAddTransactionClick = { showAddTransactionDialog = true },
+                    onAddTransactionClick = {
+                        editingTransaction = null
+                        transactionDialogKey += 1
+                        showAddTransactionDialog = true
+                    },
                 )
             }
             composable(AppDestination.Transactions.route) {
@@ -149,9 +159,20 @@ fun MoneyTrackerRoot(
                     filter = filter,
                     transactions = transactions,
                     onFilterSelected = viewModel::setFilter,
-                    onAddTransactionClick = { showAddTransactionDialog = true },
+                    onAddTransactionClick = {
+                        editingTransaction = null
+                        transactionDialogKey += 1
+                        showAddTransactionDialog = true
+                    },
                     onApproveReview = viewModel::approveReview,
-                    onDismissTransaction = viewModel::dismissTransaction,
+                    onEditTransaction = { transaction ->
+                        showAddTransactionDialog = false
+                        editingTransaction = transaction
+                        transactionDialogKey += 1
+                    },
+                    onDeleteTransaction = { transaction ->
+                        pendingDeleteTransaction = transaction
+                    },
                 )
             }
             composable(AppDestination.More.route) {
@@ -185,13 +206,38 @@ fun MoneyTrackerRoot(
         )
     }
 
-    if (showAddTransactionDialog) {
+    if (showAddTransactionDialog || editingTransaction != null) {
+        val transactionToEdit = editingTransaction
         AddTransactionDialog(
             accounts = accounts,
-            onDismiss = { showAddTransactionDialog = false },
-            onConfirm = {
-                viewModel.addTransaction(it)
+            onDismiss = {
                 showAddTransactionDialog = false
+                editingTransaction = null
+            },
+            onConfirm = {
+                if (transactionToEdit == null) {
+                    viewModel.addTransaction(it)
+                } else {
+                    viewModel.updateTransaction(transactionToEdit.id, it)
+                }
+                showAddTransactionDialog = false
+                editingTransaction = null
+            },
+            title = if (transactionToEdit == null) "Add transaction" else "Edit transaction",
+            confirmLabel = if (transactionToEdit == null) "Save" else "Save changes",
+            initialDraft = transactionToEdit?.toDraft(),
+            dialogKey = transactionDialogKey,
+        )
+    }
+
+    pendingDeleteTransaction?.let { transaction ->
+        DeleteTransactionDialog(
+            merchant = transaction.merchant,
+            amount = transaction.amount,
+            onDismiss = { pendingDeleteTransaction = null },
+            onConfirm = {
+                viewModel.deleteTransaction(transaction.id)
+                pendingDeleteTransaction = null
             },
         )
     }
@@ -206,6 +252,18 @@ fun MoneyTrackerRoot(
             },
         )
     }
+}
+
+private fun TransactionRecord.toDraft(): TransactionDraft {
+    return TransactionDraft(
+        amount = amount,
+        direction = direction,
+        merchant = merchant,
+        category = category,
+        accountId = accountId,
+        note = note,
+        occurredAtMillis = occurredAtMillis,
+    )
 }
 
 private fun android.content.Context.hasSmsPermissions(): Boolean {
