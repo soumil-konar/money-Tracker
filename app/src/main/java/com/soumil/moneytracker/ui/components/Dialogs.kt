@@ -1,10 +1,12 @@
 package com.soumil.moneytracker.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -47,6 +49,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.soumil.moneytracker.data.db.AccountEntity
+import com.soumil.moneytracker.data.model.AccountDraft
+import com.soumil.moneytracker.data.model.AccountKind
+import com.soumil.moneytracker.data.model.CardType
 import com.soumil.moneytracker.data.model.SubscriptionDraft
 import com.soumil.moneytracker.data.model.TransactionCategory
 import com.soumil.moneytracker.data.model.TransactionDirection
@@ -524,4 +529,488 @@ private fun Double.toInputAmount(): String {
     } else {
         toString()
     }
+}
+
+private const val OtherBankOption = "Other Bank"
+private val SupportedBankOptions = listOf(
+    "Axis Bank",
+    "State Bank of India",
+    "HDFC Bank",
+    OtherBankOption,
+)
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun AccountEditorDialog(
+    initialDraft: AccountDraft,
+    onDismiss: () -> Unit,
+    onConfirm: (AccountDraft) -> Unit,
+    title: String,
+    confirmLabel: String,
+    dialogKey: Int = 0,
+) {
+    val initialBankOption = remember(initialDraft.institutionName) {
+        bankOptionFor(initialDraft.institutionName)
+    }
+    var name by rememberSaveable(dialogKey) { mutableStateOf(initialDraft.name) }
+    var selectedBankOption by rememberSaveable(dialogKey) { mutableStateOf(initialBankOption) }
+    var customBankName by rememberSaveable(dialogKey) {
+        mutableStateOf(
+            initialDraft.institutionName.takeIf { initialBankOption == OtherBankOption }.orEmpty(),
+        )
+    }
+    var selectedCardType by rememberSaveable(dialogKey) {
+        mutableStateOf(initialDraft.cardType ?: CardType.CREDIT)
+    }
+    var lastFourDigits by rememberSaveable(dialogKey) { mutableStateOf(initialDraft.lastFourDigits.orEmpty()) }
+    var isRupayCreditCard by rememberSaveable(dialogKey) {
+        mutableStateOf(initialDraft.isRupayCreditCard)
+    }
+    val resolvedInstitutionName = resolveInstitutionName(
+        selectedOption = selectedBankOption,
+        customBankName = customBankName,
+    )
+
+    TrackerDialogScaffold(
+        eyebrow = when (initialDraft.kind) {
+            AccountKind.BANK -> "Bank Profile"
+            AccountKind.CARD -> "Card Profile"
+            else -> "Account"
+        },
+        title = title,
+        subtitle = when (initialDraft.kind) {
+            AccountKind.BANK -> "Keep your bank identity clean so imported SMS land on the right account."
+            AccountKind.CARD -> "Match card last four digits so SMS imports attach to the right card every time."
+            else -> "Edit the account name and metadata used across the ledger."
+        },
+        onDismiss = onDismiss,
+    ) {
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it },
+            label = { Text("Account name") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        if (initialDraft.kind == AccountKind.BANK || initialDraft.kind == AccountKind.CARD) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Bank",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    SupportedBankOptions.forEach { bank ->
+                        FilterChip(
+                            selected = selectedBankOption == bank,
+                            onClick = { selectedBankOption = bank },
+                            label = { Text(bank) },
+                        )
+                    }
+                }
+                if (selectedBankOption == OtherBankOption) {
+                    OutlinedTextField(
+                        value = customBankName,
+                        onValueChange = { customBankName = it },
+                        label = { Text("Bank name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        }
+
+        if (initialDraft.kind == AccountKind.CARD) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Card type",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    CardTypeChoice(
+                        label = "Credit",
+                        selected = selectedCardType == CardType.CREDIT,
+                        onClick = { selectedCardType = CardType.CREDIT },
+                    )
+                    CardTypeChoice(
+                        label = "Debit",
+                        selected = selectedCardType == CardType.DEBIT,
+                        onClick = { selectedCardType = CardType.DEBIT },
+                    )
+                }
+                OutlinedTextField(
+                    value = lastFourDigits,
+                    onValueChange = { lastFourDigits = it.filter(Char::isDigit).take(4) },
+                    label = { Text("Card last 4 digits") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (selectedCardType == CardType.CREDIT) {
+                    FilterChip(
+                        selected = isRupayCreditCard,
+                        onClick = { isRupayCreditCard = !isRupayCreditCard },
+                        label = { Text("RuPay credit card") },
+                    )
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            OutlinedButton(
+                onClick = onDismiss,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Cancel")
+            }
+            Button(
+                onClick = {
+                    val trimmedName = name.trim()
+                    if (trimmedName.isBlank()) return@Button
+                    val sanitizedLastFour = lastFourDigits
+                        .filter(Char::isDigit)
+                        .takeLast(4)
+                        .takeIf { initialDraft.kind != AccountKind.CARD || it.length == 4 }
+                    if ((initialDraft.kind == AccountKind.BANK || initialDraft.kind == AccountKind.CARD) &&
+                        resolvedInstitutionName.isNullOrBlank()
+                    ) {
+                        return@Button
+                    }
+                    if (initialDraft.kind == AccountKind.CARD && sanitizedLastFour == null) {
+                        return@Button
+                    }
+                    onConfirm(
+                        AccountDraft(
+                            name = trimmedName,
+                            kind = initialDraft.kind,
+                            institutionName = resolvedInstitutionName,
+                            cardType = if (initialDraft.kind == AccountKind.CARD) selectedCardType else null,
+                            lastFourDigits = sanitizedLastFour,
+                            isRupayCreditCard = if (initialDraft.kind == AccountKind.CARD &&
+                                selectedCardType == CardType.CREDIT
+                            ) {
+                                isRupayCreditCard
+                            } else {
+                                false
+                            },
+                        ),
+                    )
+                },
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(confirmLabel)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun InitialSetupDialog(
+    configuredBank: AccountEntity?,
+    configuredCards: List<AccountEntity>,
+    onDismiss: () -> Unit,
+    onSaveBank: (institutionName: String, accountName: String) -> Unit,
+    onAddCard: (AccountDraft) -> Unit,
+    onFinish: () -> Unit,
+) {
+    val initialBankOption = remember(configuredBank?.institutionName) {
+        bankOptionFor(configuredBank?.institutionName)
+    }
+    var step by rememberSaveable { mutableStateOf(0) }
+    var selectedBankOption by rememberSaveable { mutableStateOf(initialBankOption) }
+    var customBankName by rememberSaveable {
+        mutableStateOf(
+            configuredBank?.institutionName.takeIf { initialBankOption == OtherBankOption }.orEmpty(),
+        )
+    }
+    var bankAccountName by rememberSaveable {
+        mutableStateOf(configuredBank?.name.orEmpty())
+    }
+    var selectedCardType by rememberSaveable { mutableStateOf(CardType.CREDIT) }
+    var cardName by rememberSaveable { mutableStateOf("") }
+    var cardLastFourDigits by rememberSaveable { mutableStateOf("") }
+    var isRupayCreditCard by rememberSaveable { mutableStateOf(false) }
+    val resolvedInstitutionName = resolveInstitutionName(
+        selectedOption = selectedBankOption,
+        customBankName = customBankName,
+    )
+
+    TrackerDialogScaffold(
+        eyebrow = "Setup",
+        title = if (step == 0) "Tell the app your bank" else "Load your cards",
+        subtitle = if (step == 0) {
+            "Start with the bank that sends the majority of your SMS alerts. You can edit this later from More."
+        } else {
+            "Add the last 4 digits of each card so SMS imports attach to the exact card instead of a generic placeholder."
+        },
+        onDismiss = onDismiss,
+    ) {
+        if (step == 0) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    SupportedBankOptions.forEach { bank ->
+                        FilterChip(
+                            selected = selectedBankOption == bank,
+                            onClick = {
+                                selectedBankOption = bank
+                                if (bank != OtherBankOption && bankAccountName.isBlank()) {
+                                    bankAccountName = bank
+                                }
+                            },
+                            label = { Text(bank) },
+                        )
+                    }
+                }
+                if (selectedBankOption == OtherBankOption) {
+                    OutlinedTextField(
+                        value = customBankName,
+                        onValueChange = { customBankName = it },
+                        label = { Text("Bank name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                OutlinedTextField(
+                    value = bankAccountName,
+                    onValueChange = { bankAccountName = it },
+                    label = { Text("Account name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Surface(
+                    shape = RoundedCornerShape(22.dp),
+                    color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.18f),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            text = "Cards for ${resolvedInstitutionName.orEmpty()}",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        Text(
+                            text = "RuPay credit-card UPI spends will stay visible under the credit card and still show up in the UPI filter.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                if (configuredCards.isEmpty()) {
+                    Text(
+                        text = "No cards added yet. You can still finish setup and add them later from More.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        configuredCards.forEach { card ->
+                            SetupCardSummary(account = card)
+                        }
+                    }
+                }
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            CardTypeChoice(
+                                label = "Credit",
+                                selected = selectedCardType == CardType.CREDIT,
+                                onClick = { selectedCardType = CardType.CREDIT },
+                            )
+                            CardTypeChoice(
+                                label = "Debit",
+                                selected = selectedCardType == CardType.DEBIT,
+                                onClick = { selectedCardType = CardType.DEBIT },
+                            )
+                        }
+                        OutlinedTextField(
+                            value = cardLastFourDigits,
+                            onValueChange = { cardLastFourDigits = it.filter(Char::isDigit).take(4) },
+                            label = { Text("Card last 4 digits") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        OutlinedTextField(
+                            value = cardName,
+                            onValueChange = { cardName = it },
+                            label = { Text("Card name") },
+                            placeholder = { Text("For example, HDFC Bank Credit Card") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        if (selectedCardType == CardType.CREDIT) {
+                            FilterChip(
+                                selected = isRupayCreditCard,
+                                onClick = { isRupayCreditCard = !isRupayCreditCard },
+                                label = { Text("RuPay credit card") },
+                            )
+                        }
+                        Button(
+                            onClick = {
+                                val institutionName = resolvedInstitutionName ?: return@Button
+                                val lastFourDigits = cardLastFourDigits.filter(Char::isDigit).takeLast(4)
+                                if (lastFourDigits.length != 4) return@Button
+                                onAddCard(
+                                    AccountDraft(
+                                        name = cardName.trim().ifBlank {
+                                            buildDefaultCardName(
+                                                institutionName = institutionName,
+                                                cardType = selectedCardType,
+                                                lastFourDigits = lastFourDigits,
+                                            )
+                                        },
+                                        kind = AccountKind.CARD,
+                                        institutionName = institutionName,
+                                        cardType = selectedCardType,
+                                        lastFourDigits = lastFourDigits,
+                                        isRupayCreditCard = selectedCardType == CardType.CREDIT && isRupayCreditCard,
+                                    ),
+                                )
+                                cardName = ""
+                                cardLastFourDigits = ""
+                                isRupayCreditCard = false
+                                selectedCardType = CardType.CREDIT
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Add card")
+                        }
+                    }
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            if (step == 0) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("Later")
+                }
+                Button(
+                    onClick = {
+                        val institutionName = resolvedInstitutionName ?: return@Button
+                        val accountName = bankAccountName.trim().ifBlank { institutionName }
+                        onSaveBank(institutionName, accountName)
+                        step = 1
+                    },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("Next")
+                }
+            } else {
+                OutlinedButton(
+                    onClick = { step = 0 },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("Back")
+                }
+                Button(
+                    onClick = onFinish,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("Finish")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SetupCardSummary(account: AccountEntity) {
+    Surface(
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                text = account.name,
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                text = listOfNotNull(
+                    account.cardType?.label,
+                    account.institutionName,
+                    account.lastFourDigits?.let { "ending $it" },
+                    "RuPay".takeIf { account.isRupayCreditCard },
+                ).joinToString(" | "),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RowScope.CardTypeChoice(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label) },
+        colors = FilterChipDefaults.filterChipColors(
+            selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+            selectedLabelColor = MaterialTheme.colorScheme.onBackground,
+        ),
+        modifier = Modifier.weight(1f),
+    )
+}
+
+private fun bankOptionFor(institutionName: String?): String {
+    if (institutionName.isNullOrBlank()) return SupportedBankOptions.first()
+    return institutionName.takeIf { it in SupportedBankOptions } ?: OtherBankOption
+}
+
+private fun resolveInstitutionName(
+    selectedOption: String,
+    customBankName: String,
+): String? {
+    return when (selectedOption) {
+        OtherBankOption -> customBankName.trim().takeIf { it.isNotBlank() }
+        else -> selectedOption.takeIf { it.isNotBlank() }
+    }
+}
+
+private fun buildDefaultCardName(
+    institutionName: String,
+    cardType: CardType,
+    lastFourDigits: String,
+): String {
+    return "$institutionName ${cardType.label} ending $lastFourDigits"
 }

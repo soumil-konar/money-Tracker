@@ -2,12 +2,14 @@ package com.soumil.moneytracker
 
 import android.content.Context
 import com.soumil.moneytracker.data.db.FinanceDatabase
+import com.soumil.moneytracker.data.local.SetupPreferences
 import com.soumil.moneytracker.data.repo.FinanceRepository
 import com.soumil.moneytracker.parser.SmsParser
 
 class AppContainer(context: Context) {
     private val database = FinanceDatabase.create(context)
     private val parser = SmsParser()
+    private val setupPreferences = SetupPreferences(context)
 
     val repository = FinanceRepository(
         accountDao = database.accountDao(),
@@ -16,6 +18,7 @@ class AppContainer(context: Context) {
         subscriptionDao = database.subscriptionDao(),
         transactionDao = database.transactionDao(),
         parser = parser,
+        setupPreferences = setupPreferences,
     )
 }
 

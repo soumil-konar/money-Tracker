@@ -6,6 +6,7 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.TypeConverter
 import com.soumil.moneytracker.data.model.AccountKind
+import com.soumil.moneytracker.data.model.CardType
 import com.soumil.moneytracker.data.model.ScheduledTransactionKind
 import com.soumil.moneytracker.data.model.SubscriptionState
 import com.soumil.moneytracker.data.model.TransactionCategory
@@ -17,6 +18,10 @@ data class AccountEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
     val kind: AccountKind,
+    val institutionName: String? = null,
+    val cardType: CardType? = null,
+    val lastFourDigits: String? = null,
+    val isRupayCreditCard: Boolean = false,
     val isSystemGenerated: Boolean = false,
 )
 
@@ -163,6 +168,12 @@ class FinanceTypeConverters {
 
     @TypeConverter
     fun toAccountKind(value: String): AccountKind = AccountKind.valueOf(value)
+
+    @TypeConverter
+    fun fromCardType(value: CardType?): String? = value?.name
+
+    @TypeConverter
+    fun toCardType(value: String?): CardType? = value?.let(CardType::valueOf)
 
     @TypeConverter
     fun fromTransactionDirection(value: TransactionDirection): String = value.name

@@ -1,6 +1,7 @@
 package com.soumil.moneytracker.parser
 
 import com.soumil.moneytracker.data.model.AccountKind
+import com.soumil.moneytracker.data.model.CardType
 import com.soumil.moneytracker.data.model.ParsedScheduledTransaction
 import com.soumil.moneytracker.data.model.ParsedSmsMessage
 import com.soumil.moneytracker.data.model.ParsedSmsTransaction
@@ -132,6 +133,12 @@ class SmsParser {
         Regex("(?i)(?:on)\\s*([0-9]{1,2}[\\s-][A-Za-z]{3,9}[\\s-][0-9]{2,4})"),
     )
 
+    private val cardLastFourRegexes = listOf(
+        Regex("(?i)(?:credit|debit|rupay credit)?\\s*card(?:\\s+no\\.?|\\s+number|\\s+ending|\\s+ending with|\\s+xx|\\s+xxxx)?[\\s:.-]*[*xX]*([0-9]{4})"),
+        Regex("(?i)(?:on|using|for)\\s+card[\\s:.-]*[*xX]*([0-9]{4})"),
+        Regex("(?i)(?:visa|mastercard|rupay)[\\s:.-]*[*xX]*([0-9]{4})"),
+    )
+
     private val fullDatePatterns = listOf(
         "d/M/yyyy",
         "d-M-yyyy",
@@ -151,7 +158,7 @@ class SmsParser {
             merchant = null,
             inferredCategory = TransactionCategory.OTHER,
             accountLabel = null,
-            accountKind = inferAccountKind(sender, body),
+            accountKind = AccountKind.BANK,
             confidence = 0.0,
             shouldIgnore = true,
         )
@@ -159,13 +166,34 @@ class SmsParser {
 
     fun parseMessage(sender: String, body: String): ParsedSmsMessage {
         val normalized = body.lowercase()
-        val accountKind = inferAccountKind(sender, body)
+        val institutionName = inferInstitutionName(sender = sender, body = body)
+        val cardLastFourDigits = extractCardLastFour(body)
+        val cardType = inferCardType(normalized)
+        val isUpiPayment = isUpiMessage(normalized)
+        val hasCardSignal = hasCardSignal(normalized, cardLastFourDigits, cardType)
+        val isCardBillPayment = isCreditCardBillPayment(normalized)
+        val accountKind = inferAccountKind(
+            sender = sender,
+            body = body,
+            hasCardSignal = hasCardSignal,
+            isCardBillPayment = isCardBillPayment,
+        )
 
         if (promotionalKeywords.any(normalized::contains)) {
             return ParsedSmsMessage(shouldIgnore = true)
         }
 
-        parseScheduledMandate(sender = sender, body = body, normalized = normalized, accountKind = accountKind)?.let {
+        parseScheduledMandate(
+            sender = sender,
+            body = body,
+            normalized = normalized,
+            institutionName = institutionName,
+            cardLastFourDigits = cardLastFourDigits,
+            cardType = cardType,
+            accountKind = accountKind,
+            isUpiPayment = isUpiPayment,
+            hasCardSignal = hasCardSignal,
+        )?.let {
             return ParsedSmsMessage(scheduledTransaction = it)
         }
 
@@ -173,7 +201,6 @@ class SmsParser {
             return ParsedSmsMessage(shouldIgnore = true)
         }
 
-        val isCardBillPayment = isCreditCardBillPayment(normalized)
         if (!looksTransactional(normalized) && !isCardBillPayment) {
             return ParsedSmsMessage(shouldIgnore = true)
         }
@@ -189,10 +216,21 @@ class SmsParser {
         }
 
         val merchant = when {
-            isCardBillPayment -> extractCardBillMerchant(sender, body)
+            isCardBillPayment -> extractCardBillMerchant(
+                institutionName = institutionName,
+                body = body,
+                sender = sender,
+            )
+
             else -> extractMerchant(body)
         }
-        val accountLabel = inferAccountLabel(sender, body, accountKind)
+        val isCardPayment = hasCardSignal && !isCardBillPayment
+        val accountLabel = inferAccountLabel(
+            institutionName = institutionName,
+            accountKind = accountKind,
+            cardType = cardType,
+            cardLastFourDigits = cardLastFourDigits,
+        )
         val inferredCategory = when {
             isCardBillPayment -> TransactionCategory.TRANSFER
             else -> inferCategory(
@@ -208,10 +246,10 @@ class SmsParser {
         confidence += 0.2
         if (!merchant.isNullOrBlank()) confidence += 0.15
         if (accountLabel != null) confidence += 0.1
-        if (normalized.contains("upi") || normalized.contains("a/c") || normalized.contains("card") || normalized.contains("payment")) {
+        if (isUpiPayment || isCardPayment || normalized.contains("a/c") || normalized.contains("payment")) {
             confidence += 0.1
         }
-        if (isCardBillPayment) confidence += 0.1
+        if (isCardBillPayment) confidence += 0.08
 
         return ParsedSmsMessage(
             transaction = ParsedSmsTransaction(
@@ -223,6 +261,12 @@ class SmsParser {
                 accountKind = accountKind,
                 confidence = min(confidence, 0.98),
                 shouldIgnore = false,
+                institutionName = institutionName,
+                cardLastFourDigits = cardLastFourDigits,
+                cardType = cardType,
+                isUpiPayment = isUpiPayment,
+                isCardPayment = isCardPayment,
+                isCardBillPayment = isCardBillPayment,
             ),
         )
     }
@@ -231,7 +275,12 @@ class SmsParser {
         sender: String,
         body: String,
         normalized: String,
+        institutionName: String?,
+        cardLastFourDigits: String?,
+        cardType: CardType?,
         accountKind: AccountKind,
+        isUpiPayment: Boolean,
+        hasCardSignal: Boolean,
     ): ParsedScheduledTransaction? {
         val hasMandateSignal = mandateKeywords.any(normalized::contains)
         val hasFutureSignal = mandateFutureKeywords.any(normalized::contains)
@@ -242,8 +291,16 @@ class SmsParser {
 
         val amount = extractAmount(body) ?: return null
         val scheduledForMillis = extractScheduledDate(body) ?: return null
-        val merchant = extractMerchant(body) ?: fallbackScheduledMerchant(sender)
-        val accountLabel = inferAccountLabel(sender, body, accountKind)
+        val merchant = extractMerchant(body) ?: fallbackScheduledMerchant(
+            sender = sender,
+            institutionName = institutionName,
+        )
+        val accountLabel = inferAccountLabel(
+            institutionName = institutionName,
+            accountKind = accountKind,
+            cardType = cardType,
+            cardLastFourDigits = cardLastFourDigits,
+        )
         val category = inferCategory(
             merchant = merchant,
             sender = sender,
@@ -265,6 +322,11 @@ class SmsParser {
             accountKind = accountKind,
             kind = ScheduledTransactionKind.MANDATE,
             confidence = min(confidence, 0.98),
+            institutionName = institutionName,
+            cardLastFourDigits = cardLastFourDigits,
+            cardType = cardType,
+            isUpiPayment = isUpiPayment,
+            isCardPayment = hasCardSignal,
         )
     }
 
@@ -286,6 +348,7 @@ class SmsParser {
             "bill",
             "mandate",
             "autopay",
+            "card",
         ).any(body::contains)
     }
 
@@ -384,6 +447,53 @@ class SmsParser {
         }
     }
 
+    private fun hasCardSignal(
+        normalized: String,
+        cardLastFourDigits: String?,
+        cardType: CardType?,
+    ): Boolean {
+        return cardLastFourDigits != null ||
+            cardType != null ||
+            listOf(
+                "credit card",
+                "debit card",
+                "card ending",
+                "card xx",
+                "card xxxx",
+                "rupay credit card",
+                "visa card",
+                "mastercard",
+            ).any(normalized::contains)
+    }
+
+    private fun inferCardType(normalized: String): CardType? {
+        return when {
+            normalized.contains("credit card") || normalized.contains("rupay credit") -> CardType.CREDIT
+            normalized.contains("debit card") -> CardType.DEBIT
+            else -> null
+        }
+    }
+
+    private fun extractCardLastFour(body: String): String? {
+        return cardLastFourRegexes.firstNotNullOfOrNull { regex ->
+            regex.find(body)?.groupValues?.getOrNull(1)
+        }?.filter(Char::isDigit)
+            ?.takeLast(4)
+            ?.takeIf { it.length == 4 }
+    }
+
+    private fun isUpiMessage(normalized: String): Boolean {
+        return listOf(
+            "upi",
+            "vpa",
+            "@oksbi",
+            "@okhdfcbank",
+            "@ibl",
+            "@ybl",
+            "@axl",
+        ).any(normalized::contains)
+    }
+
     private fun isCreditCardBillPayment(normalized: String): Boolean {
         val hasCardSignal = listOf("credit card", "card ending", "card xx", "card xxxx", "card x").any(normalized::contains)
         val hasPaymentSignal = listOf(
@@ -399,15 +509,16 @@ class SmsParser {
         return hasCardSignal && hasPaymentSignal && !isStatementReminder
     }
 
-    private fun extractCardBillMerchant(sender: String, body: String): String {
-        val issuer = senderBrand(sender) ?: "Card"
-        val cardSuffix = Regex("(?i)(?:card|credit card)(?:\\s+ending|\\s+xx|\\s+xxxx)?[\\s:-]*([0-9]{4})")
-            .find(body)
-            ?.groupValues
-            ?.getOrNull(1)
+    private fun extractCardBillMerchant(
+        institutionName: String?,
+        body: String,
+        sender: String,
+    ): String {
+        val issuer = institutionName ?: inferInstitutionName(sender = sender, body = body) ?: "Card"
+        val cardSuffix = extractCardLastFour(body)
         return listOfNotNull(
             issuer,
-            "card bill payment",
+            "credit card bill payment",
             cardSuffix?.let { "ending $it" },
         ).joinToString(" ").replaceFirstChar { it.uppercase() }
     }
@@ -431,47 +542,57 @@ class SmsParser {
         }
     }
 
-    private fun inferAccountKind(sender: String, body: String): AccountKind {
+    private fun inferAccountKind(
+        sender: String,
+        body: String,
+        hasCardSignal: Boolean,
+        isCardBillPayment: Boolean,
+    ): AccountKind {
         val source = "${sender.lowercase()} ${body.lowercase()}"
         return when {
-            listOf("card", "visa", "mastercard", "credit").any(source::contains) -> AccountKind.CARD
-            listOf("paytm", "phonepe", "wallet").any(source::contains) -> AccountKind.WALLET
-            listOf("upi", "gpay", "google pay").any(source::contains) -> AccountKind.UPI
+            hasCardSignal && !isCardBillPayment -> AccountKind.CARD
+            source.contains("wallet") -> AccountKind.WALLET
             else -> AccountKind.BANK
         }
     }
 
-    private fun inferAccountLabel(sender: String, body: String, kind: AccountKind): String? {
-        val lastFour = Regex("(?i)(?:xx|x{2,}|\\*{2,}|acct|a/c|card)[\\s:-]*([0-9]{4})")
-            .find(body)
-            ?.groupValues
-            ?.getOrNull(1)
-        val senderLabel = senderBrand(sender) ?: return null
+    private fun inferAccountLabel(
+        institutionName: String?,
+        accountKind: AccountKind,
+        cardType: CardType?,
+        cardLastFourDigits: String?,
+    ): String? {
+        return when (accountKind) {
+            AccountKind.BANK -> institutionName
+            AccountKind.CARD -> listOfNotNull(
+                institutionName,
+                cardType?.label,
+                cardLastFourDigits?.let { "ending $it" },
+            ).joinToString(" ").ifBlank { null }
 
-        val typeLabel = when (kind) {
-            AccountKind.BANK -> "Bank"
-            AccountKind.CARD -> "Card"
-            AccountKind.WALLET -> "Wallet"
-            AccountKind.UPI -> "UPI"
+            AccountKind.WALLET -> institutionName ?: "Wallet"
+            AccountKind.UPI -> institutionName ?: "UPI"
             AccountKind.CASH -> "Cash"
         }
-
-        return listOfNotNull(senderLabel, typeLabel, lastFour?.let { "ending $it" }).joinToString(" ")
     }
 
-    private fun senderBrand(sender: String): String? {
+    private fun inferInstitutionName(sender: String, body: String): String? {
+        val source = "${sender.lowercase(Locale.ENGLISH)} ${body.lowercase(Locale.ENGLISH)}"
         return when {
-            sender.contains("hdfc", ignoreCase = true) -> "HDFC"
-            sender.contains("icici", ignoreCase = true) -> "ICICI"
-            sender.contains("sbi", ignoreCase = true) -> "SBI"
-            sender.contains("axis", ignoreCase = true) -> "Axis"
-            sender.contains("kotak", ignoreCase = true) -> "Kotak"
-            sender.contains("paytm", ignoreCase = true) -> "Paytm"
-            else -> sender.takeIf { it.isNotBlank() }?.uppercase()?.take(6)
+            source.contains("axis") -> "Axis Bank"
+            source.contains("state bank of india") || source.contains("sbi") -> "State Bank of India"
+            source.contains("hdfc") -> "HDFC Bank"
+            source.contains("icici") -> "ICICI Bank"
+            source.contains("kotak") -> "Kotak Bank"
+            source.contains("paytm") -> "Paytm"
+            else -> null
         }
     }
 
-    private fun fallbackScheduledMerchant(sender: String): String {
-        return "${senderBrand(sender) ?: sender.uppercase()} mandate"
+    private fun fallbackScheduledMerchant(
+        sender: String,
+        institutionName: String?,
+    ): String {
+        return "${institutionName ?: sender.uppercase()} mandate"
     }
 }

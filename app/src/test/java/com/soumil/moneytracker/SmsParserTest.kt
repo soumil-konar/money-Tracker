@@ -1,6 +1,7 @@
 package com.soumil.moneytracker
 
 import com.soumil.moneytracker.data.model.AccountKind
+import com.soumil.moneytracker.data.model.CardType
 import com.soumil.moneytracker.data.model.TransactionCategory
 import com.soumil.moneytracker.data.model.TransactionDirection
 import com.soumil.moneytracker.parser.SmsParser
@@ -26,7 +27,8 @@ class SmsParserTest {
         assertEquals(1250.0, result.amount ?: 0.0, 0.0)
         assertEquals(TransactionDirection.DEBIT, result.direction)
         assertEquals(TransactionCategory.FOOD, result.inferredCategory)
-        assertEquals(AccountKind.UPI, result.accountKind)
+        assertEquals(AccountKind.BANK, result.accountKind)
+        assertTrue(result.isUpiPayment)
         assertTrue(result.confidence >= 0.7)
     }
 
@@ -54,7 +56,10 @@ class SmsParserTest {
         assertEquals(12450.0, result.amount ?: 0.0, 0.0)
         assertEquals(TransactionDirection.DEBIT, result.direction)
         assertEquals(TransactionCategory.TRANSFER, result.inferredCategory)
-        assertEquals(AccountKind.CARD, result.accountKind)
+        assertEquals(AccountKind.BANK, result.accountKind)
+        assertEquals(CardType.CREDIT, result.cardType)
+        assertEquals("1234", result.cardLastFourDigits)
+        assertTrue(result.isCardBillPayment)
     }
 
     @Test
@@ -94,6 +99,36 @@ class SmsParserTest {
         assertTrue(result.shouldIgnore)
         assertNull(result.amount)
         assertNull(result.direction)
+    }
+
+    @Test
+    fun `extracts debit card last four for card spends`() {
+        val result = parser.parse(
+            sender = "HDFCBK",
+            body = "INR 2400 spent on your debit card ending 4321 at DMART on 09-05-2026.",
+        )
+
+        assertFalse(result.shouldIgnore)
+        assertEquals(AccountKind.CARD, result.accountKind)
+        assertEquals(CardType.DEBIT, result.cardType)
+        assertEquals("4321", result.cardLastFourDigits)
+        assertTrue(result.isCardPayment)
+    }
+
+    @Test
+    fun `marks rupay credit card upi spends as both card and upi traffic`() {
+        val result = parser.parse(
+            sender = "SBIUPI",
+            body = "Rs.850 paid via UPI using your RuPay Credit Card ending 8765 to SWIGGY on 09-05-2026.",
+        )
+
+        assertFalse(result.shouldIgnore)
+        assertEquals(AccountKind.CARD, result.accountKind)
+        assertEquals(CardType.CREDIT, result.cardType)
+        assertEquals("8765", result.cardLastFourDigits)
+        assertTrue(result.isUpiPayment)
+        assertTrue(result.isCardPayment)
+        assertEquals(TransactionCategory.FOOD, result.inferredCategory)
     }
 }
 

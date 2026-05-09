@@ -16,8 +16,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AccountBalance
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
+import androidx.compose.material.icons.outlined.CreditCard
 import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.AssistChip
@@ -36,9 +38,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.soumil.moneytracker.data.db.AccountEntity
 import com.soumil.moneytracker.data.db.ScheduledTransactionRecord
 import com.soumil.moneytracker.data.db.SubscriptionRecord
 import com.soumil.moneytracker.data.db.TransactionRecord
+import com.soumil.moneytracker.data.model.AccountKind
 import com.soumil.moneytracker.data.model.TransactionDirection
 import com.soumil.moneytracker.data.model.TransactionStatus
 import com.soumil.moneytracker.ui.asCurrency
@@ -337,6 +341,84 @@ fun ScheduledTransactionItem(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun AccountItem(
+    account: AccountEntity,
+    onEdit: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val accent = if (account.kind == AccountKind.CARD) {
+        MaterialTheme.colorScheme.tertiary
+    } else {
+        MaterialTheme.colorScheme.primary
+    }
+    val metadata = when (account.kind) {
+        AccountKind.CARD -> listOfNotNull(
+            account.cardType?.label,
+            account.institutionName,
+            account.lastFourDigits?.let { "ending $it" },
+            "RuPay".takeIf { account.isRupayCreditCard },
+        ).joinToString(" | ")
+
+        else -> listOfNotNull(
+            account.kind.name.lowercase().replaceFirstChar { it.uppercase() },
+            account.institutionName,
+        ).joinToString(" | ")
+    }.ifBlank {
+        account.kind.name.lowercase().replaceFirstChar { it.uppercase() }
+    }
+
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(CircleShape)
+                    .background(accent.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = if (account.kind == AccountKind.CARD) {
+                        Icons.Outlined.CreditCard
+                    } else {
+                        Icons.Outlined.AccountBalance
+                    },
+                    contentDescription = null,
+                    tint = accent,
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = account.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = metadata,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            OutlinedButton(onClick = onEdit) {
+                Text("Edit")
             }
         }
     }

@@ -1,6 +1,8 @@
 package com.soumil.moneytracker.ui.screen
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -18,11 +20,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.soumil.moneytracker.data.db.TransactionRecord
 import com.soumil.moneytracker.data.model.TransactionFilter
 import com.soumil.moneytracker.data.model.TransactionStatus
+import com.soumil.moneytracker.ui.asMonthYear
 import com.soumil.moneytracker.ui.components.SectionCard
 import com.soumil.moneytracker.ui.components.TransactionItem
 
@@ -37,6 +41,8 @@ fun TransactionsScreen(
     onDeleteTransaction: (TransactionRecord) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val groupedTransactions = transactions.groupBy { it.occurredAtMillis.asMonthYear() }
+
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp),
@@ -87,44 +93,73 @@ fun TransactionsScreen(
                 }
             }
         } else {
-            items(transactions, key = { it.id }) { transaction ->
-                SectionCard(
-                    title = transaction.merchant,
-                    subtitle = listOfNotNull(
-                        transaction.category.label,
-                        transaction.accountName,
-                        transaction.sourceSender,
-                    ).joinToString(" | "),
-                ) {
-                    TransactionItem(transaction = transaction)
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+            groupedTransactions.forEach { (monthYear, monthTransactions) ->
+                item(key = "month-$monthYear") {
+                    MonthYearDivider(label = monthYear)
+                }
+                items(monthTransactions, key = { it.id }) { transaction ->
+                    SectionCard(
+                        title = transaction.merchant,
+                        subtitle = listOfNotNull(
+                            transaction.category.label,
+                            transaction.accountName,
+                            transaction.sourceSender,
+                        ).joinToString(" | "),
                     ) {
-                        if (transaction.status == TransactionStatus.REVIEW) {
-                            Button(
-                                onClick = { onApproveReview(transaction.id) },
+                        TransactionItem(transaction = transaction)
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            if (transaction.status == TransactionStatus.REVIEW) {
+                                Button(
+                                    onClick = { onApproveReview(transaction.id) },
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    Text("Approve")
+                                }
+                            }
+                            OutlinedButton(
+                                onClick = { onEditTransaction(transaction) },
                                 modifier = Modifier.weight(1f),
                             ) {
-                                Text("Approve")
+                                Text("Edit")
                             }
-                        }
-                        OutlinedButton(
-                            onClick = { onEditTransaction(transaction) },
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text("Edit")
-                        }
-                        OutlinedButton(
-                            onClick = { onDeleteTransaction(transaction) },
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text("Delete")
+                            OutlinedButton(
+                                onClick = { onDeleteTransaction(transaction) },
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Text("Delete")
+                            }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun MonthYearDivider(
+    label: String,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(1.dp)
+                .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
+        )
     }
 }

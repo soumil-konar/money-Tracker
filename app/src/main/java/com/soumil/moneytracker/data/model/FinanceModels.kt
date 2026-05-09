@@ -33,6 +33,11 @@ enum class AccountKind {
     CASH,
 }
 
+enum class CardType(val label: String) {
+    CREDIT("Credit card"),
+    DEBIT("Debit card"),
+}
+
 enum class SubscriptionState {
     ACTIVE,
     SUGGESTED,
@@ -60,6 +65,12 @@ data class ParsedSmsTransaction(
     val accountKind: AccountKind,
     val confidence: Double,
     val shouldIgnore: Boolean,
+    val institutionName: String? = null,
+    val cardLastFourDigits: String? = null,
+    val cardType: CardType? = null,
+    val isUpiPayment: Boolean = false,
+    val isCardPayment: Boolean = false,
+    val isCardBillPayment: Boolean = false,
 )
 
 data class ParsedScheduledTransaction(
@@ -71,6 +82,11 @@ data class ParsedScheduledTransaction(
     val accountKind: AccountKind,
     val kind: ScheduledTransactionKind,
     val confidence: Double,
+    val institutionName: String? = null,
+    val cardLastFourDigits: String? = null,
+    val cardType: CardType? = null,
+    val isUpiPayment: Boolean = false,
+    val isCardPayment: Boolean = false,
 )
 
 data class ParsedSmsMessage(
@@ -110,6 +126,15 @@ data class TransactionDraft(
     val accountId: Long?,
     val note: String? = null,
     val occurredAtMillis: Long = System.currentTimeMillis(),
+)
+
+data class AccountDraft(
+    val name: String,
+    val kind: AccountKind,
+    val institutionName: String? = null,
+    val cardType: CardType? = null,
+    val lastFourDigits: String? = null,
+    val isRupayCreditCard: Boolean = false,
 )
 
 data class SubscriptionDraft(

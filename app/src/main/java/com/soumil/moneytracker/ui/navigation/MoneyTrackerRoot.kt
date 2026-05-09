@@ -33,13 +33,18 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.soumil.moneytracker.data.db.AccountEntity
 import com.soumil.moneytracker.data.db.TransactionRecord
+import com.soumil.moneytracker.data.model.AccountDraft
+import com.soumil.moneytracker.data.model.AccountKind
 import com.soumil.moneytracker.data.model.TransactionDraft
 import com.soumil.moneytracker.ui.MainViewModel
 import com.soumil.moneytracker.ui.components.AddSubscriptionDialog
+import com.soumil.moneytracker.ui.components.AccountEditorDialog
 import com.soumil.moneytracker.ui.components.AddTransactionDialog
 import com.soumil.moneytracker.ui.components.BudgetDialog
 import com.soumil.moneytracker.ui.components.DeleteTransactionDialog
+import com.soumil.moneytracker.ui.components.InitialSetupDialog
 import com.soumil.moneytracker.ui.screen.HomeScreen
 import com.soumil.moneytracker.ui.screen.MoreScreen
 import com.soumil.moneytracker.ui.screen.SettingsScreen
@@ -60,6 +65,9 @@ fun MoneyTrackerRoot(
     val scheduledTransactions by viewModel.scheduledTransactions.collectAsStateWithLifecycle()
     val activeSubscriptions by viewModel.activeSubscriptions.collectAsStateWithLifecycle()
     val suggestedSubscriptions by viewModel.suggestedSubscriptions.collectAsStateWithLifecycle()
+    val isInitialSetupComplete by viewModel.isInitialSetupComplete.collectAsStateWithLifecycle()
+    val primaryBankAccount = accounts.firstOrNull { it.kind == AccountKind.BANK && it.institutionName != null }
+        ?: accounts.firstOrNull { it.kind == AccountKind.BANK }
 
     var showBudgetDialog by remember { mutableStateOf(false) }
     var showAddTransactionDialog by remember { mutableStateOf(false) }
@@ -67,6 +75,10 @@ fun MoneyTrackerRoot(
     var editingTransaction by remember { mutableStateOf<TransactionRecord?>(null) }
     var pendingDeleteTransaction by remember { mutableStateOf<TransactionRecord?>(null) }
     var transactionDialogKey by remember { mutableStateOf(0) }
+    var dismissSetupForSession by remember { mutableStateOf(false) }
+    var editingAccount by remember { mutableStateOf<AccountEntity?>(null) }
+    var accountDialogDraft by remember { mutableStateOf<AccountDraft?>(null) }
+    var accountDialogKey by remember { mutableStateOf(0) }
     var smsPermissionGranted by remember { mutableStateOf(context.hasSmsPermissions()) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -183,6 +195,29 @@ fun MoneyTrackerRoot(
                     scheduledTransactions = scheduledTransactions,
                     suggestedSubscriptions = suggestedSubscriptions,
                     onAddSubscriptionClick = { showAddSubscriptionDialog = true },
+                    onAddBankClick = {
+                        editingAccount = null
+                        accountDialogDraft = AccountDraft(
+                            name = "",
+                            kind = AccountKind.BANK,
+                            institutionName = primaryBankAccount?.institutionName,
+                        )
+                        accountDialogKey += 1
+                    },
+                    onAddCardClick = {
+                        editingAccount = null
+                        accountDialogDraft = AccountDraft(
+                            name = "",
+                            kind = AccountKind.CARD,
+                            institutionName = primaryBankAccount?.institutionName,
+                        )
+                        accountDialogKey += 1
+                    },
+                    onEditAccount = { account ->
+                        editingAccount = account
+                        accountDialogDraft = account.toDraft()
+                        accountDialogKey += 1
+                    },
                     onAcceptSuggestion = viewModel::acceptSuggestedSubscription,
                     onDismissSuggestion = viewModel::dismissSuggestedSubscription,
                 )
@@ -254,6 +289,44 @@ fun MoneyTrackerRoot(
             },
         )
     }
+
+    accountDialogDraft?.let { initialDraft ->
+        AccountEditorDialog(
+            initialDraft = initialDraft,
+            onDismiss = {
+                accountDialogDraft = null
+                editingAccount = null
+            },
+            onConfirm = { draft ->
+                val accountToEdit = editingAccount
+                if (accountToEdit == null) {
+                    viewModel.addAccount(draft)
+                } else {
+                    viewModel.updateAccount(accountToEdit.id, draft)
+                }
+                accountDialogDraft = null
+                editingAccount = null
+            },
+            title = if (editingAccount == null) {
+                if (initialDraft.kind == AccountKind.CARD) "Add card" else "Add bank"
+            } else {
+                "Edit account"
+            },
+            confirmLabel = if (editingAccount == null) "Save" else "Save changes",
+            dialogKey = accountDialogKey,
+        )
+    }
+
+    if (!isInitialSetupComplete && !dismissSetupForSession) {
+        InitialSetupDialog(
+            configuredBank = primaryBankAccount,
+            configuredCards = accounts.filter { it.kind == AccountKind.CARD },
+            onDismiss = { dismissSetupForSession = true },
+            onSaveBank = viewModel::configurePrimaryBank,
+            onAddCard = viewModel::addAccount,
+            onFinish = viewModel::markInitialSetupComplete,
+        )
+    }
 }
 
 private fun TransactionRecord.toDraft(): TransactionDraft {
@@ -265,6 +338,17 @@ private fun TransactionRecord.toDraft(): TransactionDraft {
         accountId = accountId,
         note = note,
         occurredAtMillis = occurredAtMillis,
+    )
+}
+
+private fun AccountEntity.toDraft(): AccountDraft {
+    return AccountDraft(
+        name = name,
+        kind = kind,
+        institutionName = institutionName,
+        cardType = cardType,
+        lastFourDigits = lastFourDigits,
+        isRupayCreditCard = isRupayCreditCard,
     )
 }
 

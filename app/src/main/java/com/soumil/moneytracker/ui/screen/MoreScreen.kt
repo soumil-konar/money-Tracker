@@ -18,6 +18,8 @@ import androidx.compose.ui.unit.dp
 import com.soumil.moneytracker.data.db.AccountEntity
 import com.soumil.moneytracker.data.db.ScheduledTransactionRecord
 import com.soumil.moneytracker.data.db.SubscriptionRecord
+import com.soumil.moneytracker.data.model.AccountKind
+import com.soumil.moneytracker.ui.components.AccountItem
 import com.soumil.moneytracker.ui.components.ScheduledTransactionItem
 import com.soumil.moneytracker.ui.components.SectionCard
 import com.soumil.moneytracker.ui.components.SubscriptionItem
@@ -29,10 +31,16 @@ fun MoreScreen(
     scheduledTransactions: List<ScheduledTransactionRecord>,
     suggestedSubscriptions: List<SubscriptionRecord>,
     onAddSubscriptionClick: () -> Unit,
+    onAddBankClick: () -> Unit,
+    onAddCardClick: () -> Unit,
+    onEditAccount: (AccountEntity) -> Unit,
     onAcceptSuggestion: (Long) -> Unit,
     onDismissSuggestion: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val accountEntries = accounts.filter { it.kind != AccountKind.CARD }
+    val cardEntries = accounts.filter { it.kind == AccountKind.CARD }
+
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp),
@@ -126,20 +134,52 @@ fun MoreScreen(
         item {
             SectionCard(
                 title = "Accounts",
-                subtitle = "SMS-inferred and manual money sources",
+                subtitle = "Bank and balance sources used to route imported SMS",
             ) {
-                if (accounts.isEmpty()) {
+                OutlinedButton(onClick = onAddBankClick) {
+                    Text("Add bank")
+                }
+                Spacer(modifier = Modifier.height(14.dp))
+                if (accountEntries.isEmpty()) {
                     Text(
-                        text = "Accounts appear once SMS or manual transactions are added.",
+                        text = "Add your bank so incoming SMS can map to a named account instead of a placeholder.",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 } else {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        accounts.forEach { account ->
-                            Text(
-                                text = "${account.name} | ${account.kind.name.lowercase().replaceFirstChar { char -> char.uppercase() }}",
-                                style = MaterialTheme.typography.bodyLarge,
+                        accountEntries.forEach { account ->
+                            AccountItem(
+                                account = account,
+                                onEdit = { onEditAccount(account) },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            SectionCard(
+                title = "Cards",
+                subtitle = "Credit and debit cards matched by their last 4 digits",
+            ) {
+                OutlinedButton(onClick = onAddCardClick) {
+                    Text("Add card")
+                }
+                Spacer(modifier = Modifier.height(14.dp))
+                if (cardEntries.isEmpty()) {
+                    Text(
+                        text = "Add your cards here so SMS imports can attach spends to the exact card.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        cardEntries.forEach { account ->
+                            AccountItem(
+                                account = account,
+                                onEdit = { onEditAccount(account) },
                             )
                         }
                     }
