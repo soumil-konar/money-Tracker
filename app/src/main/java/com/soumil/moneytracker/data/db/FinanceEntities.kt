@@ -1,0 +1,147 @@
+package com.soumil.moneytracker.data.db
+
+import androidx.room.Entity
+import androidx.room.ForeignKey
+import androidx.room.Index
+import androidx.room.PrimaryKey
+import androidx.room.TypeConverter
+import com.soumil.moneytracker.data.model.AccountKind
+import com.soumil.moneytracker.data.model.SubscriptionState
+import com.soumil.moneytracker.data.model.TransactionCategory
+import com.soumil.moneytracker.data.model.TransactionDirection
+import com.soumil.moneytracker.data.model.TransactionStatus
+
+@Entity(tableName = "accounts")
+data class AccountEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val kind: AccountKind,
+    val isSystemGenerated: Boolean = false,
+)
+
+@Entity(
+    tableName = "transactions",
+    foreignKeys = [
+        ForeignKey(
+            entity = AccountEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["accountId"],
+            onDelete = ForeignKey.SET_NULL,
+        ),
+    ],
+    indices = [
+        Index(value = ["fingerprint"], unique = true),
+        Index(value = ["occurredAtMillis"]),
+        Index(value = ["status"]),
+        Index(value = ["accountId"]),
+    ],
+)
+data class TransactionEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val amount: Double,
+    val direction: TransactionDirection,
+    val occurredAtMillis: Long,
+    val merchant: String,
+    val category: TransactionCategory,
+    val accountId: Long?,
+    val sourceSender: String,
+    val smsBody: String?,
+    val confidence: Double,
+    val fingerprint: String,
+    val status: TransactionStatus,
+    val note: String? = null,
+    val createdAtMillis: Long = System.currentTimeMillis(),
+)
+
+@Entity(
+    tableName = "budgets",
+    indices = [Index(value = ["monthKey", "category"], unique = true)],
+)
+data class BudgetEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val monthKey: String,
+    val category: TransactionCategory?,
+    val amountLimit: Double,
+)
+
+@Entity(
+    tableName = "subscriptions",
+    foreignKeys = [
+        ForeignKey(
+            entity = AccountEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["accountId"],
+            onDelete = ForeignKey.SET_NULL,
+        ),
+    ],
+    indices = [Index(value = ["merchant"], unique = true)],
+)
+data class SubscriptionEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val merchant: String,
+    val amount: Double,
+    val billingCycleDays: Int,
+    val nextDueAtMillis: Long,
+    val accountId: Long?,
+    val state: SubscriptionState,
+    val createdAtMillis: Long = System.currentTimeMillis(),
+)
+
+data class TransactionRecord(
+    val id: Long,
+    val amount: Double,
+    val direction: TransactionDirection,
+    val occurredAtMillis: Long,
+    val merchant: String,
+    val category: TransactionCategory,
+    val sourceSender: String,
+    val smsBody: String?,
+    val confidence: Double,
+    val status: TransactionStatus,
+    val note: String?,
+    val accountName: String?,
+    val accountKind: AccountKind?,
+)
+
+data class SubscriptionRecord(
+    val id: Long,
+    val merchant: String,
+    val amount: Double,
+    val billingCycleDays: Int,
+    val nextDueAtMillis: Long,
+    val state: SubscriptionState,
+    val accountName: String?,
+)
+
+class FinanceTypeConverters {
+    @TypeConverter
+    fun fromAccountKind(value: AccountKind): String = value.name
+
+    @TypeConverter
+    fun toAccountKind(value: String): AccountKind = AccountKind.valueOf(value)
+
+    @TypeConverter
+    fun fromTransactionDirection(value: TransactionDirection): String = value.name
+
+    @TypeConverter
+    fun toTransactionDirection(value: String): TransactionDirection = TransactionDirection.valueOf(value)
+
+    @TypeConverter
+    fun fromTransactionStatus(value: TransactionStatus): String = value.name
+
+    @TypeConverter
+    fun toTransactionStatus(value: String): TransactionStatus = TransactionStatus.valueOf(value)
+
+    @TypeConverter
+    fun fromTransactionCategory(value: TransactionCategory?): String? = value?.name
+
+    @TypeConverter
+    fun toTransactionCategory(value: String?): TransactionCategory? = value?.let(TransactionCategory::valueOf)
+
+    @TypeConverter
+    fun fromSubscriptionState(value: SubscriptionState): String = value.name
+
+    @TypeConverter
+    fun toSubscriptionState(value: String): SubscriptionState = SubscriptionState.valueOf(value)
+}
+
