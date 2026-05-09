@@ -169,6 +169,30 @@ class SmsParserTest {
     }
 
     @Test
+    fun `parses axis upi ledger format and uses beneficiary name as merchant`() {
+        val result = parser.parse(
+            sender = "AXISBK",
+            body = """
+                INR 33500.00 debited
+                A/c no. XX6942
+                02-05-26, 10:38:46
+                UPI/P2A/103846333789/SHILPA SHRIPAD NAIK
+                Not you? SMS BLOCKUPI Cust ID to 919951860002
+                Axis Bank
+            """.trimIndent(),
+        )
+
+        assertFalse(result.shouldIgnore)
+        assertEquals(33500.0, result.amount ?: 0.0, 0.0)
+        assertEquals(TransactionDirection.DEBIT, result.direction)
+        assertEquals(AccountKind.BANK, result.accountKind)
+        assertEquals("6942", result.bankAccountLastFourDigits)
+        assertEquals("SHILPA SHRIPAD NAIK", result.merchant)
+        assertEquals(TransactionCategory.TRANSFER, result.inferredCategory)
+        assertNotNull(result.occurredAtMillis)
+    }
+
+    @Test
     fun `treats generic card repayment with last four digits as bank transfer`() {
         val result = parser.parse(
             sender = "HDFCBK",
@@ -189,6 +213,18 @@ class SmsParserTest {
         val result = parser.parseMessage(
             sender = "HDFCBK",
             body = "Your HDFC Bank Card 2159 statement generated. Total amount due Rs.12450 due date 18-05-2026.",
+        )
+
+        assertTrue(result.shouldIgnore)
+        assertNull(result.transaction)
+        assertNull(result.scheduledTransaction)
+    }
+
+    @Test
+    fun `ignores bill payment sms even when it mentions a paid amount`() {
+        val result = parser.parseMessage(
+            sender = "AXISBK",
+            body = "Bill payment of INR 1899 paid for ELECTRICITY on 02-05-2026 from A/c XX6942.",
         )
 
         assertTrue(result.shouldIgnore)

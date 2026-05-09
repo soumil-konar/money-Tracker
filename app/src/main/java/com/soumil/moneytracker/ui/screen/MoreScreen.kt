@@ -20,6 +20,7 @@ import com.soumil.moneytracker.data.db.ScheduledTransactionRecord
 import com.soumil.moneytracker.data.db.SubscriptionRecord
 import com.soumil.moneytracker.data.model.AccountKind
 import com.soumil.moneytracker.ui.components.AccountItem
+import com.soumil.moneytracker.ui.components.MotionReveal
 import com.soumil.moneytracker.ui.components.ScheduledTransactionItem
 import com.soumil.moneytracker.ui.components.SectionCard
 import com.soumil.moneytracker.ui.components.SubscriptionItem
@@ -48,36 +49,42 @@ fun MoreScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
-            Column {
-                Text(text = "More", style = MaterialTheme.typography.headlineLarge)
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "Subscriptions, scheduled debits, accounts, exports, and future modules",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            MotionReveal(index = 0) {
+                Column {
+                    Text(text = "More", style = MaterialTheme.typography.headlineLarge)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Subscriptions, scheduled debits, accounts, exports, and future modules",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
 
         item {
-            SectionCard(
-                title = "Subscriptions",
-                subtitle = "Manual entries plus recurring-payment suggestions",
-            ) {
-                Button(onClick = onAddSubscriptionClick) {
-                    Text("Add subscription")
-                }
-                Spacer(modifier = Modifier.height(14.dp))
-                if (activeSubscriptions.isEmpty()) {
-                    Text(
-                        text = "No active subscriptions yet.",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        activeSubscriptions.forEach { subscription ->
-                            SubscriptionItem(subscription = subscription)
+            MotionReveal(index = 1) {
+                SectionCard(
+                    title = "Subscriptions",
+                    subtitle = "Manual entries plus recurring-payment suggestions",
+                ) {
+                    Button(onClick = onAddSubscriptionClick) {
+                        Text("Add subscription")
+                    }
+                    Spacer(modifier = Modifier.height(14.dp))
+                    if (activeSubscriptions.isEmpty()) {
+                        Text(
+                            text = "No active subscriptions yet.",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            activeSubscriptions.forEachIndexed { index, subscription ->
+                                MotionReveal(index = index.coerceAtMost(4)) {
+                                    SubscriptionItem(subscription = subscription)
+                                }
+                            }
                         }
                     }
                 }
@@ -85,20 +92,24 @@ fun MoreScreen(
         }
 
         item {
-            SectionCard(
-                title = "Scheduled transactions",
-                subtitle = "Mandates and auto-debit notices detected from SMS",
-            ) {
-                if (scheduledTransactions.isEmpty()) {
-                    Text(
-                        text = "Future mandate debits will appear here with the scheduled date and amount.",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        scheduledTransactions.forEach { scheduledTransaction ->
-                            ScheduledTransactionItem(scheduledTransaction = scheduledTransaction)
+            MotionReveal(index = 2) {
+                SectionCard(
+                    title = "Scheduled transactions",
+                    subtitle = "Mandates and auto-debit notices detected from SMS",
+                ) {
+                    if (scheduledTransactions.isEmpty()) {
+                        Text(
+                            text = "Future mandate debits will appear here with the scheduled date and amount.",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            scheduledTransactions.forEachIndexed { index, scheduledTransaction ->
+                                MotionReveal(index = index.coerceAtMost(4)) {
+                                    ScheduledTransactionItem(scheduledTransaction = scheduledTransaction)
+                                }
+                            }
                         }
                     }
                 }
@@ -107,25 +118,62 @@ fun MoreScreen(
 
         if (suggestedSubscriptions.isNotEmpty()) {
             item {
+                MotionReveal(index = 3) {
+                    SectionCard(
+                        title = "Recurring suggestions",
+                        subtitle = "Detected from repeated debit patterns",
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            suggestedSubscriptions.forEachIndexed { index, subscription ->
+                                MotionReveal(index = index.coerceAtMost(4)) {
+                                    SubscriptionItem(
+                                        subscription = subscription,
+                                        trailing = {
+                                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                Button(onClick = { onAcceptSuggestion(subscription.id) }) {
+                                                    Text("Keep")
+                                                }
+                                                OutlinedButton(onClick = { onDismissSuggestion(subscription.id) }) {
+                                                    Text("Dismiss")
+                                                }
+                                            }
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            MotionReveal(index = if (suggestedSubscriptions.isNotEmpty()) 4 else 3) {
                 SectionCard(
-                    title = "Recurring suggestions",
-                    subtitle = "Detected from repeated debit patterns",
+                    title = "Accounts",
+                    subtitle = "Bank and balance sources used to route imported SMS",
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        suggestedSubscriptions.forEach { subscription ->
-                            SubscriptionItem(
-                                subscription = subscription,
-                                trailing = {
-                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Button(onClick = { onAcceptSuggestion(subscription.id) }) {
-                                            Text("Keep")
-                                        }
-                                        OutlinedButton(onClick = { onDismissSuggestion(subscription.id) }) {
-                                            Text("Dismiss")
-                                        }
-                                    }
-                                },
-                            )
+                    OutlinedButton(onClick = onAddBankClick) {
+                        Text("Add bank")
+                    }
+                    Spacer(modifier = Modifier.height(14.dp))
+                    if (accountEntries.isEmpty()) {
+                        Text(
+                            text = "Add your bank so incoming SMS can map to a named account instead of a placeholder.",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            accountEntries.forEachIndexed { index, account ->
+                                MotionReveal(index = index.coerceAtMost(4)) {
+                                    AccountItem(
+                                        account = account,
+                                        onEdit = { onEditAccount(account) },
+                                        onDelete = { onDeleteAccount(account) },
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -133,73 +181,50 @@ fun MoreScreen(
         }
 
         item {
-            SectionCard(
-                title = "Accounts",
-                subtitle = "Bank and balance sources used to route imported SMS",
-            ) {
-                OutlinedButton(onClick = onAddBankClick) {
-                    Text("Add bank")
+            MotionReveal(index = if (suggestedSubscriptions.isNotEmpty()) 5 else 4) {
+                SectionCard(
+                    title = "Cards",
+                    subtitle = "Credit and debit cards matched by their last 4 digits",
+                ) {
+                    OutlinedButton(onClick = onAddCardClick) {
+                        Text("Add card")
+                    }
+                    Spacer(modifier = Modifier.height(14.dp))
+                    if (cardEntries.isEmpty()) {
+                        Text(
+                            text = "Add your cards here so SMS imports can attach spends to the exact card.",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            cardEntries.forEachIndexed { index, account ->
+                                MotionReveal(index = index.coerceAtMost(4)) {
+                                    AccountItem(
+                                        account = account,
+                                        onEdit = { onEditAccount(account) },
+                                        onDelete = { onDeleteAccount(account) },
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
-                Spacer(modifier = Modifier.height(14.dp))
-                if (accountEntries.isEmpty()) {
+            }
+        }
+
+        item {
+            MotionReveal(index = if (suggestedSubscriptions.isNotEmpty()) 6 else 5) {
+                SectionCard(
+                    title = "Export",
+                    subtitle = "CSV export is reserved for the next iteration.",
+                ) {
                     Text(
-                        text = "Add your bank so incoming SMS can map to a named account instead of a placeholder.",
+                        text = "The data model is already local-first, so export can be added without changing the ledger core.",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        accountEntries.forEach { account ->
-                            AccountItem(
-                                account = account,
-                                onEdit = { onEditAccount(account) },
-                                onDelete = { onDeleteAccount(account) },
-                            )
-                        }
-                    }
                 }
-            }
-        }
-
-        item {
-            SectionCard(
-                title = "Cards",
-                subtitle = "Credit and debit cards matched by their last 4 digits",
-            ) {
-                OutlinedButton(onClick = onAddCardClick) {
-                    Text("Add card")
-                }
-                Spacer(modifier = Modifier.height(14.dp))
-                if (cardEntries.isEmpty()) {
-                    Text(
-                        text = "Add your cards here so SMS imports can attach spends to the exact card.",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        cardEntries.forEach { account ->
-                            AccountItem(
-                                account = account,
-                                onEdit = { onEditAccount(account) },
-                                onDelete = { onDeleteAccount(account) },
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        item {
-            SectionCard(
-                title = "Export",
-                subtitle = "CSV export is reserved for the next iteration.",
-            ) {
-                Text(
-                    text = "The data model is already local-first, so export can be added without changing the ledger core.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
         }
     }

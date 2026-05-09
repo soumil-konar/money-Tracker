@@ -1,6 +1,8 @@
 package com.soumil.moneytracker.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Arrangement
@@ -9,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.animateContentSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -20,6 +23,8 @@ import androidx.compose.material.icons.outlined.AccountBalance
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.CreditCard
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.AssistChip
@@ -58,7 +63,9 @@ fun SectionCard(
 ) {
     val resolvedColor = containerColor ?: MaterialTheme.colorScheme.surface
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .trackerAnimateContent(),
         shape = RoundedCornerShape(28.dp),
         colors = CardDefaults.cardColors(containerColor = resolvedColor),
     ) {
@@ -85,7 +92,7 @@ fun InsightBadge(
     modifier: Modifier = Modifier,
 ) {
     Card(
-        modifier = modifier,
+        modifier = modifier.trackerAnimateContent(),
         shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
@@ -108,6 +115,7 @@ fun PermissionBanner(
     onImportRecentSms: (() -> Unit)?,
 ) {
     Card(
+        modifier = Modifier.trackerAnimateContent(),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface,
@@ -173,7 +181,9 @@ fun TransactionItem(
     }
 
     Row(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .animateContentSize(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
@@ -248,7 +258,9 @@ fun SubscriptionItem(
     trailing: @Composable (() -> Unit)? = null,
 ) {
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .trackerAnimateContent(),
         shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)),
     ) {
@@ -281,7 +293,9 @@ fun ScheduledTransactionItem(
     modifier: Modifier = Modifier,
 ) {
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .trackerAnimateContent(),
         shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)),
     ) {
@@ -380,7 +394,9 @@ fun AccountItem(
     }
 
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .trackerAnimateContent(),
         shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)),
     ) {
@@ -423,14 +439,50 @@ fun AccountItem(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onEdit) {
-                    Text("Edit")
-                }
-                OutlinedButton(onClick = onDelete) {
-                    Text("Delete")
-                }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CompactCardActionButton(
+                    icon = Icons.Outlined.Edit,
+                    contentDescription = "Edit account",
+                    tint = MaterialTheme.colorScheme.onBackground,
+                    containerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.22f),
+                    onClick = onEdit,
+                )
+                CompactCardActionButton(
+                    icon = Icons.Outlined.DeleteOutline,
+                    contentDescription = "Delete account",
+                    tint = MaterialTheme.colorScheme.primary,
+                    containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                    onClick = onDelete,
+                )
             }
+        }
+    }
+}
+
+@Composable
+private fun CompactCardActionButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    tint: androidx.compose.ui.graphics.Color,
+    containerColor: androidx.compose.ui.graphics.Color,
+    onClick: () -> Unit,
+) {
+    Surface(
+        shape = CircleShape,
+        color = containerColor,
+        border = BorderStroke(1.dp, tint.copy(alpha = 0.16f)),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                tint = tint,
+            )
         }
     }
 }

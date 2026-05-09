@@ -97,6 +97,17 @@ class SmsParser {
         "payment towards",
     )
 
+    private val billIgnoreKeywords = listOf(
+        "bill payment",
+        "billpay",
+        "amount due",
+        "total amount due",
+        "minimum amount due",
+        "payment due",
+        "statement generated",
+        "outstanding amount",
+    )
+
     private val mandateKeywords = listOf(
         "mandate",
         "e mandate",
@@ -151,6 +162,7 @@ class SmsParser {
     )
 
     private val transactionDateRegexes = listOf(
+        Regex("(?im)^([0-9]{1,2}[/-][0-9]{1,2}[/-][0-9]{2,4})(?:,\\s*[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?)?$"),
         Regex("(?i)(?:on\\s+date|on|dated)\\s*[:.-]?\\s*([0-9]{1,2}[/-][0-9]{1,2}[/-][0-9]{2,4})"),
         Regex("(?i)(?:on\\s+date|on|dated)\\s*[:.-]?\\s*([0-9]{1,2}[/-][0-9]{1,2})\\b"),
         Regex("(?i)(?:on\\s+date|on|dated)\\s*[:.-]?\\s*([0-9]{1,2}[\\s-][A-Za-z]{3,9}[\\s-][0-9]{2,4})"),
@@ -159,8 +171,8 @@ class SmsParser {
     )
 
     private val bankAccountLastFourRegexes = listOf(
-        Regex("(?i)(?:a/c|acct|account)\\s*[xX*]*\\s*([0-9]{4})"),
-        Regex("(?i)(?:a/c|acct|account)[\\s:-]*[xX*]{1,4}([0-9]{4})"),
+        Regex("(?i)(?:a/c|acct|account)(?:\\s*(?:no\\.?|number))?\\s*[xX*]*\\s*([0-9]{4})"),
+        Regex("(?i)(?:a/c|acct|account)(?:\\s*(?:no\\.?|number))?[\\s:-]*[xX*]{1,4}([0-9]{4})"),
     )
 
     private val cardLastFourRegexes = listOf(
@@ -234,6 +246,10 @@ class SmsParser {
             hasCardSignal = hasCardSignal,
         )?.let {
             return ParsedSmsMessage(scheduledTransaction = it)
+        }
+
+        if (shouldIgnoreBillOrDueMessage(normalized)) {
+            return ParsedSmsMessage(shouldIgnore = true)
         }
 
         if (isCardStatementOnly(normalized, hasCardSignal, isCardBillPayment)) {
@@ -442,11 +458,31 @@ class SmsParser {
     }
 
     private fun extractMerchant(body: String): String? {
+        extractStructuredMerchant(body)?.let { return it }
         val match = merchantRegexes.firstNotNullOfOrNull { regex ->
             regex.find(body)?.groupValues?.getOrNull(1)
         } ?: return null
 
         return sanitizeMerchant(match)
+    }
+
+    private fun extractStructuredMerchant(body: String): String? {
+        return body.lineSequence()
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .firstNotNullOfOrNull { line ->
+                extractUpiLedgerMerchant(line)
+            }
+    }
+
+    private fun extractUpiLedgerMerchant(line: String): String? {
+        if (!line.startsWith("UPI/", ignoreCase = true)) return null
+        val parts = line.split("/")
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+        val candidate = parts.getOrNull(3) ?: return null
+        if (!candidate.any(Char::isLetter)) return null
+        return sanitizeMerchant(candidate)
     }
 
     private fun sanitizeMerchant(rawValue: String): String? {
@@ -637,6 +673,12 @@ class SmsParser {
         if (!hasCardSignal || isCardBillPayment) return false
         return statementOnlyKeywords.any(normalized::contains) &&
             actualPaymentKeywords.none(normalized::contains)
+    }
+
+    private fun shouldIgnoreBillOrDueMessage(normalized: String): Boolean {
+        if (billIgnoreKeywords.any(normalized::contains)) return true
+        return (normalized.contains("due date") || normalized.contains("due on")) &&
+            (normalized.contains("bill") || normalized.contains("statement") || normalized.contains("credit card"))
     }
 
     private fun extractCardBillMerchant(

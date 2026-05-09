@@ -5,6 +5,10 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -34,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -432,18 +437,45 @@ private fun RowScope.BottomDockItem(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    val iconTint = if (selected) {
-        MaterialTheme.colorScheme.primary
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
-    }
+    val iconTint by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        animationSpec = spring(
+            dampingRatio = 0.92f,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "navIconTint",
+    )
+    val containerColor by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+        } else {
+            Color.Transparent
+        },
+        animationSpec = spring(
+            dampingRatio = 0.92f,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "navContainerColor",
+    )
+    val iconScale by animateFloatAsState(
+        targetValue = if (selected) 1f else 0.92f,
+        animationSpec = spring(
+            dampingRatio = 0.82f,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "navIconScale",
+    )
     Box(
         modifier = Modifier.weight(1f),
         contentAlignment = Alignment.Center,
     ) {
         Surface(
             shape = CircleShape,
-            color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent,
+            color = containerColor,
             border = if (selected) {
                 BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.18f))
             } else {
@@ -460,7 +492,12 @@ private fun RowScope.BottomDockItem(
                     imageVector = destination.icon,
                     contentDescription = destination.label,
                     tint = iconTint,
-                    modifier = Modifier.size(22.dp),
+                    modifier = Modifier
+                        .size(22.dp)
+                        .graphicsLayer {
+                            scaleX = iconScale
+                            scaleY = iconScale
+                        },
                 )
             }
         }

@@ -3,12 +3,12 @@ package com.soumil.moneytracker.ui.components
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,6 +39,11 @@ fun BudgetGauge(
         budget == null || budget <= 0.0 -> 0f
         else -> (spent / budget).coerceIn(0.0, 1.0).toFloat()
     }
+    val animatedProgress = rememberRevealProgress(
+        targetValue = progress,
+        delayMillis = 60,
+        durationMillis = 850,
+    )
 
     Box(
         modifier = modifier
@@ -66,7 +71,7 @@ fun BudgetGauge(
             drawArc(
                 color = arcProgressColor,
                 startAngle = 180f,
-                sweepAngle = 180f * progress,
+                sweepAngle = 180f * animatedProgress,
                 useCenter = false,
                 topLeft = Offset(arcRect.left, arcRect.top),
                 size = Size(arcRect.width, arcRect.height),
@@ -106,6 +111,11 @@ fun SpendingPieChart(
         MaterialTheme.colorScheme.secondary.copy(alpha = 0.7f),
     )
     val total = slices.sumOf { it.amount }
+    val revealProgress = rememberRevealProgress(
+        targetValue = if (total > 0.0) 1f else 0f,
+        delayMillis = 110,
+        durationMillis = 900,
+    )
 
     Canvas(
         modifier = modifier
@@ -117,7 +127,7 @@ fun SpendingPieChart(
         val diameter = size.minDimension * 0.72f
         val topLeft = Offset((size.width - diameter) / 2, (size.height - diameter) / 2)
         slices.forEachIndexed { index, slice ->
-            val sweep = ((slice.amount / total) * 360f).toFloat()
+            val sweep = ((slice.amount / total) * 360f * revealProgress).toFloat()
             drawArc(
                 color = colors[index % colors.size],
                 startAngle = startAngle,
@@ -149,6 +159,11 @@ fun CashflowTrendChart(
         points.maxOfOrNull { it.income } ?: 0.0,
         points.maxOfOrNull { it.expense } ?: 0.0,
     ).coerceAtLeast(1.0)
+    val revealProgress = rememberRevealProgress(
+        targetValue = 1f,
+        delayMillis = 90,
+        durationMillis = 950,
+    )
 
     Canvas(
         modifier = modifier
@@ -165,7 +180,7 @@ fun CashflowTrendChart(
         val stepX = if (points.size > 1) chartWidth / (points.size - 1) else chartWidth
 
         fun valueToY(value: Double): Float {
-            val ratio = (value / maxValue).toFloat()
+            val ratio = (value / maxValue).toFloat() * revealProgress
             return topPadding + chartHeight - (chartHeight * ratio)
         }
 
