@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.NotificationsNone
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -35,12 +36,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.soumil.moneytracker.data.db.ScheduledTransactionRecord
 import com.soumil.moneytracker.data.db.SubscriptionRecord
 import com.soumil.moneytracker.data.db.TransactionRecord
 import com.soumil.moneytracker.data.model.TransactionDirection
 import com.soumil.moneytracker.data.model.TransactionStatus
 import com.soumil.moneytracker.ui.asCurrency
 import com.soumil.moneytracker.ui.asDayMonth
+import com.soumil.moneytracker.ui.asFullDate
 
 @Composable
 fun SectionCard(
@@ -260,6 +263,81 @@ fun SubscriptionItem(
                 )
             }
             trailing?.invoke()
+        }
+    }
+}
+
+@Composable
+fun ScheduledTransactionItem(
+    scheduledTransaction: ScheduledTransactionRecord,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Schedule,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onBackground,
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = scheduledTransaction.merchant,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = listOfNotNull(
+                        scheduledTransaction.category.label,
+                        scheduledTransaction.accountName,
+                        scheduledTransaction.sourceSender,
+                    ).joinToString(" | "),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = scheduledTransaction.amount.asCurrency(),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = scheduledTransaction.scheduledForMillis.asFullDate(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.22f),
+                ) {
+                    Text(
+                        text = scheduledTransaction.kind.label,
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                }
+            }
         }
     }
 }

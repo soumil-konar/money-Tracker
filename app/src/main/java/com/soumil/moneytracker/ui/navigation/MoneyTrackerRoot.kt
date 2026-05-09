@@ -57,6 +57,7 @@ fun MoneyTrackerRoot(
     val accounts by viewModel.accounts.collectAsStateWithLifecycle()
     val budget by viewModel.currentBudget.collectAsStateWithLifecycle()
     val filter by viewModel.filter.collectAsStateWithLifecycle()
+    val scheduledTransactions by viewModel.scheduledTransactions.collectAsStateWithLifecycle()
     val activeSubscriptions by viewModel.activeSubscriptions.collectAsStateWithLifecycle()
     val suggestedSubscriptions by viewModel.suggestedSubscriptions.collectAsStateWithLifecycle()
 
@@ -179,6 +180,7 @@ fun MoneyTrackerRoot(
                 MoreScreen(
                     accounts = accounts,
                     activeSubscriptions = activeSubscriptions,
+                    scheduledTransactions = scheduledTransactions,
                     suggestedSubscriptions = suggestedSubscriptions,
                     onAddSubscriptionClick = { showAddSubscriptionDialog = true },
                     onAcceptSuggestion = viewModel::acceptSuggestedSubscription,

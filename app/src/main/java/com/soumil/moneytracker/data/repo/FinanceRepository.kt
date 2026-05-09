@@ -5,6 +5,9 @@ import com.soumil.moneytracker.data.db.AccountDao
 import com.soumil.moneytracker.data.db.AccountEntity
 import com.soumil.moneytracker.data.db.BudgetDao
 import com.soumil.moneytracker.data.db.BudgetEntity
+import com.soumil.moneytracker.data.db.ScheduledTransactionDao
+import com.soumil.moneytracker.data.db.ScheduledTransactionEntity
+import com.soumil.moneytracker.data.db.ScheduledTransactionRecord
 import com.soumil.moneytracker.data.db.SubscriptionDao
 import com.soumil.moneytracker.data.db.SubscriptionEntity
 import com.soumil.moneytracker.data.db.SubscriptionRecord
@@ -15,6 +18,7 @@ import com.soumil.moneytracker.data.model.AccountKind
 import com.soumil.moneytracker.data.model.CategorySlice
 import com.soumil.moneytracker.data.model.DashboardState
 import com.soumil.moneytracker.data.model.ImportReport
+import com.soumil.moneytracker.data.model.ParsedScheduledTransaction
 import com.soumil.moneytracker.data.model.SubscriptionDraft
 import com.soumil.moneytracker.data.model.SubscriptionState
 import com.soumil.moneytracker.data.model.TransactionCategory
@@ -37,12 +41,14 @@ import kotlinx.coroutines.flow.first
 class FinanceRepository(
     private val accountDao: AccountDao,
     private val budgetDao: BudgetDao,
+    private val scheduledTransactionDao: ScheduledTransactionDao,
     private val subscriptionDao: SubscriptionDao,
     private val transactionDao: TransactionDao,
     private val parser: SmsParser,
 ) {
 
     val accounts: Flow<List<AccountEntity>> = accountDao.observeAccounts()
+    val scheduledTransactions: Flow<List<ScheduledTransactionRecord>> = scheduledTransactionDao.observeScheduledTransactions()
     val transactions: Flow<List<TransactionRecord>> = transactionDao.observeTransactions()
     val postedTransactions: Flow<List<TransactionRecord>> = transactionDao.observePostedTransactions()
     val subscriptions: Flow<List<SubscriptionRecord>> = subscriptionDao.observeSubscriptions()
@@ -159,38 +165,14 @@ class FinanceRepository(
         body: String,
         receivedAtMillis: Long,
     ): Boolean {
-        val fingerprint = hashFingerprint(sender, body, receivedAtMillis)
-        if (transactionDao.fingerprintExists(fingerprint)) {
-            return false
+        return when (ingestMessage(sender = sender, body = body, receivedAtMillis = receivedAtMillis)) {
+            SmsIngestionOutcome.IMPORTED,
+            SmsIngestionOutcome.REVIEW,
+            SmsIngestionOutcome.SCHEDULED -> true
+
+            SmsIngestionOutcome.DUPLICATE,
+            SmsIngestionOutcome.IGNORED -> false
         }
-
-        val parsed = parser.parse(sender = sender, body = body)
-        if (parsed.shouldIgnore || parsed.amount == null || parsed.direction == null) {
-            return false
-        }
-
-        val accountId = resolveAccount(
-            parsed.accountLabel ?: defaultAccountName(parsed.accountKind),
-            parsed.accountKind,
-        )
-
-        val status = if (parsed.confidence >= 0.7) TransactionStatus.POSTED else TransactionStatus.REVIEW
-        val merchantLabel = parsed.merchant ?: fallbackMerchant(sender, parsed.direction)
-
-        val entity = TransactionEntity(
-            amount = parsed.amount,
-            direction = parsed.direction,
-            occurredAtMillis = receivedAtMillis,
-            merchant = merchantLabel,
-            category = parsed.inferredCategory,
-            accountId = accountId,
-            sourceSender = sender,
-            smsBody = body,
-            confidence = parsed.confidence,
-            fingerprint = fingerprint,
-            status = status,
-        )
-        return transactionDao.insert(entity) != -1L
     }
 
     suspend fun importRecentSms(
@@ -200,53 +182,38 @@ class FinanceRepository(
         val importer = SmsImportManager(contentResolver)
         var imported = 0
         var review = 0
+        var scheduled = 0
         var ignored = 0
         val messages = importer.readRecentMessages(limit)
         messages.forEach { message ->
-            val fingerprint = hashFingerprint(message.sender, message.body, message.timestampMillis)
-            if (transactionDao.fingerprintExists(fingerprint)) return@forEach
-            val parsed = parser.parse(message.sender, message.body)
-            if (parsed.shouldIgnore || parsed.amount == null || parsed.direction == null) {
-                ignored += 1
-                return@forEach
-            }
-
-            val accountId = resolveAccount(
-                parsed.accountLabel ?: defaultAccountName(parsed.accountKind),
-                parsed.accountKind,
-            )
-            val status = if (parsed.confidence >= 0.7) TransactionStatus.POSTED else TransactionStatus.REVIEW
-            val inserted = transactionDao.insert(
-                TransactionEntity(
-                    amount = parsed.amount,
-                    direction = parsed.direction,
-                    occurredAtMillis = message.timestampMillis,
-                    merchant = parsed.merchant ?: fallbackMerchant(message.sender, parsed.direction),
-                    category = parsed.inferredCategory,
-                    accountId = accountId,
-                    sourceSender = message.sender,
-                    smsBody = message.body,
-                    confidence = parsed.confidence,
-                    fingerprint = fingerprint,
-                    status = status,
-                ),
-            )
-
-            if (inserted != -1L) {
-                if (status == TransactionStatus.POSTED) imported += 1 else review += 1
+            when (
+                ingestMessage(
+                    sender = message.sender,
+                    body = message.body,
+                    receivedAtMillis = message.timestampMillis,
+                )
+            ) {
+                SmsIngestionOutcome.IMPORTED -> imported += 1
+                SmsIngestionOutcome.REVIEW -> review += 1
+                SmsIngestionOutcome.SCHEDULED -> scheduled += 1
+                SmsIngestionOutcome.IGNORED -> ignored += 1
+                SmsIngestionOutcome.DUPLICATE -> Unit
             }
         }
         return ImportReport(
             scanned = messages.size,
             imported = imported,
             sentToReview = review,
+            scheduled = scheduled,
             ignored = ignored,
         )
     }
 
     suspend fun refreshRecurringSuggestions() {
         val existingMerchants = subscriptionDao.getAll().associateBy { normalizeMerchant(it.merchant) }
-        val debitTransactions = postedTransactions.first().filter { it.direction == TransactionDirection.DEBIT }
+        val debitTransactions = postedTransactions.first().filter {
+            it.direction == TransactionDirection.DEBIT && it.category != TransactionCategory.TRANSFER
+        }
         val grouped = debitTransactions.groupBy { normalizeMerchant(it.merchant) }
 
         grouped.forEach { (merchantKey, transactions) ->
@@ -310,8 +277,10 @@ class FinanceRepository(
         val currentMonthTransactions = postedTransactions.filter {
             YearMonth.from(it.toLocalDate()) == currentMonth
         }
-        val monthSpent = currentMonthTransactions
-            .filter { it.direction == TransactionDirection.DEBIT }
+        val spendTransactions = currentMonthTransactions.filter {
+            it.direction == TransactionDirection.DEBIT && it.category != TransactionCategory.TRANSFER
+        }
+        val monthSpent = spendTransactions
             .sumOf(TransactionRecord::amount)
         val monthIncome = currentMonthTransactions
             .filter { it.direction == TransactionDirection.CREDIT }
@@ -319,8 +288,7 @@ class FinanceRepository(
         val trackedBalance = postedTransactions.sumOf {
             if (it.direction == TransactionDirection.CREDIT) it.amount else -it.amount
         }
-        val categoryBreakdown = currentMonthTransactions
-            .filter { it.direction == TransactionDirection.DEBIT }
+        val categoryBreakdown = spendTransactions
             .groupBy(TransactionRecord::category)
             .map { (category, items) -> CategorySlice(category, items.sumOf(TransactionRecord::amount)) }
             .sortedByDescending(CategorySlice::amount)
@@ -332,7 +300,9 @@ class FinanceRepository(
             TrendPoint(
                 date = date,
                 income = dayTransactions.filter { it.direction == TransactionDirection.CREDIT }.sumOf(TransactionRecord::amount),
-                expense = dayTransactions.filter { it.direction == TransactionDirection.DEBIT }.sumOf(TransactionRecord::amount),
+                expense = dayTransactions
+                    .filter { it.direction == TransactionDirection.DEBIT && it.category != TransactionCategory.TRANSFER }
+                    .sumOf(TransactionRecord::amount),
             )
         }
 
@@ -372,13 +342,149 @@ class FinanceRepository(
         return merchant.lowercase().replace(Regex("[^a-z0-9]"), "")
     }
 
+    private suspend fun ingestMessage(
+        sender: String,
+        body: String,
+        receivedAtMillis: Long,
+    ): SmsIngestionOutcome {
+        val parsedMessage = parser.parseMessage(sender = sender, body = body)
+        if (parsedMessage.shouldIgnore) {
+            return SmsIngestionOutcome.IGNORED
+        }
+
+        parsedMessage.scheduledTransaction?.let { scheduled ->
+            return storeScheduledTransaction(
+                sender = sender,
+                body = body,
+                parsed = scheduled,
+            )
+        }
+
+        val parsed = parsedMessage.transaction ?: return SmsIngestionOutcome.IGNORED
+        if (parsed.amount == null || parsed.direction == null) {
+            return SmsIngestionOutcome.IGNORED
+        }
+
+        val fingerprint = hashFingerprint(sender, body, receivedAtMillis)
+        if (transactionDao.fingerprintExists(fingerprint)) {
+            return SmsIngestionOutcome.DUPLICATE
+        }
+
+        val accountId = resolveAccount(
+            parsed.accountLabel ?: defaultAccountName(parsed.accountKind),
+            parsed.accountKind,
+        )
+        val status = if (parsed.confidence >= 0.7) TransactionStatus.POSTED else TransactionStatus.REVIEW
+        val inserted = transactionDao.insert(
+            TransactionEntity(
+                amount = parsed.amount,
+                direction = parsed.direction,
+                occurredAtMillis = receivedAtMillis,
+                merchant = parsed.merchant ?: fallbackMerchant(sender, parsed.direction),
+                category = parsed.inferredCategory,
+                accountId = accountId,
+                sourceSender = sender,
+                smsBody = body,
+                confidence = parsed.confidence,
+                fingerprint = fingerprint,
+                status = status,
+            ),
+        )
+        if (inserted == -1L) {
+            return SmsIngestionOutcome.DUPLICATE
+        }
+        return if (status == TransactionStatus.POSTED) {
+            SmsIngestionOutcome.IMPORTED
+        } else {
+            SmsIngestionOutcome.REVIEW
+        }
+    }
+
+    private suspend fun storeScheduledTransaction(
+        sender: String,
+        body: String,
+        parsed: ParsedScheduledTransaction,
+    ): SmsIngestionOutcome {
+        val amount = parsed.amount ?: return SmsIngestionOutcome.IGNORED
+        val scheduledForMillis = parsed.scheduledForMillis ?: return SmsIngestionOutcome.IGNORED
+        val accountId = resolveAccount(
+            parsed.accountLabel ?: defaultAccountName(parsed.accountKind),
+            parsed.accountKind,
+        )
+        val merchant = parsed.merchant ?: fallbackScheduledMerchant(sender)
+        val fingerprint = hashScheduledFingerprint(
+            sender = sender,
+            merchant = merchant,
+            amount = amount,
+            scheduledForMillis = scheduledForMillis,
+            accountLabel = parsed.accountLabel,
+            kind = parsed.kind.name,
+        )
+        if (scheduledTransactionDao.fingerprintExists(fingerprint)) {
+            return SmsIngestionOutcome.DUPLICATE
+        }
+        val inserted = scheduledTransactionDao.insert(
+            ScheduledTransactionEntity(
+                merchant = merchant,
+                amount = amount,
+                scheduledForMillis = scheduledForMillis,
+                category = parsed.inferredCategory,
+                accountId = accountId,
+                sourceSender = sender,
+                smsBody = body,
+                kind = parsed.kind,
+                fingerprint = fingerprint,
+            ),
+        )
+        return if (inserted == -1L) {
+            SmsIngestionOutcome.DUPLICATE
+        } else {
+            SmsIngestionOutcome.SCHEDULED
+        }
+    }
+
+    private fun fallbackScheduledMerchant(sender: String): String {
+        return "Scheduled via ${sender.uppercase()}"
+    }
+
     private fun hashFingerprint(sender: String, body: String, receivedAtMillis: Long): String {
-        val input = "$sender|$body|$receivedAtMillis"
+        return hashCompositeFingerprint(sender, body, receivedAtMillis)
+    }
+
+    private fun hashScheduledFingerprint(
+        sender: String,
+        merchant: String,
+        amount: Double,
+        scheduledForMillis: Long,
+        accountLabel: String?,
+        kind: String,
+    ): String {
+        return hashCompositeFingerprint(
+            "scheduled",
+            sender.uppercase(),
+            normalizeMerchant(merchant),
+            amount,
+            scheduledForMillis,
+            accountLabel ?: "",
+            kind,
+        )
+    }
+
+    private fun hashCompositeFingerprint(vararg parts: Any): String {
+        val input = parts.joinToString(separator = "|")
         val digest = MessageDigest.getInstance("SHA-256").digest(input.toByteArray())
         return digest.joinToString(separator = "") { byte -> "%02x".format(byte) }
     }
 
     private fun TransactionRecord.toLocalDate(): LocalDate {
         return Instant.ofEpochMilli(occurredAtMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+    }
+
+    private enum class SmsIngestionOutcome {
+        IMPORTED,
+        REVIEW,
+        SCHEDULED,
+        IGNORED,
+        DUPLICATE,
     }
 }

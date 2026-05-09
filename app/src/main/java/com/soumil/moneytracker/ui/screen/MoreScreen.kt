@@ -16,7 +16,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.soumil.moneytracker.data.db.AccountEntity
+import com.soumil.moneytracker.data.db.ScheduledTransactionRecord
 import com.soumil.moneytracker.data.db.SubscriptionRecord
+import com.soumil.moneytracker.ui.components.ScheduledTransactionItem
 import com.soumil.moneytracker.ui.components.SectionCard
 import com.soumil.moneytracker.ui.components.SubscriptionItem
 
@@ -24,6 +26,7 @@ import com.soumil.moneytracker.ui.components.SubscriptionItem
 fun MoreScreen(
     accounts: List<AccountEntity>,
     activeSubscriptions: List<SubscriptionRecord>,
+    scheduledTransactions: List<ScheduledTransactionRecord>,
     suggestedSubscriptions: List<SubscriptionRecord>,
     onAddSubscriptionClick: () -> Unit,
     onAcceptSuggestion: (Long) -> Unit,
@@ -40,7 +43,7 @@ fun MoreScreen(
                 Text(text = "More", style = MaterialTheme.typography.headlineLarge)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Subscriptions, accounts, exports, and future modules",
+                    text = "Subscriptions, scheduled debits, accounts, exports, and future modules",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -66,6 +69,27 @@ fun MoreScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         activeSubscriptions.forEach { subscription ->
                             SubscriptionItem(subscription = subscription)
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            SectionCard(
+                title = "Scheduled transactions",
+                subtitle = "Mandates and auto-debit notices detected from SMS",
+            ) {
+                if (scheduledTransactions.isEmpty()) {
+                    Text(
+                        text = "Future mandate debits will appear here with the scheduled date and amount.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        scheduledTransactions.forEach { scheduledTransaction ->
+                            ScheduledTransactionItem(scheduledTransaction = scheduledTransaction)
                         }
                     }
                 }

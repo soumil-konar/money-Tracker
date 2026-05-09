@@ -38,6 +38,10 @@ enum class SubscriptionState {
     SUGGESTED,
 }
 
+enum class ScheduledTransactionKind(val label: String) {
+    MANDATE("Mandate"),
+}
+
 enum class TransactionFilter(val label: String) {
     ALL("All"),
     SPENT("Spent"),
@@ -56,6 +60,23 @@ data class ParsedSmsTransaction(
     val accountKind: AccountKind,
     val confidence: Double,
     val shouldIgnore: Boolean,
+)
+
+data class ParsedScheduledTransaction(
+    val amount: Double?,
+    val merchant: String?,
+    val scheduledForMillis: Long?,
+    val inferredCategory: TransactionCategory,
+    val accountLabel: String?,
+    val accountKind: AccountKind,
+    val kind: ScheduledTransactionKind,
+    val confidence: Double,
+)
+
+data class ParsedSmsMessage(
+    val transaction: ParsedSmsTransaction? = null,
+    val scheduledTransaction: ParsedScheduledTransaction? = null,
+    val shouldIgnore: Boolean = false,
 )
 
 data class DashboardState(
@@ -103,6 +124,7 @@ data class ImportReport(
     val scanned: Int,
     val imported: Int,
     val sentToReview: Int,
+    val scheduled: Int,
     val ignored: Int,
 )
 

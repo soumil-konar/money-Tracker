@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.soumil.moneytracker.data.db.AccountEntity
 import com.soumil.moneytracker.data.db.BudgetEntity
+import com.soumil.moneytracker.data.db.ScheduledTransactionRecord
 import com.soumil.moneytracker.data.db.SubscriptionRecord
 import com.soumil.moneytracker.data.db.TransactionRecord
 import com.soumil.moneytracker.data.model.AccountKind
@@ -56,6 +57,12 @@ class MainViewModel(
     )
 
     val subscriptions: StateFlow<List<SubscriptionRecord>> = repository.subscriptions.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList(),
+    )
+
+    val scheduledTransactions: StateFlow<List<ScheduledTransactionRecord>> = repository.scheduledTransactions.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = emptyList(),
@@ -218,7 +225,7 @@ class MainViewModel(
                 repository.importRecentSms(contentResolver)
             }.onSuccess { report ->
                 emitMessage(
-                    "Scanned ${report.scanned} SMS. Imported ${report.imported}, review ${report.sentToReview}, ignored ${report.ignored}.",
+                    "Scanned ${report.scanned} SMS. Imported ${report.imported}, review ${report.sentToReview}, scheduled ${report.scheduled}, ignored ${report.ignored}.",
                 )
             }.onFailure {
                 emitMessage("Could not import SMS. Check permissions and try again.")

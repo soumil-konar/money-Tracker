@@ -12,6 +12,7 @@ class AppContainer(context: Context) {
     val repository = FinanceRepository(
         accountDao = database.accountDao(),
         budgetDao = database.budgetDao(),
+        scheduledTransactionDao = database.scheduledTransactionDao(),
         subscriptionDao = database.subscriptionDao(),
         transactionDao = database.transactionDao(),
         parser = parser,

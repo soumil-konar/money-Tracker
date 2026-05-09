@@ -109,3 +109,23 @@ interface SubscriptionDao {
     @Query("SELECT * FROM subscriptions")
     suspend fun getAll(): List<SubscriptionEntity>
 }
+
+@Dao
+interface ScheduledTransactionDao {
+    @Query(
+        """
+        SELECT s.id, s.merchant, s.amount, s.scheduledForMillis, s.category, s.kind, s.sourceSender,
+               a.name AS accountName, a.kind AS accountKind
+        FROM scheduled_transactions s
+        LEFT JOIN accounts a ON s.accountId = a.id
+        ORDER BY s.scheduledForMillis ASC, s.createdAtMillis DESC
+        """,
+    )
+    fun observeScheduledTransactions(): Flow<List<ScheduledTransactionRecord>>
+
+    @Query("SELECT COUNT(*) > 0 FROM scheduled_transactions WHERE fingerprint = :fingerprint")
+    suspend fun fingerprintExists(fingerprint: String): Boolean
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(transaction: ScheduledTransactionEntity): Long
+}

@@ -6,6 +6,7 @@ import com.soumil.moneytracker.data.model.TransactionDirection
 import com.soumil.moneytracker.parser.SmsParser
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -40,6 +41,47 @@ class SmsParserTest {
         assertEquals(TransactionDirection.CREDIT, result.direction)
         assertEquals(TransactionCategory.SALARY, result.inferredCategory)
         assertEquals(85000.0, result.amount ?: 0.0, 0.0)
+    }
+
+    @Test
+    fun `treats credit card bill payment as debit transfer instead of income`() {
+        val result = parser.parse(
+            sender = "HDFCBK",
+            body = "Payment of INR 12450 received towards your HDFC Bank Credit Card ending 1234 from A/c XX8899 on 09-05-2026.",
+        )
+
+        assertFalse(result.shouldIgnore)
+        assertEquals(12450.0, result.amount ?: 0.0, 0.0)
+        assertEquals(TransactionDirection.DEBIT, result.direction)
+        assertEquals(TransactionCategory.TRANSFER, result.inferredCategory)
+        assertEquals(AccountKind.CARD, result.accountKind)
+    }
+
+    @Test
+    fun `extracts future mandate into scheduled transaction`() {
+        val result = parser.parseMessage(
+            sender = "ICICIB",
+            body = "Your eMandate of Rs.499 towards NETFLIX will be presented on 15/06/2026 from A/c XX1234.",
+        )
+
+        assertFalse(result.shouldIgnore)
+        assertNull(result.transaction)
+        assertNotNull(result.scheduledTransaction)
+        assertEquals(499.0, result.scheduledTransaction?.amount ?: 0.0, 0.0)
+        assertEquals(TransactionCategory.SUBSCRIPTION, result.scheduledTransaction?.inferredCategory)
+        assertEquals("NETFLIX", result.scheduledTransaction?.merchant)
+    }
+
+    @Test
+    fun `ignores collect requests before payment happens`() {
+        val result = parser.parseMessage(
+            sender = "PAYTM",
+            body = "UPI collect request for Rs.500 from ABC STORES. Approve in app to pay.",
+        )
+
+        assertTrue(result.shouldIgnore)
+        assertNull(result.transaction)
+        assertNull(result.scheduledTransaction)
     }
 
     @Test
