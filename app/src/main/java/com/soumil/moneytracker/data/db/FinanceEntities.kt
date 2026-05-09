@@ -6,6 +6,8 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.TypeConverter
 import com.soumil.moneytracker.data.model.AccountKind
+import com.soumil.moneytracker.data.model.CardType
+import com.soumil.moneytracker.data.model.ScheduledTransactionKind
 import com.soumil.moneytracker.data.model.SubscriptionState
 import com.soumil.moneytracker.data.model.TransactionCategory
 import com.soumil.moneytracker.data.model.TransactionDirection
@@ -16,6 +18,10 @@ data class AccountEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
     val kind: AccountKind,
+    val institutionName: String? = null,
+    val cardType: CardType? = null,
+    val lastFourDigits: String? = null,
+    val isRupayCreditCard: Boolean = false,
     val isSystemGenerated: Boolean = false,
 )
 
@@ -50,6 +56,7 @@ data class TransactionEntity(
     val fingerprint: String,
     val status: TransactionStatus,
     val note: String? = null,
+    val countsTowardBudget: Boolean = true,
     val createdAtMillis: Long = System.currentTimeMillis(),
 )
 
@@ -87,6 +94,36 @@ data class SubscriptionEntity(
     val createdAtMillis: Long = System.currentTimeMillis(),
 )
 
+@Entity(
+    tableName = "scheduled_transactions",
+    foreignKeys = [
+        ForeignKey(
+            entity = AccountEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["accountId"],
+            onDelete = ForeignKey.SET_NULL,
+        ),
+    ],
+    indices = [
+        Index(value = ["fingerprint"], unique = true),
+        Index(value = ["scheduledForMillis"]),
+        Index(value = ["accountId"]),
+    ],
+)
+data class ScheduledTransactionEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val merchant: String,
+    val amount: Double,
+    val scheduledForMillis: Long,
+    val category: TransactionCategory,
+    val accountId: Long?,
+    val sourceSender: String,
+    val smsBody: String?,
+    val kind: ScheduledTransactionKind,
+    val fingerprint: String,
+    val createdAtMillis: Long = System.currentTimeMillis(),
+)
+
 data class TransactionRecord(
     val id: Long,
     val amount: Double,
@@ -94,11 +131,25 @@ data class TransactionRecord(
     val occurredAtMillis: Long,
     val merchant: String,
     val category: TransactionCategory,
+    val accountId: Long?,
     val sourceSender: String,
     val smsBody: String?,
     val confidence: Double,
     val status: TransactionStatus,
     val note: String?,
+    val countsTowardBudget: Boolean,
+    val accountName: String?,
+    val accountKind: AccountKind?,
+)
+
+data class ScheduledTransactionRecord(
+    val id: Long,
+    val merchant: String,
+    val amount: Double,
+    val scheduledForMillis: Long,
+    val category: TransactionCategory,
+    val kind: ScheduledTransactionKind,
+    val sourceSender: String,
     val accountName: String?,
     val accountKind: AccountKind?,
 )
@@ -119,6 +170,12 @@ class FinanceTypeConverters {
 
     @TypeConverter
     fun toAccountKind(value: String): AccountKind = AccountKind.valueOf(value)
+
+    @TypeConverter
+    fun fromCardType(value: CardType?): String? = value?.name
+
+    @TypeConverter
+    fun toCardType(value: String?): CardType? = value?.let(CardType::valueOf)
 
     @TypeConverter
     fun fromTransactionDirection(value: TransactionDirection): String = value.name
@@ -143,5 +200,11 @@ class FinanceTypeConverters {
 
     @TypeConverter
     fun toSubscriptionState(value: String): SubscriptionState = SubscriptionState.valueOf(value)
+
+    @TypeConverter
+    fun fromScheduledTransactionKind(value: ScheduledTransactionKind): String = value.name
+
+    @TypeConverter
+    fun toScheduledTransactionKind(value: String): ScheduledTransactionKind = ScheduledTransactionKind.valueOf(value)
 }
 

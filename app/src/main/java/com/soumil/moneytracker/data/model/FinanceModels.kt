@@ -33,17 +33,37 @@ enum class AccountKind {
     CASH,
 }
 
+enum class CardType(val label: String) {
+    CREDIT("Credit card"),
+    DEBIT("Debit card"),
+}
+
 enum class SubscriptionState {
     ACTIVE,
     SUGGESTED,
 }
 
+enum class ScheduledTransactionKind(val label: String) {
+    MANDATE("Mandate"),
+}
+
 enum class TransactionFilter(val label: String) {
     ALL("All"),
+    BUDGET("Budget"),
     SPENT("Spent"),
     INCOME("Income"),
+    UPI("UPI"),
+    CARD("Card"),
     REVIEW("Needs Review"),
 }
+
+data class MonthBudgetSummary(
+    val yearMonthKey: String,
+    val monthLabel: String,
+    val budgetLimit: Double?,
+    val spent: Double,
+    val transactions: List<com.soumil.moneytracker.data.db.TransactionRecord>,
+)
 
 data class ParsedSmsTransaction(
     val amount: Double?,
@@ -54,6 +74,37 @@ data class ParsedSmsTransaction(
     val accountKind: AccountKind,
     val confidence: Double,
     val shouldIgnore: Boolean,
+    val institutionName: String? = null,
+    val occurredAtMillis: Long? = null,
+    val bankAccountLastFourDigits: String? = null,
+    val cardLastFourDigits: String? = null,
+    val cardType: CardType? = null,
+    val isUpiPayment: Boolean = false,
+    val isCardPayment: Boolean = false,
+    val isCardBillPayment: Boolean = false,
+)
+
+data class ParsedScheduledTransaction(
+    val amount: Double?,
+    val merchant: String?,
+    val scheduledForMillis: Long?,
+    val inferredCategory: TransactionCategory,
+    val accountLabel: String?,
+    val accountKind: AccountKind,
+    val kind: ScheduledTransactionKind,
+    val confidence: Double,
+    val institutionName: String? = null,
+    val bankAccountLastFourDigits: String? = null,
+    val cardLastFourDigits: String? = null,
+    val cardType: CardType? = null,
+    val isUpiPayment: Boolean = false,
+    val isCardPayment: Boolean = false,
+)
+
+data class ParsedSmsMessage(
+    val transaction: ParsedSmsTransaction? = null,
+    val scheduledTransaction: ParsedScheduledTransaction? = null,
+    val shouldIgnore: Boolean = false,
 )
 
 data class DashboardState(
@@ -87,6 +138,16 @@ data class TransactionDraft(
     val accountId: Long?,
     val note: String? = null,
     val occurredAtMillis: Long = System.currentTimeMillis(),
+    val countsTowardBudget: Boolean = true,
+)
+
+data class AccountDraft(
+    val name: String,
+    val kind: AccountKind,
+    val institutionName: String? = null,
+    val cardType: CardType? = null,
+    val lastFourDigits: String? = null,
+    val isRupayCreditCard: Boolean = false,
 )
 
 data class SubscriptionDraft(
@@ -101,6 +162,7 @@ data class ImportReport(
     val scanned: Int,
     val imported: Int,
     val sentToReview: Int,
+    val scheduled: Int,
     val ignored: Int,
 )
 

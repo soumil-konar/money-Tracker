@@ -21,16 +21,26 @@ interface AccountDao {
     @Query("SELECT * FROM accounts WHERE name = :name LIMIT 1")
     suspend fun findByName(name: String): AccountEntity?
 
+    @Query("SELECT * FROM accounts WHERE id = :accountId LIMIT 1")
+    suspend fun findById(accountId: Long): AccountEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(account: AccountEntity): Long
+
+    @Update
+    suspend fun update(account: AccountEntity)
+
+    @Query("DELETE FROM accounts WHERE id = :accountId")
+    suspend fun deleteById(accountId: Long)
 }
 
 @Dao
 interface TransactionDao {
     @Query(
         """
-        SELECT t.id, t.amount, t.direction, t.occurredAtMillis, t.merchant, t.category, t.sourceSender,
-               t.smsBody, t.confidence, t.status, t.note, a.name AS accountName, a.kind AS accountKind
+        SELECT t.id, t.amount, t.direction, t.occurredAtMillis, t.merchant, t.category, t.accountId, t.sourceSender,
+               t.smsBody, t.confidence, t.status, t.note, t.countsTowardBudget,
+               a.name AS accountName, a.kind AS accountKind
         FROM transactions t
         LEFT JOIN accounts a ON t.accountId = a.id
         ORDER BY t.occurredAtMillis DESC
@@ -40,8 +50,9 @@ interface TransactionDao {
 
     @Query(
         """
-        SELECT t.id, t.amount, t.direction, t.occurredAtMillis, t.merchant, t.category, t.sourceSender,
-               t.smsBody, t.confidence, t.status, t.note, a.name AS accountName, a.kind AS accountKind
+        SELECT t.id, t.amount, t.direction, t.occurredAtMillis, t.merchant, t.category, t.accountId, t.sourceSender,
+               t.smsBody, t.confidence, t.status, t.note, t.countsTowardBudget,
+               a.name AS accountName, a.kind AS accountKind
         FROM transactions t
         LEFT JOIN accounts a ON t.accountId = a.id
         WHERE t.status = 'POSTED'
@@ -59,6 +70,9 @@ interface TransactionDao {
     @Query("UPDATE transactions SET status = :status WHERE id = :transactionId")
     suspend fun updateStatus(transactionId: Long, status: String)
 
+    @Query("UPDATE transactions SET countsTowardBudget = :countsTowardBudget WHERE id = :transactionId")
+    suspend fun updateBudgetInclusion(transactionId: Long, countsTowardBudget: Boolean)
+
     @Query("DELETE FROM transactions WHERE id = :transactionId")
     suspend fun deleteById(transactionId: Long)
 
@@ -73,6 +87,9 @@ interface TransactionDao {
 interface BudgetDao {
     @Query("SELECT * FROM budgets WHERE monthKey = :monthKey AND category IS NULL LIMIT 1")
     fun observeOverallBudget(monthKey: String): Flow<BudgetEntity?>
+
+    @Query("SELECT * FROM budgets WHERE category IS NULL ORDER BY monthKey DESC")
+    fun observeOverallBudgets(): Flow<List<BudgetEntity>>
 
     @Query("DELETE FROM budgets WHERE monthKey = :monthKey AND category IS NULL")
     suspend fun deleteOverallBudget(monthKey: String)
@@ -108,4 +125,24 @@ interface SubscriptionDao {
 
     @Query("SELECT * FROM subscriptions")
     suspend fun getAll(): List<SubscriptionEntity>
+}
+
+@Dao
+interface ScheduledTransactionDao {
+    @Query(
+        """
+        SELECT s.id, s.merchant, s.amount, s.scheduledForMillis, s.category, s.kind, s.sourceSender,
+               a.name AS accountName, a.kind AS accountKind
+        FROM scheduled_transactions s
+        LEFT JOIN accounts a ON s.accountId = a.id
+        ORDER BY s.scheduledForMillis ASC, s.createdAtMillis DESC
+        """,
+    )
+    fun observeScheduledTransactions(): Flow<List<ScheduledTransactionRecord>>
+
+    @Query("SELECT COUNT(*) > 0 FROM scheduled_transactions WHERE fingerprint = :fingerprint")
+    suspend fun fingerprintExists(fingerprint: String): Boolean
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(transaction: ScheduledTransactionEntity): Long
 }

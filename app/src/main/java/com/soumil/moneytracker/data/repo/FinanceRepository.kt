@@ -5,16 +5,24 @@ import com.soumil.moneytracker.data.db.AccountDao
 import com.soumil.moneytracker.data.db.AccountEntity
 import com.soumil.moneytracker.data.db.BudgetDao
 import com.soumil.moneytracker.data.db.BudgetEntity
+import com.soumil.moneytracker.data.db.ScheduledTransactionDao
+import com.soumil.moneytracker.data.db.ScheduledTransactionEntity
+import com.soumil.moneytracker.data.db.ScheduledTransactionRecord
 import com.soumil.moneytracker.data.db.SubscriptionDao
 import com.soumil.moneytracker.data.db.SubscriptionEntity
 import com.soumil.moneytracker.data.db.SubscriptionRecord
 import com.soumil.moneytracker.data.db.TransactionDao
 import com.soumil.moneytracker.data.db.TransactionEntity
 import com.soumil.moneytracker.data.db.TransactionRecord
+import com.soumil.moneytracker.data.local.SetupPreferences
+import com.soumil.moneytracker.data.model.AccountDraft
 import com.soumil.moneytracker.data.model.AccountKind
+import com.soumil.moneytracker.data.model.CardType
 import com.soumil.moneytracker.data.model.CategorySlice
 import com.soumil.moneytracker.data.model.DashboardState
 import com.soumil.moneytracker.data.model.ImportReport
+import com.soumil.moneytracker.data.model.MonthBudgetSummary
+import com.soumil.moneytracker.data.model.ParsedScheduledTransaction
 import com.soumil.moneytracker.data.model.SubscriptionDraft
 import com.soumil.moneytracker.data.model.SubscriptionState
 import com.soumil.moneytracker.data.model.TransactionCategory
@@ -37,16 +45,28 @@ import kotlinx.coroutines.flow.first
 class FinanceRepository(
     private val accountDao: AccountDao,
     private val budgetDao: BudgetDao,
+    private val scheduledTransactionDao: ScheduledTransactionDao,
     private val subscriptionDao: SubscriptionDao,
     private val transactionDao: TransactionDao,
     private val parser: SmsParser,
+    private val setupPreferences: SetupPreferences,
 ) {
 
     val accounts: Flow<List<AccountEntity>> = accountDao.observeAccounts()
+    val isInitialSetupComplete: Flow<Boolean> = setupPreferences.isInitialSetupComplete
+    val scheduledTransactions: Flow<List<ScheduledTransactionRecord>> = scheduledTransactionDao.observeScheduledTransactions()
     val transactions: Flow<List<TransactionRecord>> = transactionDao.observeTransactions()
     val postedTransactions: Flow<List<TransactionRecord>> = transactionDao.observePostedTransactions()
     val subscriptions: Flow<List<SubscriptionRecord>> = subscriptionDao.observeSubscriptions()
     val currentBudget: Flow<BudgetEntity?> = budgetDao.observeOverallBudget(currentMonthKey())
+    val allBudgets: Flow<List<BudgetEntity>> = budgetDao.observeOverallBudgets()
+
+    val budgetHistory: Flow<List<MonthBudgetSummary>> = combine(
+        postedTransactions,
+        allBudgets,
+    ) { posted, budgets ->
+        buildBudgetHistory(posted, budgets)
+    }
 
     val dashboard: Flow<DashboardState> = combine(
         postedTransactions,
@@ -63,8 +83,116 @@ class FinanceRepository(
     }
 
     suspend fun bootstrap() {
-        ensureStarterAccounts()
         refreshRecurringSuggestions()
+    }
+
+    fun markInitialSetupComplete() {
+        setupPreferences.markInitialSetupComplete(true)
+    }
+
+    suspend fun configurePrimaryBank(
+        institutionName: String,
+        accountName: String,
+    ) {
+        val normalizedInstitution = normalizeInstitutionName(institutionName)
+            ?: institutionName.trim().takeIf { it.isNotBlank() }
+            ?: error("Institution name is required")
+        val resolvedName = accountName.trim().ifBlank { normalizedInstitution }
+        val existingAccounts = accountDao.getAccounts()
+        val target = findPrimaryBankAccount(existingAccounts, normalizedInstitution)
+            ?: existingAccounts.firstOrNull { account ->
+                account.kind == AccountKind.BANK &&
+                    (account.isSystemGenerated || account.institutionName == null)
+            }
+
+        val entity = if (target == null) {
+            AccountEntity(
+                name = resolvedName,
+                kind = AccountKind.BANK,
+                institutionName = normalizedInstitution,
+                isSystemGenerated = false,
+            )
+        } else {
+            target.copy(
+                name = resolvedName,
+                kind = AccountKind.BANK,
+                institutionName = normalizedInstitution,
+                cardType = null,
+                lastFourDigits = null,
+                isRupayCreditCard = false,
+                isSystemGenerated = false,
+            )
+        }
+
+        if (target == null) {
+            accountDao.insert(entity)
+        } else {
+            accountDao.update(entity)
+        }
+    }
+
+    suspend fun addAccount(draft: AccountDraft) {
+        val sanitizedDraft = sanitizeAccountDraft(draft)
+        val existingAccounts = accountDao.getAccounts()
+        val existing = when (sanitizedDraft.kind) {
+            AccountKind.CARD -> findConfiguredCardAccount(
+                accounts = existingAccounts,
+                lastFourDigits = sanitizedDraft.lastFourDigits,
+                institutionName = sanitizedDraft.institutionName,
+                cardType = sanitizedDraft.cardType,
+            )
+
+            else -> null
+        }
+
+        if (existing != null) {
+            accountDao.update(
+                existing.copy(
+                    name = sanitizedDraft.name,
+                    institutionName = sanitizedDraft.institutionName,
+                    cardType = sanitizedDraft.cardType,
+                    lastFourDigits = sanitizedDraft.lastFourDigits,
+                    isRupayCreditCard = sanitizedDraft.isRupayCreditCard,
+                    isSystemGenerated = false,
+                ),
+            )
+            return
+        }
+
+        accountDao.insert(
+            AccountEntity(
+                name = sanitizedDraft.name,
+                kind = sanitizedDraft.kind,
+                institutionName = sanitizedDraft.institutionName,
+                cardType = sanitizedDraft.cardType,
+                lastFourDigits = sanitizedDraft.lastFourDigits,
+                isRupayCreditCard = sanitizedDraft.isRupayCreditCard,
+                isSystemGenerated = false,
+            ),
+        )
+    }
+
+    suspend fun updateAccount(
+        accountId: Long,
+        draft: AccountDraft,
+    ) {
+        val existing = accountDao.findById(accountId) ?: error("Account $accountId not found")
+        val sanitizedDraft = sanitizeAccountDraft(draft.copy(kind = existing.kind))
+        accountDao.update(
+            existing.copy(
+                name = sanitizedDraft.name,
+                institutionName = sanitizedDraft.institutionName,
+                cardType = sanitizedDraft.cardType,
+                lastFourDigits = sanitizedDraft.lastFourDigits,
+                isRupayCreditCard = sanitizedDraft.isRupayCreditCard,
+                isSystemGenerated = false,
+            ),
+        )
+    }
+
+    suspend fun deleteAccount(accountId: Long) {
+        accountDao.findById(accountId) ?: return
+        accountDao.deleteById(accountId)
     }
 
     suspend fun setMonthlyBudget(amount: Double) {
@@ -103,19 +231,64 @@ class FinanceRepository(
             fingerprint = fingerprint,
             status = TransactionStatus.POSTED,
             note = draft.note?.takeIf { it.isNotBlank() },
+            countsTowardBudget = draft.countsTowardBudget,
         )
         transactionDao.insert(transaction)
     }
 
+    suspend fun updateTransaction(transactionId: Long, draft: TransactionDraft) {
+        val existing = transactionDao.getById(transactionId)
+            ?: error("Transaction $transactionId not found")
+        transactionDao.update(
+            existing.copy(
+                amount = draft.amount,
+                direction = draft.direction,
+                merchant = draft.merchant.trim(),
+                category = draft.category,
+                accountId = draft.accountId,
+                confidence = 1.0,
+                status = TransactionStatus.POSTED,
+                note = draft.note?.trim()?.takeIf { it.isNotEmpty() },
+                countsTowardBudget = draft.countsTowardBudget,
+            ),
+        )
+    }
+
     suspend fun addSubscription(draft: SubscriptionDraft) {
+        val merchantName = draft.merchant.trim()
         subscriptionDao.insert(
             SubscriptionEntity(
-                merchant = draft.merchant.trim(),
+                merchant = merchantName,
                 amount = draft.amount,
                 billingCycleDays = draft.billingCycleDays,
                 nextDueAtMillis = draft.nextDueAtMillis,
                 accountId = draft.accountId,
                 state = SubscriptionState.ACTIVE,
+            ),
+        )
+        val fingerprint = hashFingerprint(
+            sender = "SUBSCRIPTION",
+            body = listOf(
+                merchantName,
+                draft.amount,
+                draft.nextDueAtMillis,
+                draft.accountId ?: "noaccount",
+            ).joinToString("|"),
+            receivedAtMillis = draft.nextDueAtMillis,
+        )
+        transactionDao.insert(
+            TransactionEntity(
+                amount = draft.amount,
+                direction = TransactionDirection.DEBIT,
+                occurredAtMillis = draft.nextDueAtMillis,
+                merchant = merchantName,
+                category = TransactionCategory.SUBSCRIPTION,
+                accountId = draft.accountId,
+                sourceSender = "SUBSCRIPTION",
+                smsBody = null,
+                confidence = 1.0,
+                fingerprint = fingerprint,
+                status = TransactionStatus.POSTED,
             ),
         )
     }
@@ -133,8 +306,12 @@ class FinanceRepository(
         transactionDao.updateStatus(transactionId, TransactionStatus.POSTED.name)
     }
 
-    suspend fun dismissTransaction(transactionId: Long) {
+    suspend fun deleteTransaction(transactionId: Long) {
         transactionDao.deleteById(transactionId)
+    }
+
+    suspend fun setTransactionBudgetInclusion(transactionId: Long, countsTowardBudget: Boolean) {
+        transactionDao.updateBudgetInclusion(transactionId, countsTowardBudget)
     }
 
     suspend fun processIncomingSms(
@@ -142,38 +319,14 @@ class FinanceRepository(
         body: String,
         receivedAtMillis: Long,
     ): Boolean {
-        val fingerprint = hashFingerprint(sender, body, receivedAtMillis)
-        if (transactionDao.fingerprintExists(fingerprint)) {
-            return false
+        return when (ingestMessage(sender = sender, body = body, receivedAtMillis = receivedAtMillis)) {
+            SmsIngestionOutcome.IMPORTED,
+            SmsIngestionOutcome.REVIEW,
+            SmsIngestionOutcome.SCHEDULED -> true
+
+            SmsIngestionOutcome.DUPLICATE,
+            SmsIngestionOutcome.IGNORED -> false
         }
-
-        val parsed = parser.parse(sender = sender, body = body)
-        if (parsed.shouldIgnore || parsed.amount == null || parsed.direction == null) {
-            return false
-        }
-
-        val accountId = resolveAccount(
-            parsed.accountLabel ?: defaultAccountName(parsed.accountKind),
-            parsed.accountKind,
-        )
-
-        val status = if (parsed.confidence >= 0.7) TransactionStatus.POSTED else TransactionStatus.REVIEW
-        val merchantLabel = parsed.merchant ?: fallbackMerchant(sender, parsed.direction)
-
-        val entity = TransactionEntity(
-            amount = parsed.amount,
-            direction = parsed.direction,
-            occurredAtMillis = receivedAtMillis,
-            merchant = merchantLabel,
-            category = parsed.inferredCategory,
-            accountId = accountId,
-            sourceSender = sender,
-            smsBody = body,
-            confidence = parsed.confidence,
-            fingerprint = fingerprint,
-            status = status,
-        )
-        return transactionDao.insert(entity) != -1L
     }
 
     suspend fun importRecentSms(
@@ -183,53 +336,38 @@ class FinanceRepository(
         val importer = SmsImportManager(contentResolver)
         var imported = 0
         var review = 0
+        var scheduled = 0
         var ignored = 0
         val messages = importer.readRecentMessages(limit)
         messages.forEach { message ->
-            val fingerprint = hashFingerprint(message.sender, message.body, message.timestampMillis)
-            if (transactionDao.fingerprintExists(fingerprint)) return@forEach
-            val parsed = parser.parse(message.sender, message.body)
-            if (parsed.shouldIgnore || parsed.amount == null || parsed.direction == null) {
-                ignored += 1
-                return@forEach
-            }
-
-            val accountId = resolveAccount(
-                parsed.accountLabel ?: defaultAccountName(parsed.accountKind),
-                parsed.accountKind,
-            )
-            val status = if (parsed.confidence >= 0.7) TransactionStatus.POSTED else TransactionStatus.REVIEW
-            val inserted = transactionDao.insert(
-                TransactionEntity(
-                    amount = parsed.amount,
-                    direction = parsed.direction,
-                    occurredAtMillis = message.timestampMillis,
-                    merchant = parsed.merchant ?: fallbackMerchant(message.sender, parsed.direction),
-                    category = parsed.inferredCategory,
-                    accountId = accountId,
-                    sourceSender = message.sender,
-                    smsBody = message.body,
-                    confidence = parsed.confidence,
-                    fingerprint = fingerprint,
-                    status = status,
-                ),
-            )
-
-            if (inserted != -1L) {
-                if (status == TransactionStatus.POSTED) imported += 1 else review += 1
+            when (
+                ingestMessage(
+                    sender = message.sender,
+                    body = message.body,
+                    receivedAtMillis = message.timestampMillis,
+                )
+            ) {
+                SmsIngestionOutcome.IMPORTED -> imported += 1
+                SmsIngestionOutcome.REVIEW -> review += 1
+                SmsIngestionOutcome.SCHEDULED -> scheduled += 1
+                SmsIngestionOutcome.IGNORED -> ignored += 1
+                SmsIngestionOutcome.DUPLICATE -> Unit
             }
         }
         return ImportReport(
             scanned = messages.size,
             imported = imported,
             sentToReview = review,
+            scheduled = scheduled,
             ignored = ignored,
         )
     }
 
     suspend fun refreshRecurringSuggestions() {
         val existingMerchants = subscriptionDao.getAll().associateBy { normalizeMerchant(it.merchant) }
-        val debitTransactions = postedTransactions.first().filter { it.direction == TransactionDirection.DEBIT }
+        val debitTransactions = postedTransactions.first().filter {
+            it.direction == TransactionDirection.DEBIT && it.category != TransactionCategory.TRANSFER
+        }
         val grouped = debitTransactions.groupBy { normalizeMerchant(it.merchant) }
 
         grouped.forEach { (merchantKey, transactions) ->
@@ -263,26 +401,6 @@ class FinanceRepository(
         }
     }
 
-    private suspend fun ensureStarterAccounts() {
-        if (accountDao.countAccounts() > 0) return
-        listOf(
-            AccountEntity(name = "Primary Bank", kind = AccountKind.BANK, isSystemGenerated = true),
-            AccountEntity(name = "UPI Wallet", kind = AccountKind.UPI, isSystemGenerated = true),
-            AccountEntity(name = "Credit Card", kind = AccountKind.CARD, isSystemGenerated = true),
-        ).forEach { accountDao.insert(it) }
-    }
-
-    private suspend fun resolveAccount(name: String, kind: AccountKind): Long {
-        return accountDao.findByName(name)?.id
-            ?: accountDao.insert(
-                AccountEntity(
-                    name = name,
-                    kind = kind,
-                    isSystemGenerated = true,
-                ),
-            )
-    }
-
     private fun buildDashboardState(
         postedTransactions: List<TransactionRecord>,
         allTransactions: List<TransactionRecord>,
@@ -293,17 +411,19 @@ class FinanceRepository(
         val currentMonthTransactions = postedTransactions.filter {
             YearMonth.from(it.toLocalDate()) == currentMonth
         }
-        val monthSpent = currentMonthTransactions
-            .filter { it.direction == TransactionDirection.DEBIT }
-            .sumOf(TransactionRecord::amount)
+        val spendTransactions = currentMonthTransactions.filter {
+            it.direction == TransactionDirection.DEBIT &&
+                it.category != TransactionCategory.TRANSFER &&
+                it.countsTowardBudget
+        }
+        val monthSpent = spendTransactions.sumOf(TransactionRecord::amount)
         val monthIncome = currentMonthTransactions
             .filter { it.direction == TransactionDirection.CREDIT }
             .sumOf(TransactionRecord::amount)
         val trackedBalance = postedTransactions.sumOf {
             if (it.direction == TransactionDirection.CREDIT) it.amount else -it.amount
         }
-        val categoryBreakdown = currentMonthTransactions
-            .filter { it.direction == TransactionDirection.DEBIT }
+        val categoryBreakdown = spendTransactions
             .groupBy(TransactionRecord::category)
             .map { (category, items) -> CategorySlice(category, items.sumOf(TransactionRecord::amount)) }
             .sortedByDescending(CategorySlice::amount)
@@ -315,7 +435,13 @@ class FinanceRepository(
             TrendPoint(
                 date = date,
                 income = dayTransactions.filter { it.direction == TransactionDirection.CREDIT }.sumOf(TransactionRecord::amount),
-                expense = dayTransactions.filter { it.direction == TransactionDirection.DEBIT }.sumOf(TransactionRecord::amount),
+                expense = dayTransactions
+                    .filter {
+                        it.direction == TransactionDirection.DEBIT &&
+                            it.category != TransactionCategory.TRANSFER &&
+                            it.countsTowardBudget
+                    }
+                    .sumOf(TransactionRecord::amount),
             )
         }
 
@@ -334,12 +460,61 @@ class FinanceRepository(
 
     private fun currentMonthKey(): String = YearMonth.now().toString()
 
-    private fun defaultAccountName(kind: AccountKind): String {
+    private fun buildBudgetHistory(
+        postedTransactions: List<TransactionRecord>,
+        budgets: List<BudgetEntity>,
+    ): List<MonthBudgetSummary> {
+        val groupedTransactions = postedTransactions.groupBy { record ->
+            YearMonth.from(
+                Instant.ofEpochMilli(record.occurredAtMillis)
+                    .atZone(ZoneId.systemDefault())
+                    .toLocalDate(),
+            )
+        }
+        val budgetByMonth = budgets.associateBy { it.monthKey }
+        val months = (groupedTransactions.keys + budgetByMonth.keys.mapNotNull { runCatching { YearMonth.parse(it) }.getOrNull() })
+            .toSortedSet(compareByDescending { it })
+
+        val monthFormatter = java.time.format.DateTimeFormatter.ofPattern("LLLL yyyy")
+        return months.map { yearMonth ->
+            val key = yearMonth.toString()
+            val monthTransactions = groupedTransactions[yearMonth].orEmpty()
+            val spent = monthTransactions
+                .filter {
+                    it.direction == TransactionDirection.DEBIT &&
+                        it.category != TransactionCategory.TRANSFER &&
+                        it.countsTowardBudget
+                }
+                .sumOf(TransactionRecord::amount)
+            MonthBudgetSummary(
+                yearMonthKey = key,
+                monthLabel = yearMonth.format(monthFormatter),
+                budgetLimit = budgetByMonth[key]?.amountLimit,
+                spent = spent,
+                transactions = monthTransactions.sortedByDescending(TransactionRecord::occurredAtMillis),
+            )
+        }
+    }
+
+    private fun defaultAccountName(
+        kind: AccountKind,
+        institutionName: String? = null,
+        cardType: CardType? = null,
+        lastFourDigits: String? = null,
+    ): String {
         return when (kind) {
-            AccountKind.BANK -> "Primary Bank"
-            AccountKind.CARD -> "Credit Card"
+            AccountKind.BANK -> listOfNotNull(
+                institutionName,
+                lastFourDigits?.let { "A/C $it" },
+            ).joinToString(" ").ifBlank { "Bank Account" }
+            AccountKind.CARD -> listOfNotNull(
+                institutionName,
+                cardType?.label,
+                lastFourDigits?.let { "ending $it" },
+            ).joinToString(" ").ifBlank { "Card" }
+
             AccountKind.WALLET -> "Wallet"
-            AccountKind.UPI -> "UPI Wallet"
+            AccountKind.UPI -> "UPI"
             AccountKind.CASH -> "Cash"
         }
     }
@@ -355,13 +530,418 @@ class FinanceRepository(
         return merchant.lowercase().replace(Regex("[^a-z0-9]"), "")
     }
 
+    private suspend fun ingestMessage(
+        sender: String,
+        body: String,
+        receivedAtMillis: Long,
+    ): SmsIngestionOutcome {
+        val parsedMessage = parser.parseMessage(sender = sender, body = body)
+        if (parsedMessage.shouldIgnore) {
+            return SmsIngestionOutcome.IGNORED
+        }
+
+        parsedMessage.scheduledTransaction?.let { scheduled ->
+            return storeScheduledTransaction(
+                sender = sender,
+                body = body,
+                parsed = scheduled,
+            )
+        }
+
+        val parsed = parsedMessage.transaction ?: return SmsIngestionOutcome.IGNORED
+        if (parsed.amount == null || parsed.direction == null) {
+            return SmsIngestionOutcome.IGNORED
+        }
+
+        val fingerprint = hashFingerprint(sender, body, receivedAtMillis)
+        if (transactionDao.fingerprintExists(fingerprint)) {
+            return SmsIngestionOutcome.DUPLICATE
+        }
+
+        val accountId = resolveParsedAccount(
+            accountLabel = parsed.accountLabel,
+            accountKind = parsed.accountKind,
+            institutionName = parsed.institutionName,
+            bankAccountLastFourDigits = parsed.bankAccountLastFourDigits,
+            cardLastFourDigits = parsed.cardLastFourDigits,
+            cardType = parsed.cardType,
+            isCardBillPayment = parsed.isCardBillPayment,
+        )
+        val status = if (parsed.confidence >= 0.7) TransactionStatus.POSTED else TransactionStatus.REVIEW
+        val inserted = transactionDao.insert(
+            TransactionEntity(
+                amount = parsed.amount,
+                direction = parsed.direction,
+                occurredAtMillis = parsed.occurredAtMillis ?: receivedAtMillis,
+                merchant = parsed.merchant ?: fallbackMerchant(sender, parsed.direction),
+                category = parsed.inferredCategory,
+                accountId = accountId,
+                sourceSender = sender,
+                smsBody = body,
+                confidence = parsed.confidence,
+                fingerprint = fingerprint,
+                status = status,
+            ),
+        )
+        if (inserted == -1L) {
+            return SmsIngestionOutcome.DUPLICATE
+        }
+        return if (status == TransactionStatus.POSTED) {
+            SmsIngestionOutcome.IMPORTED
+        } else {
+            SmsIngestionOutcome.REVIEW
+        }
+    }
+
+    private suspend fun storeScheduledTransaction(
+        sender: String,
+        body: String,
+        parsed: ParsedScheduledTransaction,
+    ): SmsIngestionOutcome {
+        val amount = parsed.amount ?: return SmsIngestionOutcome.IGNORED
+        val scheduledForMillis = parsed.scheduledForMillis ?: return SmsIngestionOutcome.IGNORED
+        val accountId = resolveParsedAccount(
+            accountLabel = parsed.accountLabel,
+            accountKind = parsed.accountKind,
+            institutionName = parsed.institutionName,
+            bankAccountLastFourDigits = parsed.bankAccountLastFourDigits,
+            cardLastFourDigits = parsed.cardLastFourDigits,
+            cardType = parsed.cardType,
+            isCardBillPayment = false,
+        )
+        val merchant = parsed.merchant ?: fallbackScheduledMerchant(sender)
+        val fingerprint = hashScheduledFingerprint(
+            sender = sender,
+            merchant = merchant,
+            amount = amount,
+            scheduledForMillis = scheduledForMillis,
+            accountLabel = parsed.accountLabel,
+            kind = parsed.kind.name,
+        )
+        if (scheduledTransactionDao.fingerprintExists(fingerprint)) {
+            return SmsIngestionOutcome.DUPLICATE
+        }
+        val inserted = scheduledTransactionDao.insert(
+            ScheduledTransactionEntity(
+                merchant = merchant,
+                amount = amount,
+                scheduledForMillis = scheduledForMillis,
+                category = parsed.inferredCategory,
+                accountId = accountId,
+                sourceSender = sender,
+                smsBody = body,
+                kind = parsed.kind,
+                fingerprint = fingerprint,
+            ),
+        )
+        return if (inserted == -1L) {
+            SmsIngestionOutcome.DUPLICATE
+        } else {
+            SmsIngestionOutcome.SCHEDULED
+        }
+    }
+
+    private suspend fun resolveParsedAccount(
+        accountLabel: String?,
+        accountKind: AccountKind,
+        institutionName: String?,
+        bankAccountLastFourDigits: String?,
+        cardLastFourDigits: String?,
+        cardType: CardType?,
+        isCardBillPayment: Boolean,
+    ): Long? {
+        val existingAccounts = accountDao.getAccounts()
+        val normalizedInstitution = normalizeInstitutionName(institutionName)
+        val normalizedBankLastFour = normalizeLastFourDigits(bankAccountLastFourDigits)
+        val normalizedLastFour = normalizeLastFourDigits(cardLastFourDigits)
+
+        if (isCardBillPayment) {
+            findConfiguredBankAccount(
+                accounts = existingAccounts,
+                lastFourDigits = normalizedBankLastFour,
+                institutionName = normalizedInstitution,
+            )?.let { return it.id }
+            findPrimaryBankAccount(existingAccounts, normalizedInstitution)?.let { return it.id }
+        }
+
+        if (accountKind == AccountKind.BANK) {
+            findConfiguredBankAccount(
+                accounts = existingAccounts,
+                lastFourDigits = normalizedBankLastFour,
+                institutionName = normalizedInstitution,
+            )?.let { return it.id }
+        }
+
+        if (normalizedLastFour != null) {
+            findConfiguredCardAccount(
+                accounts = existingAccounts,
+                lastFourDigits = normalizedLastFour,
+                institutionName = normalizedInstitution,
+                cardType = cardType,
+            )?.let { return it.id }
+        }
+
+        return when (accountKind) {
+            AccountKind.BANK -> {
+                val bankAccount = findConfiguredBankAccount(
+                    accounts = existingAccounts,
+                    lastFourDigits = normalizedBankLastFour,
+                    institutionName = normalizedInstitution,
+                ) ?: findPrimaryBankAccount(existingAccounts, normalizedInstitution)
+                bankAccount?.id ?: resolveAccount(
+                    name = accountLabel ?: defaultAccountName(
+                        kind = AccountKind.BANK,
+                        institutionName = normalizedInstitution,
+                        lastFourDigits = normalizedBankLastFour,
+                    ),
+                    kind = AccountKind.BANK,
+                    institutionName = normalizedInstitution,
+                    lastFourDigits = normalizedBankLastFour,
+                )
+            }
+
+            AccountKind.CARD -> resolveAccount(
+                name = accountLabel ?: defaultAccountName(
+                    kind = AccountKind.CARD,
+                    institutionName = normalizedInstitution,
+                    cardType = cardType,
+                    lastFourDigits = normalizedLastFour,
+                ),
+                kind = AccountKind.CARD,
+                institutionName = normalizedInstitution,
+                cardType = cardType,
+                lastFourDigits = normalizedLastFour,
+            )
+
+            AccountKind.WALLET,
+            AccountKind.UPI,
+            AccountKind.CASH -> resolveAccount(
+                name = accountLabel ?: defaultAccountName(accountKind),
+                kind = accountKind,
+            )
+        }
+    }
+
+    private suspend fun resolveAccount(
+        name: String,
+        kind: AccountKind,
+        institutionName: String? = null,
+        cardType: CardType? = null,
+        lastFourDigits: String? = null,
+    ): Long {
+        val normalizedInstitution = normalizeInstitutionName(institutionName)
+        val normalizedLastFour = normalizeLastFourDigits(lastFourDigits)
+        val existingAccounts = accountDao.getAccounts()
+        val existing = when (kind) {
+            AccountKind.BANK -> findPrimaryBankAccount(existingAccounts, normalizedInstitution)
+                ?.takeIf { normalizedInstitution != null }
+                ?: existingAccounts.firstOrNull { account ->
+                    account.kind == AccountKind.BANK &&
+                        account.name.equals(name, ignoreCase = true)
+                }
+
+            AccountKind.CARD -> findConfiguredCardAccount(
+                accounts = existingAccounts,
+                lastFourDigits = normalizedLastFour,
+                institutionName = normalizedInstitution,
+                cardType = cardType,
+            ) ?: existingAccounts.firstOrNull { account ->
+                account.kind == AccountKind.CARD &&
+                    account.name.equals(name, ignoreCase = true)
+            }
+
+            else -> existingAccounts.firstOrNull { account ->
+                account.kind == kind && account.name.equals(name, ignoreCase = true)
+            }
+        }
+
+        if (existing != null) {
+            val hydrated = existing.copy(
+                institutionName = existing.institutionName ?: normalizedInstitution,
+                cardType = existing.cardType ?: cardType,
+                lastFourDigits = existing.lastFourDigits ?: normalizedLastFour,
+            )
+            if (hydrated != existing) {
+                accountDao.update(hydrated)
+            }
+            return existing.id
+        }
+
+        return accountDao.insert(
+            AccountEntity(
+                name = name,
+                kind = kind,
+                institutionName = normalizedInstitution,
+                cardType = cardType,
+                lastFourDigits = normalizedLastFour,
+                isSystemGenerated = true,
+            ),
+        )
+    }
+
+    private fun findPrimaryBankAccount(
+        accounts: List<AccountEntity>,
+        institutionName: String?,
+    ): AccountEntity? {
+        val normalizedInstitution = normalizeInstitutionName(institutionName)
+        if (normalizedInstitution != null) {
+            return accounts.firstOrNull { account ->
+                account.kind == AccountKind.BANK &&
+                    normalizeInstitutionName(account.institutionName) == normalizedInstitution
+            } ?: accounts.firstOrNull { account ->
+                account.kind == AccountKind.BANK &&
+                    account.name.contains(normalizedInstitution.removeSuffix(" Bank"), ignoreCase = true)
+            }
+        }
+        return accounts.firstOrNull { account ->
+            account.kind == AccountKind.BANK && account.institutionName != null
+        } ?: accounts.firstOrNull { account ->
+            account.kind == AccountKind.BANK
+        }
+    }
+
+    private fun findConfiguredBankAccount(
+        accounts: List<AccountEntity>,
+        lastFourDigits: String?,
+        institutionName: String?,
+    ): AccountEntity? {
+        val normalizedLastFour = normalizeLastFourDigits(lastFourDigits) ?: return null
+        val normalizedInstitution = normalizeInstitutionName(institutionName)
+        return accounts.firstOrNull { account ->
+            account.kind == AccountKind.BANK &&
+                (account.lastFourDigits == normalizedLastFour || account.name.contains(normalizedLastFour)) &&
+                (normalizedInstitution == null ||
+                    account.institutionName == null ||
+                    normalizeInstitutionName(account.institutionName) == normalizedInstitution)
+        } ?: accounts.firstOrNull { account ->
+            account.kind == AccountKind.BANK &&
+                (account.lastFourDigits == normalizedLastFour || account.name.contains(normalizedLastFour))
+        }
+    }
+
+    private fun findConfiguredCardAccount(
+        accounts: List<AccountEntity>,
+        lastFourDigits: String?,
+        institutionName: String?,
+        cardType: CardType?,
+    ): AccountEntity? {
+        val normalizedLastFour = normalizeLastFourDigits(lastFourDigits) ?: return null
+        val normalizedInstitution = normalizeInstitutionName(institutionName)
+        return accounts.firstOrNull { account ->
+            account.kind == AccountKind.CARD &&
+                account.lastFourDigits == normalizedLastFour &&
+                (cardType == null || account.cardType == null || account.cardType == cardType) &&
+                (normalizedInstitution == null ||
+                    account.institutionName == null ||
+                    normalizeInstitutionName(account.institutionName) == normalizedInstitution)
+        } ?: accounts.firstOrNull { account ->
+            account.kind == AccountKind.CARD &&
+                account.lastFourDigits == normalizedLastFour
+        } ?: accounts.firstOrNull { account ->
+            account.kind == AccountKind.CARD &&
+                account.lastFourDigits == null &&
+                account.name.contains(normalizedLastFour) &&
+                (normalizedInstitution == null ||
+                    account.name.contains(normalizedInstitution.removeSuffix(" Bank"), ignoreCase = true))
+        }
+    }
+
+    private fun sanitizeAccountDraft(draft: AccountDraft): AccountDraft {
+        val normalizedInstitution = normalizeInstitutionName(draft.institutionName)
+        val normalizedLastFour = normalizeLastFourDigits(draft.lastFourDigits)
+        val normalizedCardType = if (draft.kind == AccountKind.CARD) draft.cardType else null
+        if (draft.kind == AccountKind.CARD) {
+            require(normalizedCardType != null) { "Card type is required for card accounts." }
+            require(normalizedLastFour != null) { "Card last four digits are required for card accounts." }
+        }
+        val resolvedName = draft.name.trim().ifBlank {
+            defaultAccountName(
+                kind = draft.kind,
+                institutionName = normalizedInstitution,
+                cardType = normalizedCardType,
+                lastFourDigits = normalizedLastFour,
+            )
+        }
+        return draft.copy(
+            name = resolvedName,
+            institutionName = when (draft.kind) {
+                AccountKind.BANK,
+                AccountKind.CARD -> normalizedInstitution
+
+                else -> null
+            },
+            cardType = normalizedCardType,
+            lastFourDigits = when (draft.kind) {
+                AccountKind.BANK,
+                AccountKind.CARD -> normalizedLastFour
+
+                else -> null
+            },
+            isRupayCreditCard = draft.kind == AccountKind.CARD &&
+                normalizedCardType == CardType.CREDIT &&
+                draft.isRupayCreditCard,
+        )
+    }
+
+    private fun normalizeInstitutionName(value: String?): String? {
+        val normalized = value?.trim()?.lowercase()?.takeIf { it.isNotBlank() } ?: return null
+        return when {
+            "axis" in normalized -> "Axis Bank"
+            normalized.contains("state bank") || normalized == "sbi" -> "State Bank of India"
+            "hdfc" in normalized -> "HDFC Bank"
+            "icici" in normalized -> "ICICI Bank"
+            "kotak" in normalized -> "Kotak Bank"
+            else -> value.trim()
+        }
+    }
+
+    private fun normalizeLastFourDigits(value: String?): String? {
+        val digits = value?.filter(Char::isDigit)?.takeLast(4).orEmpty()
+        return digits.takeIf { it.length == 4 }
+    }
+
+    private fun fallbackScheduledMerchant(sender: String): String {
+        return "Scheduled via ${sender.uppercase()}"
+    }
+
     private fun hashFingerprint(sender: String, body: String, receivedAtMillis: Long): String {
-        val input = "$sender|$body|$receivedAtMillis"
+        return hashCompositeFingerprint(sender, body, receivedAtMillis)
+    }
+
+    private fun hashScheduledFingerprint(
+        sender: String,
+        merchant: String,
+        amount: Double,
+        scheduledForMillis: Long,
+        accountLabel: String?,
+        kind: String,
+    ): String {
+        return hashCompositeFingerprint(
+            "scheduled",
+            sender.uppercase(),
+            normalizeMerchant(merchant),
+            amount,
+            scheduledForMillis,
+            accountLabel ?: "",
+            kind,
+        )
+    }
+
+    private fun hashCompositeFingerprint(vararg parts: Any): String {
+        val input = parts.joinToString(separator = "|")
         val digest = MessageDigest.getInstance("SHA-256").digest(input.toByteArray())
         return digest.joinToString(separator = "") { byte -> "%02x".format(byte) }
     }
 
     private fun TransactionRecord.toLocalDate(): LocalDate {
         return Instant.ofEpochMilli(occurredAtMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+    }
+
+    private enum class SmsIngestionOutcome {
+        IMPORTED,
+        REVIEW,
+        SCHEDULED,
+        IGNORED,
+        DUPLICATE,
     }
 }

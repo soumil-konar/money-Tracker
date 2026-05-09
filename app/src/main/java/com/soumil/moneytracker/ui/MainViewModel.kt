@@ -6,11 +6,17 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.soumil.moneytracker.data.db.AccountEntity
 import com.soumil.moneytracker.data.db.BudgetEntity
+import com.soumil.moneytracker.data.db.ScheduledTransactionRecord
 import com.soumil.moneytracker.data.db.SubscriptionRecord
 import com.soumil.moneytracker.data.db.TransactionRecord
+import com.soumil.moneytracker.data.model.AccountDraft
+import com.soumil.moneytracker.data.model.AccountKind
 import com.soumil.moneytracker.data.model.DashboardState
+import com.soumil.moneytracker.data.model.MonthBudgetSummary
 import com.soumil.moneytracker.data.model.SubscriptionDraft
 import com.soumil.moneytracker.data.model.SubscriptionState
+import com.soumil.moneytracker.data.model.TransactionCategory
+import com.soumil.moneytracker.data.model.TransactionDirection
 import com.soumil.moneytracker.data.model.TransactionDraft
 import com.soumil.moneytracker.data.model.TransactionFilter
 import com.soumil.moneytracker.data.model.TransactionStatus
@@ -53,7 +59,25 @@ class MainViewModel(
         initialValue = null,
     )
 
+    val budgetHistory: StateFlow<List<MonthBudgetSummary>> = repository.budgetHistory.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList(),
+    )
+
+    val isInitialSetupComplete: StateFlow<Boolean> = repository.isInitialSetupComplete.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = false,
+    )
+
     val subscriptions: StateFlow<List<SubscriptionRecord>> = repository.subscriptions.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList(),
+    )
+
+    val scheduledTransactions: StateFlow<List<ScheduledTransactionRecord>> = repository.scheduledTransactions.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = emptyList(),
@@ -65,8 +89,28 @@ class MainViewModel(
     ) { transactions, filter ->
         when (filter) {
             TransactionFilter.ALL -> transactions
-            TransactionFilter.SPENT -> transactions.filter { it.direction == com.soumil.moneytracker.data.model.TransactionDirection.DEBIT && it.status == TransactionStatus.POSTED }
-            TransactionFilter.INCOME -> transactions.filter { it.direction == com.soumil.moneytracker.data.model.TransactionDirection.CREDIT && it.status == TransactionStatus.POSTED }
+            TransactionFilter.BUDGET -> transactions.filter {
+                it.status == TransactionStatus.POSTED &&
+                    it.direction == TransactionDirection.DEBIT &&
+                    it.category != TransactionCategory.TRANSFER &&
+                    it.countsTowardBudget
+            }
+            TransactionFilter.SPENT -> transactions.filter {
+                it.direction == TransactionDirection.DEBIT && it.status == TransactionStatus.POSTED
+            }
+            TransactionFilter.INCOME -> transactions.filter {
+                it.direction == TransactionDirection.CREDIT && it.status == TransactionStatus.POSTED
+            }
+            TransactionFilter.UPI -> transactions.filter {
+                it.direction == TransactionDirection.DEBIT &&
+                    it.status == TransactionStatus.POSTED &&
+                    it.matchesUpiFilter()
+            }
+            TransactionFilter.CARD -> transactions.filter {
+                it.direction == TransactionDirection.DEBIT &&
+                    it.status == TransactionStatus.POSTED &&
+                    it.matchesCardFilter()
+            }
             TransactionFilter.REVIEW -> transactions.filter { it.status == TransactionStatus.REVIEW }
         }
     }.stateIn(
@@ -124,6 +168,80 @@ class MainViewModel(
         }
     }
 
+    fun configurePrimaryBank(
+        institutionName: String,
+        accountName: String,
+    ) {
+        viewModelScope.launch {
+            runCatching {
+                repository.configurePrimaryBank(
+                    institutionName = institutionName,
+                    accountName = accountName,
+                )
+            }.onSuccess {
+                emitMessage("Primary bank updated.")
+            }.onFailure {
+                emitMessage("Could not save the bank setup.")
+            }
+        }
+    }
+
+    fun addAccount(draft: AccountDraft) {
+        viewModelScope.launch {
+            runCatching {
+                repository.addAccount(draft)
+            }.onSuccess {
+                emitMessage("Account added.")
+            }.onFailure {
+                emitMessage("Could not add the account.")
+            }
+        }
+    }
+
+    fun updateAccount(
+        accountId: Long,
+        draft: AccountDraft,
+    ) {
+        viewModelScope.launch {
+            runCatching {
+                repository.updateAccount(accountId = accountId, draft = draft)
+            }.onSuccess {
+                emitMessage("Account updated.")
+            }.onFailure {
+                emitMessage("Could not update the account.")
+            }
+        }
+    }
+
+    fun deleteAccount(accountId: Long) {
+        viewModelScope.launch {
+            runCatching {
+                repository.deleteAccount(accountId)
+            }.onSuccess {
+                emitMessage("Account removed.")
+            }.onFailure {
+                emitMessage("Could not remove the account.")
+            }
+        }
+    }
+
+    fun markInitialSetupComplete() {
+        repository.markInitialSetupComplete()
+        emitMessage("Bank and card setup saved.")
+    }
+
+    fun updateTransaction(transactionId: Long, draft: TransactionDraft) {
+        viewModelScope.launch {
+            runCatching {
+                repository.updateTransaction(transactionId, draft)
+            }.onSuccess {
+                emitMessage("Transaction updated.")
+            }.onFailure {
+                emitMessage("Could not update the transaction.")
+            }
+        }
+    }
+
     fun addSubscription(draft: SubscriptionDraft) {
         viewModelScope.launch {
             runCatching {
@@ -148,10 +266,25 @@ class MainViewModel(
         }
     }
 
-    fun dismissTransaction(transactionId: Long) {
+    fun setTransactionBudgetInclusion(transactionId: Long, countsTowardBudget: Boolean) {
         viewModelScope.launch {
             runCatching {
-                repository.dismissTransaction(transactionId)
+                repository.setTransactionBudgetInclusion(transactionId, countsTowardBudget)
+            }.onSuccess {
+                emitMessage(
+                    if (countsTowardBudget) "Transaction added to budget."
+                    else "Transaction excluded from budget.",
+                )
+            }.onFailure {
+                emitMessage("Could not update budget inclusion.")
+            }
+        }
+    }
+
+    fun deleteTransaction(transactionId: Long) {
+        viewModelScope.launch {
+            runCatching {
+                repository.deleteTransaction(transactionId)
             }.onSuccess {
                 emitMessage("Transaction removed.")
             }.onFailure {
@@ -190,7 +323,7 @@ class MainViewModel(
                 repository.importRecentSms(contentResolver)
             }.onSuccess { report ->
                 emitMessage(
-                    "Scanned ${report.scanned} SMS. Imported ${report.imported}, review ${report.sentToReview}, ignored ${report.ignored}.",
+                    "Scanned ${report.scanned} SMS. Imported ${report.imported}, review ${report.sentToReview}, scheduled ${report.scheduled}, ignored ${report.ignored}.",
                 )
             }.onFailure {
                 emitMessage("Could not import SMS. Check permissions and try again.")
@@ -213,4 +346,32 @@ class MainViewModel(
                 }
             }
     }
+}
+
+private fun TransactionRecord.matchesUpiFilter(): Boolean {
+    val body = smsBody?.lowercase().orEmpty()
+    return accountKind == AccountKind.UPI ||
+        body.contains("upi") ||
+        body.contains("vpa") ||
+        sourceSender.contains("paytm", ignoreCase = true) ||
+        sourceSender.contains("gpay", ignoreCase = true) ||
+        sourceSender.contains("phonepe", ignoreCase = true)
+}
+
+private fun TransactionRecord.matchesCardFilter(): Boolean {
+    val body = smsBody?.lowercase().orEmpty()
+    val isCardBillPayment = category == TransactionCategory.TRANSFER &&
+        (
+            body.contains("credit card bill payment") ||
+                body.contains("payment received towards your credit card") ||
+                merchant.lowercase().contains("bill payment")
+            )
+    if (isCardBillPayment) return false
+    if (accountKind == AccountKind.CARD) return true
+    if (category == TransactionCategory.TRANSFER) return false
+    return body.contains("credit card") ||
+        body.contains("debit card") ||
+        body.contains("card ending") ||
+        body.contains("card xx") ||
+        body.contains("card xxxx")
 }
