@@ -19,21 +19,28 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.MoneyOff
 import androidx.compose.material.icons.outlined.Savings
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -56,22 +63,32 @@ fun TransactionsScreen(
     filter: TransactionFilter,
     transactions: List<TransactionRecord>,
     cardAccounts: List<AccountEntity>,
+    searchQuery: String = "",
+    onSearchQueryChange: (String) -> Unit = {},
     onFilterSelected: (TransactionFilter) -> Unit,
     onAddTransactionClick: () -> Unit,
     onApproveReview: (Long) -> Unit,
+    onAnalyzeWithAi: ((Long) -> Unit)? = null,
+    isAiAnalyzing: Boolean = false,
     onEditTransaction: (TransactionRecord) -> Unit,
     onDeleteTransaction: (TransactionRecord) -> Unit,
     onToggleBudgetInclusion: (TransactionRecord) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var selectedCardAccountId by rememberSaveable(filter) { mutableStateOf<Long?>(null) }
-    val visibleTransactions = if (filter == TransactionFilter.CARD && selectedCardAccountId != null) {
-        transactions.filter { it.accountId == selectedCardAccountId }
-    } else {
-        transactions
+    val visibleTransactions = remember(transactions, filter, selectedCardAccountId) {
+        if (filter == TransactionFilter.CARD && selectedCardAccountId != null) {
+            transactions.filter { it.accountId == selectedCardAccountId }
+        } else {
+            transactions
+        }
     }
-    val groupedTransactions = visibleTransactions.groupBy { it.occurredAtMillis.asMonthYear() }
-    val selectableCards = cardAccounts.filter { it.kind == AccountKind.CARD }
+    val groupedTransactions = remember(visibleTransactions) {
+        visibleTransactions.groupBy { it.occurredAtMillis.asMonthYear() }
+    }
+    val selectableCards = remember(cardAccounts) {
+        cardAccounts.filter { it.kind == AccountKind.CARD }
+    }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -89,6 +106,35 @@ fun TransactionsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+            }
+        }
+
+        item {
+            MotionReveal(index = 1) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = onSearchQueryChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Search merchant, note, amount...") },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Outlined.Search,
+                            contentDescription = "Search",
+                        )
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotBlank()) {
+                            IconButton(onClick = { onSearchQueryChange("") }) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Close,
+                                    contentDescription = "Clear",
+                                )
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(18.dp),
+                )
             }
         }
 
@@ -186,8 +232,22 @@ fun TransactionsScreen(
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 ) {
+                                    if (onAnalyzeWithAi != null && !transaction.smsBody.isNullOrBlank()) {
+                                        OutlinedButton(
+                                            onClick = { onAnalyzeWithAi(transaction.id) },
+                                            enabled = !isAiAnalyzing,
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.AutoAwesome,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp),
+                                            )
+                                            Spacer(modifier = Modifier.size(4.dp))
+                                            Text("AI Fix")
+                                        }
+                                    }
                                     Button(
                                         onClick = { onApproveReview(transaction.id) },
                                         modifier = Modifier.weight(1f),

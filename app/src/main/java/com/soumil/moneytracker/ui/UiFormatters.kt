@@ -22,6 +22,8 @@ fun Long.asDayMonth(): String =
         .toLocalDate()
         .format(compactDateFormatter)
 
+fun Long.asShortDate(): String = asDayMonth()
+
 fun Long.asFullDate(): String =
     Instant.ofEpochMilli(this)
         .atZone(ZoneId.systemDefault())
