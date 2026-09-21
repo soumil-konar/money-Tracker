@@ -82,6 +82,8 @@ data class ParsedSmsTransaction(
     val isUpiPayment: Boolean = false,
     val isCardPayment: Boolean = false,
     val isCardBillPayment: Boolean = false,
+    val placeDetail: String? = null,
+    val aiEnriched: Boolean = false,
 )
 
 data class ParsedScheduledTransaction(
@@ -117,6 +119,8 @@ data class DashboardState(
     val categoryBreakdown: List<CategorySlice> = emptyList(),
     val trendPoints: List<TrendPoint> = emptyList(),
     val recentTransactions: List<TransactionRecord> = emptyList(),
+    val spendingInsights: List<String> = emptyList(),
+    val isAiLoading: Boolean = false,
 )
 
 data class CategorySlice(
@@ -165,4 +169,18 @@ data class ImportReport(
     val scheduled: Int,
     val ignored: Int,
 )
+
+enum class AssistantSender {
+    USER,
+    ASSISTANT,
+}
+
+data class AssistantMessage(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val sender: AssistantSender,
+    val text: String,
+    val citedTransactions: List<TransactionRecord> = emptyList(),
+    val timestampMillis: Long = System.currentTimeMillis(),
+)
+
 

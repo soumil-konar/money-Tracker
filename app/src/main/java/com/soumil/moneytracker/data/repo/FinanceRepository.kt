@@ -39,8 +39,21 @@ import java.time.YearMonth
 import java.time.ZoneId
 import kotlin.math.abs
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import com.soumil.moneytracker.ai.AiParsedTransaction
+import com.soumil.moneytracker.ai.FinanceRagEngine
+import com.soumil.moneytracker.ai.GeminiApiClient
+import com.soumil.moneytracker.ai.OnDeviceAiEngine
+import com.soumil.moneytracker.ai.RagAnswerResponse
+import com.soumil.moneytracker.data.db.TransactionEmbeddingDao
+import com.soumil.moneytracker.data.db.TransactionEmbeddingEntity
+import com.soumil.moneytracker.data.local.AiEngineMode
+import com.soumil.moneytracker.data.local.AiPreferences
+import com.soumil.moneytracker.data.model.AssistantMessage
+import com.soumil.moneytracker.data.model.AssistantSender
 
 class FinanceRepository(
     private val accountDao: AccountDao,
@@ -48,8 +61,13 @@ class FinanceRepository(
     private val scheduledTransactionDao: ScheduledTransactionDao,
     private val subscriptionDao: SubscriptionDao,
     private val transactionDao: TransactionDao,
+    private val embeddingDao: TransactionEmbeddingDao,
+    private val ragEngine: FinanceRagEngine,
     private val parser: SmsParser,
     private val setupPreferences: SetupPreferences,
+    val aiPreferences: AiPreferences,
+    val geminiApiClient: GeminiApiClient,
+    val onDeviceAiEngine: OnDeviceAiEngine,
 ) {
 
     val accounts: Flow<List<AccountEntity>> = accountDao.observeAccounts()
@@ -60,6 +78,11 @@ class FinanceRepository(
     val subscriptions: Flow<List<SubscriptionRecord>> = subscriptionDao.observeSubscriptions()
     val currentBudget: Flow<BudgetEntity?> = budgetDao.observeOverallBudget(currentMonthKey())
     val allBudgets: Flow<List<BudgetEntity>> = budgetDao.observeOverallBudgets()
+
+    private val _spendingInsights = MutableStateFlow<List<String>>(emptyList())
+    val spendingInsights: StateFlow<List<String>> = _spendingInsights
+    private val _isAiLoading = MutableStateFlow(false)
+    val isAiLoading: StateFlow<Boolean> = _isAiLoading
 
     val budgetHistory: Flow<List<MonthBudgetSummary>> = combine(
         postedTransactions,
@@ -73,12 +96,26 @@ class FinanceRepository(
         transactions,
         currentBudget,
         subscriptions,
-    ) { posted, all, budget, subscriptions ->
+        _spendingInsights,
+        _isAiLoading,
+    ) { args: Array<Any?> ->
+        @Suppress("UNCHECKED_CAST")
+        val posted = args[0] as List<TransactionRecord>
+        @Suppress("UNCHECKED_CAST")
+        val all = args[1] as List<TransactionRecord>
+        val budget = args[2] as? BudgetEntity
+        @Suppress("UNCHECKED_CAST")
+        val subs = args[3] as List<SubscriptionRecord>
+        @Suppress("UNCHECKED_CAST")
+        val insights = args[4] as List<String>
+        val isLoading = args[5] as Boolean
         buildDashboardState(
             postedTransactions = posted,
             allTransactions = all,
             budget = budget?.amountLimit,
-            subscriptions = subscriptions,
+            subscriptions = subs,
+            insights = insights,
+            isAiLoading = isLoading,
         )
     }
 
@@ -314,6 +351,191 @@ class FinanceRepository(
         transactionDao.updateBudgetInclusion(transactionId, countsTowardBudget)
     }
 
+    suspend fun enrichTransactionWithAi(transactionId: Long): Result<TransactionRecord> {
+        val existing = transactionDao.getById(transactionId)
+            ?: return Result.failure(IllegalArgumentException("Transaction not found"))
+        val body = existing.smsBody
+            ?: return Result.failure(IllegalArgumentException("No SMS content available for this transaction"))
+        val apiKey = aiPreferences.apiKey.value
+        if (apiKey.isBlank()) {
+            return Result.failure(IllegalStateException("Google AI Studio API key is not configured in Settings."))
+        }
+
+        val aiResult = geminiApiClient.parseSms(
+            smsBody = body,
+            sender = existing.sourceSender,
+            apiKey = apiKey,
+            model = aiPreferences.selectedModel.value,
+        ).getOrElse { return Result.failure(it) }
+
+        val updatedMerchant = aiResult.merchant?.takeIf { it.isNotBlank() } ?: existing.merchant
+        val updatedCategory = aiResult.category
+        val updatedNote = aiResult.placeDetail ?: existing.note
+
+        val updatedEntity = existing.copy(
+            merchant = updatedMerchant,
+            category = updatedCategory,
+            note = updatedNote,
+            confidence = 0.98,
+            status = TransactionStatus.POSTED,
+        )
+        transactionDao.update(updatedEntity)
+        val record = transactionDao.observeTransactions().first().firstOrNull { it.id == transactionId }
+            ?: return Result.failure(IllegalStateException("Failed to load updated transaction"))
+        return Result.success(record)
+    }
+
+    suspend fun refreshAiSpendingInsights(): Result<List<String>> {
+        val apiKey = aiPreferences.apiKey.value
+        if (apiKey.isBlank()) {
+            return Result.failure(IllegalStateException("Configure your Google AI Studio API key in Settings."))
+        }
+        _isAiLoading.value = true
+        try {
+            val posted = postedTransactions.first()
+            val budget = currentBudget.first()?.amountLimit
+            val currentMonth = YearMonth.now()
+            val currentMonthTransactions = posted.filter {
+                YearMonth.from(it.toLocalDate()) == currentMonth
+            }
+            val monthSpent = currentMonthTransactions
+                .filter { it.direction == TransactionDirection.DEBIT && it.category != TransactionCategory.TRANSFER && it.countsTowardBudget }
+                .sumOf(TransactionRecord::amount)
+            val monthIncome = currentMonthTransactions
+                .filter { it.direction == TransactionDirection.CREDIT }
+                .sumOf(TransactionRecord::amount)
+
+            val result = geminiApiClient.generateSpendingInsights(
+                transactions = currentMonthTransactions,
+                budgetLimit = budget,
+                monthSpent = monthSpent,
+                monthIncome = monthIncome,
+                apiKey = apiKey,
+                model = aiPreferences.selectedModel.value,
+            )
+            result.onSuccess {
+                _spendingInsights.value = it
+            }
+            return result
+        } finally {
+            _isAiLoading.value = false
+        }
+    }
+
+    suspend fun testAiConnection(apiKey: String, model: String): Result<String> {
+        return geminiApiClient.testConnection(apiKey = apiKey, model = model)
+    }
+
+    suspend fun askSpendingAssistant(userQuery: String): Result<AssistantMessage> {
+        val apiKey = aiPreferences.apiKey.value
+        val engineMode = aiPreferences.engineMode.value
+        val allPosted = postedTransactions.first()
+        val currentBudgetLimit = currentBudget.first()?.amountLimit
+
+        val context = ragEngine.retrieveContext(
+            query = userQuery,
+            apiKey = apiKey,
+            currentBudgetLimit = currentBudgetLimit,
+            allPosted = allPosted,
+        )
+
+        val ragResult: RagAnswerResponse = when (engineMode) {
+            AiEngineMode.ON_DEVICE_ONLY -> {
+                onDeviceAiEngine.queryAssistantOnDevice(
+                    userQuery = userQuery,
+                    retrievedTransactions = context.transactions,
+                    macroContext = context.macroSummary,
+                ).getOrElse { return Result.failure(it) }
+            }
+            AiEngineMode.AUTO_PIXEL_FIRST -> {
+                if (apiKey.isNotBlank()) {
+                    geminiApiClient.queryRagSpendingAssistant(
+                        userQuery = userQuery,
+                        retrievedTransactions = context.transactions,
+                        macroContext = context.macroSummary,
+                        apiKey = apiKey,
+                        model = aiPreferences.selectedModel.value,
+                    ).getOrElse {
+                        // Fall back to On-Device Engine on Pixel 9 seamlessly
+                        onDeviceAiEngine.queryAssistantOnDevice(
+                            userQuery = userQuery,
+                            retrievedTransactions = context.transactions,
+                            macroContext = context.macroSummary,
+                        ).getOrElse { fallbackError -> return Result.failure(fallbackError) }
+                    }
+                } else {
+                    onDeviceAiEngine.queryAssistantOnDevice(
+                        userQuery = userQuery,
+                        retrievedTransactions = context.transactions,
+                        macroContext = context.macroSummary,
+                    ).getOrElse { return Result.failure(it) }
+                }
+            }
+            AiEngineMode.CLOUD_ONLY -> {
+                if (apiKey.isBlank()) {
+                    return Result.failure(IllegalStateException("Configure your Google AI Studio API key in Settings for Cloud Mode."))
+                }
+                geminiApiClient.queryRagSpendingAssistant(
+                    userQuery = userQuery,
+                    retrievedTransactions = context.transactions,
+                    macroContext = context.macroSummary,
+                    apiKey = apiKey,
+                    model = aiPreferences.selectedModel.value,
+                ).getOrElse { return Result.failure(it) }
+            }
+        }
+
+        val citedTxs = if (ragResult.citedTransactionIds.isNotEmpty()) {
+            val citedSet = ragResult.citedTransactionIds.toSet()
+            context.transactions.filter { it.id in citedSet }
+        } else {
+            context.transactions.take(3)
+        }
+
+        return Result.success(
+            AssistantMessage(
+                sender = AssistantSender.ASSISTANT,
+                text = ragResult.answer,
+                citedTransactions = citedTxs,
+            ),
+        )
+    }
+
+    suspend fun indexTransactionEmbedding(transactionId: Long, documentText: String) {
+        val apiKey = aiPreferences.apiKey.value
+        val engineMode = aiPreferences.engineMode.value
+
+        val embedding: List<Float>? = if (engineMode != AiEngineMode.ON_DEVICE_ONLY && apiKey.isNotBlank()) {
+            geminiApiClient.generateEmbedding(
+                text = documentText,
+                apiKey = apiKey,
+                outputDimensionality = 256,
+            ).getOrNull() ?: onDeviceAiEngine.generateEmbeddingOnDevice(documentText).getOrNull()
+        } else {
+            onDeviceAiEngine.generateEmbeddingOnDevice(documentText).getOrNull()
+        }
+
+        if (embedding == null || embedding.isEmpty()) return
+
+        val entity = TransactionEmbeddingEntity.fromFloatList(
+            transactionId = transactionId,
+            documentText = documentText,
+            floats = embedding,
+        )
+        embeddingDao.insert(entity)
+    }
+
+    suspend fun indexUnembeddedTransactions(limit: Int = 15) {
+        val unembeddedIds = embeddingDao.getUnembeddedTransactionIds(limit)
+        if (unembeddedIds.isEmpty()) return
+
+        for (id in unembeddedIds) {
+            val entity = transactionDao.getById(id) ?: continue
+            val docText = "${entity.direction} ₹${entity.amount} at ${entity.merchant} (${entity.category.label}) on ${Instant.ofEpochMilli(entity.occurredAtMillis)}. Note: ${entity.note.orEmpty()}"
+            indexTransactionEmbedding(id, docText)
+        }
+    }
+
     suspend fun processIncomingSms(
         sender: String,
         body: String,
@@ -406,6 +628,8 @@ class FinanceRepository(
         allTransactions: List<TransactionRecord>,
         budget: Double?,
         subscriptions: List<SubscriptionRecord>,
+        insights: List<String> = emptyList(),
+        isAiLoading: Boolean = false,
     ): DashboardState {
         val currentMonth = YearMonth.now()
         val currentMonthTransactions = postedTransactions.filter {
@@ -455,6 +679,8 @@ class FinanceRepository(
             categoryBreakdown = categoryBreakdown,
             trendPoints = trendPoints,
             recentTransactions = allTransactions.take(6),
+            spendingInsights = insights,
+            isAiLoading = isAiLoading,
         )
     }
 
@@ -536,7 +762,7 @@ class FinanceRepository(
         receivedAtMillis: Long,
     ): SmsIngestionOutcome {
         val parsedMessage = parser.parseMessage(sender = sender, body = body)
-        if (parsedMessage.shouldIgnore) {
+        if (parsedMessage.shouldIgnore && !aiPreferences.isAiEnabled.value) {
             return SmsIngestionOutcome.IGNORED
         }
 
@@ -548,8 +774,86 @@ class FinanceRepository(
             )
         }
 
-        val parsed = parsedMessage.transaction ?: return SmsIngestionOutcome.IGNORED
-        if (parsed.amount == null || parsed.direction == null) {
+        val parsed = parsedMessage.transaction
+        var amount = parsed?.amount
+        var direction = parsed?.direction
+        var merchant = parsed?.merchant
+        var category = parsed?.inferredCategory ?: TransactionCategory.OTHER
+        var accountKind = parsed?.accountKind ?: AccountKind.BANK
+        var institutionName = parsed?.institutionName
+        var bankLastFour = parsed?.bankAccountLastFourDigits
+        var cardLastFour = parsed?.cardLastFourDigits
+        var cardType = parsed?.cardType
+        var isCardBillPayment = parsed?.isCardBillPayment ?: false
+        var confidence = parsed?.confidence ?: 0.5
+        var note: String? = null
+
+        // Hybrid / On-Device Intelligence: Extract rich merchant, clean note, place detail
+        if (aiPreferences.isAiEnabled.value) {
+            val engineMode = aiPreferences.engineMode.value
+            val apiKey = aiPreferences.apiKey.value
+
+            val onDeviceCandidate = if (engineMode == AiEngineMode.ON_DEVICE_ONLY || engineMode == AiEngineMode.AUTO_PIXEL_FIRST) {
+                onDeviceAiEngine.parseSmsOnDevice(smsBody = body, sender = sender).getOrNull()
+            } else {
+                null
+            }
+
+            var aiParsed: AiParsedTransaction? = null
+
+            if (onDeviceCandidate != null && onDeviceCandidate.isTransaction && onDeviceCandidate.amount != null && onDeviceCandidate.direction != null) {
+                if (engineMode == AiEngineMode.ON_DEVICE_ONLY || onDeviceCandidate.confidence >= 0.90) {
+                    aiParsed = onDeviceCandidate
+                }
+            }
+
+            if (aiParsed == null && (engineMode == AiEngineMode.AUTO_PIXEL_FIRST || engineMode == AiEngineMode.CLOUD_ONLY) && apiKey.isNotBlank()) {
+                val cloudResult = geminiApiClient.parseSms(
+                    smsBody = body,
+                    sender = sender,
+                    apiKey = apiKey,
+                    model = aiPreferences.selectedModel.value,
+                ).getOrNull()
+
+                if (cloudResult != null && cloudResult.isTransaction) {
+                    aiParsed = cloudResult
+                } else if (onDeviceCandidate != null && onDeviceCandidate.isTransaction) {
+                    aiParsed = onDeviceCandidate
+                }
+            } else if (aiParsed == null && onDeviceCandidate != null && onDeviceCandidate.isTransaction) {
+                aiParsed = onDeviceCandidate
+            }
+
+            aiParsed?.let { result ->
+                if (result.isTransaction && result.amount != null && result.direction != null) {
+                    amount = result.amount
+                    direction = result.direction
+                    if (!result.merchant.isNullOrBlank()) {
+                        merchant = result.merchant
+                    }
+                    category = result.category
+                    accountKind = result.accountKind
+                    if (!result.institutionName.isNullOrBlank()) {
+                        institutionName = result.institutionName
+                    }
+                    if (!result.accountLastFour.isNullOrBlank()) {
+                        if (result.accountKind == AccountKind.CARD) {
+                            cardLastFour = result.accountLastFour
+                        } else {
+                            bankLastFour = result.accountLastFour
+                        }
+                    }
+                    if (result.cardType != null) {
+                        cardType = result.cardType
+                    }
+                    isCardBillPayment = result.isCardBillPayment
+                    note = result.placeDetail
+                    confidence = result.confidence
+                }
+            }
+        }
+
+        if (amount == null || direction == null) {
             return SmsIngestionOutcome.IGNORED
         }
 
@@ -559,28 +863,29 @@ class FinanceRepository(
         }
 
         val accountId = resolveParsedAccount(
-            accountLabel = parsed.accountLabel,
-            accountKind = parsed.accountKind,
-            institutionName = parsed.institutionName,
-            bankAccountLastFourDigits = parsed.bankAccountLastFourDigits,
-            cardLastFourDigits = parsed.cardLastFourDigits,
-            cardType = parsed.cardType,
-            isCardBillPayment = parsed.isCardBillPayment,
+            accountLabel = parsed?.accountLabel,
+            accountKind = accountKind,
+            institutionName = institutionName,
+            bankAccountLastFourDigits = bankLastFour,
+            cardLastFourDigits = cardLastFour,
+            cardType = cardType,
+            isCardBillPayment = isCardBillPayment,
         )
-        val status = if (parsed.confidence >= 0.7) TransactionStatus.POSTED else TransactionStatus.REVIEW
+        val status = if (confidence >= 0.7) TransactionStatus.POSTED else TransactionStatus.REVIEW
         val inserted = transactionDao.insert(
             TransactionEntity(
-                amount = parsed.amount,
-                direction = parsed.direction,
-                occurredAtMillis = parsed.occurredAtMillis ?: receivedAtMillis,
-                merchant = parsed.merchant ?: fallbackMerchant(sender, parsed.direction),
-                category = parsed.inferredCategory,
+                amount = amount,
+                direction = direction,
+                occurredAtMillis = parsed?.occurredAtMillis ?: receivedAtMillis,
+                merchant = merchant ?: fallbackMerchant(sender, direction),
+                category = category,
                 accountId = accountId,
                 sourceSender = sender,
                 smsBody = body,
-                confidence = parsed.confidence,
+                confidence = confidence,
                 fingerprint = fingerprint,
                 status = status,
+                note = note,
             ),
         )
         if (inserted == -1L) {
