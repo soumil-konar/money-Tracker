@@ -145,6 +145,7 @@ class SmsParser {
     private val amountRegexes = listOf(
         Regex("(?i)(?:rs\\.?|inr)\\s*([0-9,]+(?:\\.\\d{1,2})?)"),
         Regex("(?i)([0-9,]+(?:\\.\\d{1,2})?)\\s*(?:rs\\.?|inr)"),
+        Regex("(?i)(?:debited|credited|spent|withdrawn|paid)\\s+(?:by|for|of)?\\s*([0-9,]+(?:\\.\\d{1,2})?)"),
     )
 
     private val merchantRegexes = listOf(
