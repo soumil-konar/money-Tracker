@@ -1,7 +1,9 @@
 package com.soumil.moneytracker.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
+import androidx.room.Fts4
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.TypeConverter
@@ -59,6 +61,57 @@ data class TransactionEntity(
     val countsTowardBudget: Boolean = true,
     val createdAtMillis: Long = System.currentTimeMillis(),
 )
+
+@Fts4(contentEntity = TransactionEntity::class)
+@Entity(tableName = "transactions_fts")
+data class TransactionFtsEntity(
+    val merchant: String,
+    val note: String?,
+    val sourceSender: String,
+    val smsBody: String?,
+)
+
+@Entity(
+    tableName = "transaction_embeddings",
+    foreignKeys = [
+        ForeignKey(
+            entity = TransactionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["transactionId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [
+        Index(value = ["transactionId"], unique = true),
+    ],
+)
+data class TransactionEmbeddingEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val transactionId: Long,
+    val documentText: String,
+    val embeddingCsv: String,
+    val updatedAtMillis: Long = System.currentTimeMillis(),
+) {
+    fun toFloatArray(): FloatArray {
+        if (embeddingCsv.isBlank()) return FloatArray(0)
+        val tokens = embeddingCsv.split(",")
+        val result = FloatArray(tokens.size)
+        for (i in tokens.indices) {
+            result[i] = tokens[i].toFloatOrNull() ?: 0f
+        }
+        return result
+    }
+
+    companion object {
+        fun fromFloatList(transactionId: Long, documentText: String, floats: List<Float>): TransactionEmbeddingEntity {
+            return TransactionEmbeddingEntity(
+                transactionId = transactionId,
+                documentText = documentText,
+                embeddingCsv = floats.joinToString(","),
+            )
+        }
+    }
+}
 
 @Entity(
     tableName = "budgets",

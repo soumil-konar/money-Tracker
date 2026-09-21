@@ -12,17 +12,20 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     entities = [
         AccountEntity::class,
         TransactionEntity::class,
+        TransactionFtsEntity::class,
+        TransactionEmbeddingEntity::class,
         BudgetEntity::class,
         SubscriptionEntity::class,
         ScheduledTransactionEntity::class,
     ],
-    version = 4,
+    version = 6,
     exportSchema = true,
 )
 @TypeConverters(FinanceTypeConverters::class)
 abstract class FinanceDatabase : RoomDatabase() {
     abstract fun accountDao(): AccountDao
     abstract fun transactionDao(): TransactionDao
+    abstract fun transactionEmbeddingDao(): TransactionEmbeddingDao
     abstract fun budgetDao(): BudgetDao
     abstract fun subscriptionDao(): SubscriptionDao
     abstract fun scheduledTransactionDao(): ScheduledTransactionDao
@@ -85,12 +88,86 @@ abstract class FinanceDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE VIRTUAL TABLE IF NOT EXISTS `transactions_fts` USING FTS4(
+                        `merchant`,
+                        `note`,
+                        `sourceSender`,
+                        `smsBody`,
+                        content=`transactions`
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO `transactions_fts`(`docid`, `merchant`, `note`, `sourceSender`, `smsBody`)
+                    SELECT `id`, `merchant`, `note`, `sourceSender`, `smsBody` FROM `transactions`
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `transaction_embeddings` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `transactionId` INTEGER NOT NULL,
+                        `documentText` TEXT NOT NULL,
+                        `embeddingCsv` TEXT NOT NULL,
+                        `updatedAtMillis` INTEGER NOT NULL,
+                        FOREIGN KEY(`transactionId`) REFERENCES `transactions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_transaction_embeddings_transactionId` ON `transaction_embeddings` (`transactionId`)",
+                )
+            }
+        }
+
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Ensure all existing rows are indexed in FTS
+                db.execSQL(
+                    """
+                    INSERT OR REPLACE INTO `transactions_fts`(`docid`, `merchant`, `note`, `sourceSender`, `smsBody`)
+                    SELECT `id`, `merchant`, `note`, `sourceSender`, `smsBody` FROM `transactions`
+                    """.trimIndent(),
+                )
+                // Install triggers to automatically synchronize transactions with transactions_fts
+                db.execSQL(
+                    """
+                    CREATE TRIGGER IF NOT EXISTS `transactions_ai` AFTER INSERT ON `transactions` BEGIN
+                        INSERT INTO `transactions_fts`(`docid`, `merchant`, `note`, `sourceSender`, `smsBody`)
+                        VALUES (new.`id`, new.`merchant`, new.`note`, new.`sourceSender`, new.`smsBody`);
+                    END;
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE TRIGGER IF NOT EXISTS `transactions_ad` AFTER DELETE ON `transactions` BEGIN
+                        DELETE FROM `transactions_fts` WHERE `docid` = old.`id`;
+                    END;
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE TRIGGER IF NOT EXISTS `transactions_au` AFTER UPDATE ON `transactions` BEGIN
+                        DELETE FROM `transactions_fts` WHERE `docid` = old.`id`;
+                        INSERT INTO `transactions_fts`(`docid`, `merchant`, `note`, `sourceSender`, `smsBody`)
+                        VALUES (new.`id`, new.`merchant`, new.`note`, new.`sourceSender`, new.`smsBody`);
+                    END;
+                    """.trimIndent(),
+                )
+            }
+        }
+
         fun create(context: Context): FinanceDatabase =
             Room.databaseBuilder(
                 context,
                 FinanceDatabase::class.java,
                 "money-tracker.db",
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                 .build()
     }
 }

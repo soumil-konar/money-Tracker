@@ -81,6 +81,74 @@ interface TransactionDao {
 
     @Query("SELECT * FROM transactions WHERE id = :transactionId LIMIT 1")
     suspend fun getById(transactionId: Long): TransactionEntity?
+
+    @Query(
+        """
+        SELECT t.id, t.amount, t.direction, t.occurredAtMillis, t.merchant, t.category, t.accountId, t.sourceSender,
+               t.smsBody, t.confidence, t.status, t.note, t.countsTowardBudget,
+               a.name AS accountName, a.kind AS accountKind
+        FROM transactions t
+        JOIN transactions_fts f ON t.id = f.docid
+        LEFT JOIN accounts a ON t.accountId = a.id
+        WHERE transactions_fts MATCH :matchQuery
+        ORDER BY t.occurredAtMillis DESC
+        LIMIT :limit
+        """,
+    )
+    suspend fun searchTransactionsFts(matchQuery: String, limit: Int = 50): List<TransactionRecord>
+
+    @Query(
+        """
+        SELECT t.id, t.amount, t.direction, t.occurredAtMillis, t.merchant, t.category, t.accountId, t.sourceSender,
+               t.smsBody, t.confidence, t.status, t.note, t.countsTowardBudget,
+               a.name AS accountName, a.kind AS accountKind
+        FROM transactions t
+        LEFT JOIN accounts a ON t.accountId = a.id
+        WHERE t.occurredAtMillis BETWEEN :startMillis AND :endMillis
+        ORDER BY t.occurredAtMillis DESC
+        """,
+    )
+    suspend fun getTransactionsBetween(startMillis: Long, endMillis: Long): List<TransactionRecord>
+
+    @Query(
+        """
+        SELECT t.id, t.amount, t.direction, t.occurredAtMillis, t.merchant, t.category, t.accountId, t.sourceSender,
+               t.smsBody, t.confidence, t.status, t.note, t.countsTowardBudget,
+               a.name AS accountName, a.kind AS accountKind
+        FROM transactions t
+        LEFT JOIN accounts a ON t.accountId = a.id
+        WHERE t.status = 'POSTED'
+        ORDER BY t.occurredAtMillis DESC
+        LIMIT :limit
+        """,
+    )
+    suspend fun getRecentPostedTransactions(limit: Int = 50): List<TransactionRecord>
+}
+
+@Dao
+interface TransactionEmbeddingDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(embedding: TransactionEmbeddingEntity): Long
+
+    @Query("SELECT * FROM transaction_embeddings WHERE transactionId = :transactionId LIMIT 1")
+    suspend fun getByTransactionId(transactionId: Long): TransactionEmbeddingEntity?
+
+    @Query("SELECT * FROM transaction_embeddings")
+    suspend fun getAll(): List<TransactionEmbeddingEntity>
+
+    @Query("SELECT COUNT(*) FROM transaction_embeddings")
+    suspend fun count(): Int
+
+    @Query(
+        """
+        SELECT t.id FROM transactions t
+        LEFT JOIN transaction_embeddings e ON t.id = e.transactionId
+        WHERE e.id IS NULL
+        ORDER BY t.occurredAtMillis DESC
+        LIMIT :limit
+        """,
+    )
+    suspend fun getUnembeddedTransactionIds(limit: Int = 50): List<Long>
 }
 
 @Dao
