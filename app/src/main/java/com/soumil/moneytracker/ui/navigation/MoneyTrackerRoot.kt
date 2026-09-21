@@ -1,8 +1,11 @@
 package com.soumil.moneytracker.ui.navigation
 
 import android.Manifest
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import com.soumil.moneytracker.ui.asFullDate
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
@@ -26,14 +29,18 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -70,8 +77,10 @@ import com.soumil.moneytracker.ui.screen.BudgetHistoryScreen
 import com.soumil.moneytracker.ui.screen.HomeScreen
 import com.soumil.moneytracker.ui.screen.MoreScreen
 import com.soumil.moneytracker.ui.screen.SettingsScreen
+import com.soumil.moneytracker.ui.screen.SpendingAssistantSheet
 import com.soumil.moneytracker.ui.screen.TransactionsScreen
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun MoneyTrackerRoot(
     viewModel: MainViewModel,
@@ -85,6 +94,15 @@ fun MoneyTrackerRoot(
     val accounts by viewModel.accounts.collectAsStateWithLifecycle()
     val budget by viewModel.currentBudget.collectAsStateWithLifecycle()
     val filter by viewModel.filter.collectAsStateWithLifecycle()
+    val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
+    val isAiAnalyzing by viewModel.isAiAnalyzing.collectAsStateWithLifecycle()
+    val aiApiKey by viewModel.aiApiKey.collectAsStateWithLifecycle()
+    val isAiEnabled by viewModel.isAiEnabled.collectAsStateWithLifecycle()
+    val selectedModel by viewModel.selectedModel.collectAsStateWithLifecycle()
+    val engineMode by viewModel.engineMode.collectAsStateWithLifecycle()
+    val aiTestStatus by viewModel.aiTestStatus.collectAsStateWithLifecycle()
+    val assistantMessages by viewModel.assistantMessages.collectAsStateWithLifecycle()
+    val isAssistantThinking by viewModel.isAssistantThinking.collectAsStateWithLifecycle()
     val scheduledTransactions by viewModel.scheduledTransactions.collectAsStateWithLifecycle()
     val activeSubscriptions by viewModel.activeSubscriptions.collectAsStateWithLifecycle()
     val suggestedSubscriptions by viewModel.suggestedSubscriptions.collectAsStateWithLifecycle()
@@ -92,6 +110,7 @@ fun MoneyTrackerRoot(
     val primaryBankAccount = accounts.firstOrNull { it.kind == AccountKind.BANK && it.institutionName != null }
         ?: accounts.firstOrNull { it.kind == AccountKind.BANK }
 
+    var showAiChatSheet by remember { mutableStateOf(false) }
     var showBudgetDialog by remember { mutableStateOf(false) }
     var showAddTransactionDialog by remember { mutableStateOf(false) }
     var showAddSubscriptionDialog by remember { mutableStateOf(false) }
@@ -150,6 +169,8 @@ fun MoneyTrackerRoot(
                     onBudgetClick = {
                         navController.navigate(AppDestination.BudgetHistory.route)
                     },
+                    onRefreshAiInsights = { viewModel.refreshAiSpendingInsights() },
+                    onOpenAssistant = { showAiChatSheet = true },
                 )
             }
             composable(AppDestination.BudgetHistory.route) {
@@ -174,6 +195,8 @@ fun MoneyTrackerRoot(
                     filter = filter,
                     transactions = transactions,
                     cardAccounts = accounts.filter { it.kind == AccountKind.CARD },
+                    searchQuery = searchQuery,
+                    onSearchQueryChange = viewModel::setSearchQuery,
                     onFilterSelected = viewModel::setFilter,
                     onAddTransactionClick = {
                         editingTransaction = null
@@ -181,6 +204,8 @@ fun MoneyTrackerRoot(
                         showAddTransactionDialog = true
                     },
                     onApproveReview = viewModel::approveReview,
+                    onAnalyzeWithAi = viewModel::enrichTransactionWithAi,
+                    isAiAnalyzing = isAiAnalyzing,
                     onEditTransaction = { transaction ->
                         showAddTransactionDialog = false
                         editingTransaction = transaction
@@ -232,6 +257,7 @@ fun MoneyTrackerRoot(
                     },
                     onAcceptSuggestion = viewModel::acceptSuggestedSubscription,
                     onDismissSuggestion = viewModel::dismissSuggestedSubscription,
+                    onExportCsv = { exportTransactionsToCsv(context, transactions) },
                 )
             }
             composable(AppDestination.Settings.route) {
@@ -239,6 +265,18 @@ fun MoneyTrackerRoot(
                     smsPermissionGranted = smsPermissionGranted,
                     onRequestPermissions = { permissionLauncher.launch(context.smsPermissionArray()) },
                     onImportRecentSms = { viewModel.importRecentSms(context.contentResolver) },
+                    aiApiKey = aiApiKey,
+                    isAiEnabled = isAiEnabled,
+                    selectedModel = selectedModel,
+                    engineMode = engineMode,
+                    deviceAiStatus = viewModel.deviceStatus,
+                    isPixel9Ready = viewModel.isTensorG4Ready,
+                    aiTestStatus = aiTestStatus,
+                    onUpdateApiKey = viewModel::updateAiApiKey,
+                    onToggleAiEnabled = viewModel::setAiEnabled,
+                    onSelectModel = viewModel::setSelectedModel,
+                    onSelectEngineMode = viewModel::setAiEngineMode,
+                    onTestAiConnection = viewModel::testAiConnection,
                 )
             }
         }
@@ -249,6 +287,33 @@ fun MoneyTrackerRoot(
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 110.dp),
         )
+
+        FloatingActionButton(
+            onClick = { showAiChatSheet = true },
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = Color.White,
+            shape = CircleShape,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 20.dp, bottom = 95.dp),
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.AutoAwesome,
+                    contentDescription = "Ask Gemini AI",
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    text = "Ask AI",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
 
         TrackerBottomBar(
             currentRoute = currentRoute,
@@ -267,6 +332,16 @@ fun MoneyTrackerRoot(
                 showAddTransactionDialog = true
             },
             modifier = Modifier.align(Alignment.BottomCenter),
+        )
+    }
+
+    if (showAiChatSheet) {
+        SpendingAssistantSheet(
+            messages = assistantMessages,
+            isThinking = isAssistantThinking,
+            onSendMessage = viewModel::askAssistant,
+            onClearChat = viewModel::clearAssistantChat,
+            onDismiss = { showAiChatSheet = false },
         )
     }
 
@@ -598,4 +673,28 @@ private fun RowScope.AddDockItem(
             }
         }
     }
+}
+
+private fun exportTransactionsToCsv(context: Context, transactions: List<TransactionRecord>) {
+    val header = "ID,Date,Merchant,Amount,Direction,Category,Account,Note,Status\n"
+    val rows = transactions.joinToString("\n") { t ->
+        listOf(
+            t.id,
+            t.occurredAtMillis.asFullDate(),
+            "\"${t.merchant.replace("\"", "\"\"")}\"",
+            t.amount,
+            t.direction.name,
+            t.category.label,
+            "\"${(t.accountName ?: "").replace("\"", "\"\"")}\"",
+            "\"${(t.note ?: "").replace("\"", "\"\"")}\"",
+            t.status.name,
+        ).joinToString(",")
+    }
+    val csv = header + rows
+    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_SUBJECT, "Money Tracker Transactions Export")
+        putExtra(Intent.EXTRA_TEXT, csv)
+    }
+    context.startActivity(Intent.createChooser(sendIntent, "Share Transactions CSV"))
 }

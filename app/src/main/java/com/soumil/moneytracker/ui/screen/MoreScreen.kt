@@ -38,6 +38,7 @@ fun MoreScreen(
     onDeleteAccount: (AccountEntity) -> Unit,
     onAcceptSuggestion: (Long) -> Unit,
     onDismissSuggestion: (Long) -> Unit,
+    onExportCsv: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val accountEntries = accounts.filter { it.kind != AccountKind.CARD }
@@ -217,13 +218,17 @@ fun MoreScreen(
             MotionReveal(index = if (suggestedSubscriptions.isNotEmpty()) 6 else 5) {
                 SectionCard(
                     title = "Export",
-                    subtitle = "CSV export is reserved for the next iteration.",
+                    subtitle = "Export transactions for backup, Excel, or spreadsheets",
                 ) {
                     Text(
-                        text = "The data model is already local-first, so export can be added without changing the ledger core.",
+                        text = "Export your full local transaction ledger into CSV format. All records stay local on your device until shared.",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(onClick = onExportCsv) {
+                        Text("Export ledger to CSV")
+                    }
                 }
             }
         }

@@ -17,6 +17,9 @@ import com.soumil.moneytracker.data.model.SubscriptionDraft
 import com.soumil.moneytracker.data.model.SubscriptionState
 import com.soumil.moneytracker.data.model.TransactionCategory
 import com.soumil.moneytracker.data.model.TransactionDirection
+import com.soumil.moneytracker.data.model.AssistantMessage
+import com.soumil.moneytracker.data.model.AssistantSender
+import com.soumil.moneytracker.data.local.AiEngineMode
 import com.soumil.moneytracker.data.model.TransactionDraft
 import com.soumil.moneytracker.data.model.TransactionFilter
 import com.soumil.moneytracker.data.model.TransactionStatus
@@ -37,9 +40,36 @@ class MainViewModel(
 
     private val messageEvents = MutableSharedFlow<String>()
     private val selectedFilter = MutableStateFlow(TransactionFilter.ALL)
+    private val currentSearchQuery = MutableStateFlow("")
+    private val _isAiAnalyzing = MutableStateFlow(false)
+    private val _aiTestStatus = MutableStateFlow<String?>(null)
 
     val messages = messageEvents.asSharedFlow()
     val filter: StateFlow<TransactionFilter> = selectedFilter
+    val searchQuery: StateFlow<String> = currentSearchQuery
+    val isAiAnalyzing: StateFlow<Boolean> = _isAiAnalyzing
+    val aiTestStatus: StateFlow<String?> = _aiTestStatus
+
+    private val _assistantMessages = MutableStateFlow<List<AssistantMessage>>(
+        listOf(
+            AssistantMessage(
+                sender = AssistantSender.ASSISTANT,
+                text = "Hi! I'm your Gemini Spending Assistant. Ask me anything about your expenses, categories, places you've spent money, or how to pace your budget this month.",
+            ),
+        ),
+    )
+    val assistantMessages: StateFlow<List<AssistantMessage>> = _assistantMessages
+
+    private val _isAssistantThinking = MutableStateFlow(false)
+    val isAssistantThinking: StateFlow<Boolean> = _isAssistantThinking
+
+    val aiApiKey: StateFlow<String> = repository.aiPreferences.apiKey
+    val isAiEnabled: StateFlow<Boolean> = repository.aiPreferences.isAiEnabled
+    val selectedModel: StateFlow<String> = repository.aiPreferences.selectedModel
+    val engineMode: StateFlow<AiEngineMode> = repository.aiPreferences.engineMode
+    val deviceStatus: String = repository.onDeviceAiEngine.getDeviceStatus()
+    val isPixelDevice: Boolean = repository.onDeviceAiEngine.isPixelDevice()
+    val isTensorG4Ready: Boolean = repository.onDeviceAiEngine.isTensorSoc()
 
     val dashboard: StateFlow<DashboardState> = repository.dashboard.stateIn(
         scope = viewModelScope,
@@ -86,8 +116,9 @@ class MainViewModel(
     val filteredTransactions: StateFlow<List<TransactionRecord>> = combine(
         repository.transactions,
         selectedFilter,
-    ) { transactions, filter ->
-        when (filter) {
+        currentSearchQuery,
+    ) { transactions, filter, query ->
+        val filterMatched = when (filter) {
             TransactionFilter.ALL -> transactions
             TransactionFilter.BUDGET -> transactions.filter {
                 it.status == TransactionStatus.POSTED &&
@@ -113,6 +144,19 @@ class MainViewModel(
             }
             TransactionFilter.REVIEW -> transactions.filter { it.status == TransactionStatus.REVIEW }
         }
+
+        if (query.isBlank()) {
+            filterMatched
+        } else {
+            val q = query.trim().lowercase()
+            filterMatched.filter {
+                it.merchant.lowercase().contains(q) ||
+                    it.note?.lowercase()?.contains(q) == true ||
+                    it.category.label.lowercase().contains(q) ||
+                    it.amount.toString().contains(q) ||
+                    it.accountName?.lowercase()?.contains(q) == true
+            }
+        }
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
@@ -137,6 +181,108 @@ class MainViewModel(
 
     fun setFilter(filter: TransactionFilter) {
         selectedFilter.value = filter
+    }
+
+    fun setSearchQuery(query: String) {
+        currentSearchQuery.value = query
+    }
+
+    fun updateAiApiKey(key: String) {
+        repository.aiPreferences.setApiKey(key)
+        emitMessage("AI API key saved.")
+    }
+
+    fun setAiEnabled(enabled: Boolean) {
+        repository.aiPreferences.setAiEnabled(enabled)
+        emitMessage(if (enabled) "AI SMS enrichment enabled." else "AI SMS enrichment disabled.")
+    }
+
+    fun setSelectedModel(model: String) {
+        repository.aiPreferences.setSelectedModel(model)
+        emitMessage("AI model updated to $model.")
+    }
+
+    fun setAiEngineMode(mode: AiEngineMode) {
+        repository.aiPreferences.setEngineMode(mode)
+        emitMessage("AI Engine switched to: ${mode.label}")
+    }
+
+    fun testAiConnection() {
+        viewModelScope.launch {
+            _aiTestStatus.value = "Testing connection..."
+            val result = repository.testAiConnection(
+                apiKey = repository.aiPreferences.apiKey.value,
+                model = repository.aiPreferences.selectedModel.value,
+            )
+            result.onSuccess {
+                _aiTestStatus.value = it
+                emitMessage("Connected to Gemini successfully!")
+            }.onFailure {
+                _aiTestStatus.value = "Failed: ${it.message}"
+                emitMessage("Connection failed: ${it.message}")
+            }
+        }
+    }
+
+    fun enrichTransactionWithAi(transactionId: Long) {
+        viewModelScope.launch {
+            _isAiAnalyzing.value = true
+            runCatching {
+                repository.enrichTransactionWithAi(transactionId)
+            }.onSuccess {
+                emitMessage("Transaction enriched and confirmed by AI.")
+            }.onFailure {
+                emitMessage("AI analysis failed: ${it.message}")
+            }
+            _isAiAnalyzing.value = false
+        }
+    }
+
+    fun refreshAiSpendingInsights() {
+        viewModelScope.launch {
+            runCatching {
+                repository.refreshAiSpendingInsights()
+            }.onSuccess {
+                emitMessage("AI financial insights updated.")
+            }.onFailure {
+                emitMessage("Could not generate AI insights: ${it.message}")
+            }
+        }
+    }
+
+    fun askAssistant(userQuery: String) {
+        val query = userQuery.trim()
+        if (query.isBlank()) return
+
+        val userMessage = AssistantMessage(
+            sender = AssistantSender.USER,
+            text = query,
+        )
+        _assistantMessages.value = _assistantMessages.value + userMessage
+        _isAssistantThinking.value = true
+
+        viewModelScope.launch {
+            val result = repository.askSpendingAssistant(query)
+            _isAssistantThinking.value = false
+            result.onSuccess { assistantMessage ->
+                _assistantMessages.value = _assistantMessages.value + assistantMessage
+            }.onFailure { error ->
+                val errorMsg = error.message ?: "Failed to get response from assistant."
+                _assistantMessages.value = _assistantMessages.value + AssistantMessage(
+                    sender = AssistantSender.ASSISTANT,
+                    text = "Error: $errorMsg",
+                )
+            }
+        }
+    }
+
+    fun clearAssistantChat() {
+        _assistantMessages.value = listOf(
+            AssistantMessage(
+                sender = AssistantSender.ASSISTANT,
+                text = "Chat cleared. What else can I help you analyze about your finances?",
+            ),
+        )
     }
 
     fun setMonthlyBudget(amountText: String) {

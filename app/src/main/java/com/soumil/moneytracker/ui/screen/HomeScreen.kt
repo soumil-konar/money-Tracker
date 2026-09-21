@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -35,6 +36,9 @@ import com.soumil.moneytracker.ui.components.MotionReveal
 import com.soumil.moneytracker.ui.components.PermissionBanner
 import com.soumil.moneytracker.ui.components.SectionCard
 import com.soumil.moneytracker.ui.components.SpendingPieChart
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedButton
 import com.soumil.moneytracker.ui.components.TransactionItem
 
 @Composable
@@ -46,6 +50,8 @@ fun HomeScreen(
     onSetBudgetClick: () -> Unit,
     onAddTransactionClick: () -> Unit,
     onBudgetClick: () -> Unit,
+    onRefreshAiInsights: () -> Unit = {},
+    onOpenAssistant: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -165,6 +171,106 @@ fun HomeScreen(
 
         item {
             MotionReveal(index = 5) {
+                SectionCard(
+                    title = "AI Financial Insights",
+                    subtitle = "Powered by Google AI Studio Gemini models",
+                ) {
+                    if (dashboard.spendingInsights.isEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(
+                                text = "Get personalized observations on your budget pacing, top spend drivers, and tailored money-saving advice.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Button(
+                                onClick = onRefreshAiInsights,
+                                enabled = !dashboard.isAiLoading,
+                            ) {
+                                if (dashboard.isAiLoading) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        color = Color.White,
+                                        strokeWidth = 2.dp,
+                                    )
+                                    Spacer(modifier = Modifier.size(8.dp))
+                                    Text("Analyzing with Gemini...")
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Outlined.AutoAwesome,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                    Spacer(modifier = Modifier.size(8.dp))
+                                    Text("Analyze with AI")
+                                }
+                            }
+                        }
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            dashboard.spendingInsights.forEach { tip ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.AutoAwesome,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier
+                                            .size(18.dp)
+                                            .padding(top = 2.dp),
+                                    )
+                                    Text(
+                                        text = tip,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onBackground,
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                OutlinedButton(
+                                    onClick = onRefreshAiInsights,
+                                    enabled = !dashboard.isAiLoading,
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    if (dashboard.isAiLoading) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            strokeWidth = 2.dp,
+                                        )
+                                        Spacer(modifier = Modifier.size(8.dp))
+                                        Text("Refreshing...")
+                                    } else {
+                                        Text("Refresh")
+                                    }
+                                }
+                                if (onOpenAssistant != null) {
+                                    Button(
+                                        onClick = onOpenAssistant,
+                                        modifier = Modifier.weight(1f),
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.AutoAwesome,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                        Spacer(modifier = Modifier.size(6.dp))
+                                        Text("Ask AI")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            MotionReveal(index = 6) {
                 SectionCard(
                     title = "Spend mix",
                     subtitle = "Category share this month",
