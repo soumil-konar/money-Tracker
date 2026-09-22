@@ -26,6 +26,7 @@ import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Memory
 import androidx.compose.material.icons.outlined.Security
+import androidx.compose.material.icons.outlined.Vibration
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -45,9 +46,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.soumil.moneytracker.data.local.AiEngineMode
 import com.soumil.moneytracker.data.local.AiPreferences
+import com.soumil.moneytracker.data.local.HapticIntensity
 import com.soumil.moneytracker.ui.components.MotionReveal
 import com.soumil.moneytracker.ui.components.PermissionBanner
 import com.soumil.moneytracker.ui.components.SectionCard
+import com.soumil.moneytracker.ui.haptics.LocalAppHaptics
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -62,13 +65,18 @@ fun SettingsScreen(
     deviceAiStatus: String = "Google Tensor G4 TPU Ready",
     isPixel9Ready: Boolean = true,
     aiTestStatus: String? = null,
+    isHapticEnabled: Boolean = true,
+    hapticIntensity: HapticIntensity = HapticIntensity.BALANCED,
     onUpdateApiKey: (String) -> Unit = {},
     onToggleAiEnabled: (Boolean) -> Unit = {},
     onSelectModel: (String) -> Unit = {},
     onSelectEngineMode: (AiEngineMode) -> Unit = {},
     onTestAiConnection: () -> Unit = {},
+    onToggleHapticEnabled: (Boolean) -> Unit = {},
+    onSelectHapticIntensity: (HapticIntensity) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    val haptics = LocalAppHaptics.current
     var keyInput by rememberSaveable(aiApiKey) { mutableStateOf(aiApiKey) }
 
     val statusBarInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
@@ -335,7 +343,95 @@ fun SettingsScreen(
         }
 
         item {
-            MotionReveal(index = 2) {
+            MotionReveal(index = 3) {
+                SectionCard(
+                    title = "Tactile & Haptic Feedback",
+                    subtitle = "Dynamic vibrations scaled for your device's linear actuator",
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Enable Haptics",
+                                    style = MaterialTheme.typography.titleMedium,
+                                )
+                                Text(
+                                    text = "Tactile physical feedback on button clicks, tabs, and ledger actions",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Switch(
+                                checked = isHapticEnabled,
+                                onCheckedChange = {
+                                    haptics.toggle(it)
+                                    onToggleHapticEnabled(it)
+                                },
+                            )
+                        }
+
+                        if (isHapticEnabled) {
+                            Text(
+                                text = "Vibration Intensity",
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                HapticIntensity.values().forEach { intensity ->
+                                    FilterChip(
+                                        selected = hapticIntensity == intensity,
+                                        onClick = {
+                                            onSelectHapticIntensity(intensity)
+                                            haptics.selection()
+                                        },
+                                        label = { Text(intensity.label) },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Outlined.Vibration,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp),
+                                            )
+                                        },
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Interactive Preview",
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                OutlinedButton(onClick = { haptics.tick() }) {
+                                    Text("Tick")
+                                }
+                                OutlinedButton(onClick = { haptics.click() }) {
+                                    Text("Click")
+                                }
+                                OutlinedButton(onClick = { haptics.success() }) {
+                                    Text("Success")
+                                }
+                                OutlinedButton(onClick = { haptics.warning() }) {
+                                    Text("Warning")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            MotionReveal(index = 4) {
                 PermissionBanner(
                     smsPermissionGranted = smsPermissionGranted,
                     onRequestPermissions = onRequestPermissions,
@@ -345,7 +441,7 @@ fun SettingsScreen(
         }
 
         item {
-            MotionReveal(index = 3) {
+            MotionReveal(index = 5) {
                 SectionCard(
                     title = "Privacy & Local-First",
                     subtitle = "Your financial data stays on your device",
