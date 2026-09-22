@@ -13,36 +13,40 @@ import com.soumil.moneytracker.parser.SmsParser
 import com.soumil.moneytracker.ui.haptics.HapticFeedbackManager
 
 class AppContainer(context: Context) {
-    private val database = FinanceDatabase.create(context)
-    private val parser = SmsParser()
-    private val setupPreferences = SetupPreferences(context)
-    val aiPreferences = AiPreferences(context)
-    val hapticPreferences = HapticPreferences(context)
-    val hapticManager = HapticFeedbackManager(context, hapticPreferences)
-    val geminiApiClient = GeminiApiClient()
-    val onDeviceAiEngine = OnDeviceAiEngine(context)
+    private val database by lazy { FinanceDatabase.create(context) }
+    private val parser by lazy { SmsParser() }
+    private val setupPreferences by lazy { SetupPreferences(context) }
+    val aiPreferences by lazy { AiPreferences(context) }
+    val hapticPreferences by lazy { HapticPreferences(context) }
+    val hapticManager by lazy { HapticFeedbackManager(context, hapticPreferences) }
+    val geminiApiClient by lazy { GeminiApiClient() }
+    val onDeviceAiEngine by lazy { OnDeviceAiEngine(context) }
 
-    val ragEngine = FinanceRagEngine(
-        transactionDao = database.transactionDao(),
-        embeddingDao = database.transactionEmbeddingDao(),
-        geminiApiClient = geminiApiClient,
-        onDeviceAiEngine = onDeviceAiEngine,
-    )
+    val ragEngine by lazy {
+        FinanceRagEngine(
+            transactionDao = database.transactionDao(),
+            embeddingDao = database.transactionEmbeddingDao(),
+            geminiApiClient = geminiApiClient,
+            onDeviceAiEngine = onDeviceAiEngine,
+        )
+    }
 
-    val repository = FinanceRepository(
-        accountDao = database.accountDao(),
-        budgetDao = database.budgetDao(),
-        scheduledTransactionDao = database.scheduledTransactionDao(),
-        subscriptionDao = database.subscriptionDao(),
-        transactionDao = database.transactionDao(),
-        embeddingDao = database.transactionEmbeddingDao(),
-        ragEngine = ragEngine,
-        parser = parser,
-        setupPreferences = setupPreferences,
-        aiPreferences = aiPreferences,
-        hapticPreferences = hapticPreferences,
-        geminiApiClient = geminiApiClient,
-        onDeviceAiEngine = onDeviceAiEngine,
-    )
+    val repository by lazy {
+        FinanceRepository(
+            accountDao = database.accountDao(),
+            budgetDao = database.budgetDao(),
+            scheduledTransactionDao = database.scheduledTransactionDao(),
+            subscriptionDao = database.subscriptionDao(),
+            transactionDao = database.transactionDao(),
+            embeddingDao = database.transactionEmbeddingDao(),
+            ragEngine = ragEngine,
+            parser = parser,
+            setupPreferences = setupPreferences,
+            aiPreferences = aiPreferences,
+            hapticPreferences = hapticPreferences,
+            geminiApiClient = geminiApiClient,
+            onDeviceAiEngine = onDeviceAiEngine,
+        )
+    }
 }
 
