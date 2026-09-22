@@ -80,14 +80,18 @@ fun SettingsScreen(
             start = 20.dp,
             end = 20.dp,
             top = statusBarInset + 16.dp,
-            bottom = navBarInset + 120.dp,
+            bottom = navBarInset + 160.dp,
         ),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
             MotionReveal(index = 0) {
                 Column {
-                    Text(text = "Settings", style = MaterialTheme.typography.headlineLarge)
+                    Text(
+                        text = "Settings",
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = MaterialTheme.colorScheme.onBackground,
+                    )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = "AI intelligence, permissions, privacy, and models",

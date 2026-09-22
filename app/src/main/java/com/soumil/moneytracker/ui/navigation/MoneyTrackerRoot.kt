@@ -142,16 +142,16 @@ fun MoneyTrackerRoot(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
     ) {
-        NavHost(
-            navController = navController,
-            startDestination = AppDestination.Home.route,
-            modifier = Modifier.fillMaxSize(),
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            NavHost(
+                navController = navController,
+                startDestination = AppDestination.Home.route,
+                modifier = Modifier.fillMaxSize(),
+            ) {
             composable(AppDestination.Home.route) {
                 HomeScreen(
                     dashboard = dashboard,
@@ -297,24 +297,14 @@ fun MoneyTrackerRoot(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .navigationBarsPadding()
-                .padding(end = 20.dp, bottom = 95.dp),
+                .padding(end = 20.dp, bottom = 96.dp)
+                .size(54.dp),
         ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.AutoAwesome,
-                    contentDescription = "Ask Gemini AI",
-                    modifier = Modifier.size(18.dp),
-                )
-                Text(
-                    text = "Ask AI",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
+            Icon(
+                imageVector = Icons.Outlined.AutoAwesome,
+                contentDescription = "Ask Spending Assistant",
+                modifier = Modifier.size(24.dp),
+            )
         }
 
         TrackerBottomBar(
@@ -335,6 +325,7 @@ fun MoneyTrackerRoot(
             },
             modifier = Modifier.align(Alignment.BottomCenter),
         )
+        }
     }
 
     if (showAiChatSheet) {

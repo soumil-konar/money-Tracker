@@ -49,6 +49,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.soumil.moneytracker.data.db.AccountEntity
 import com.soumil.moneytracker.data.db.TransactionRecord
@@ -103,14 +104,19 @@ fun TransactionsScreen(
             start = 20.dp,
             end = 20.dp,
             top = statusBarInset + 16.dp,
-            bottom = navBarInset + 120.dp,
+            bottom = navBarInset + 160.dp,
         ),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
             MotionReveal(index = 0) {
                 Column {
-                    Text(text = "Transactions", style = MaterialTheme.typography.headlineLarge)
+                    Text(
+                        text = "Transactions",
+                        style = MaterialTheme.typography.headlineLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                    )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = "Search-ready ledger for posted and review items",
