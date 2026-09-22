@@ -7,6 +7,7 @@ import com.soumil.moneytracker.ai.OnDeviceAiEngine
 import com.soumil.moneytracker.data.db.FinanceDatabase
 import com.soumil.moneytracker.data.local.AiPreferences
 import com.soumil.moneytracker.data.local.HapticPreferences
+import com.soumil.moneytracker.data.local.SecurityPreferences
 import com.soumil.moneytracker.data.local.SetupPreferences
 import com.soumil.moneytracker.data.repo.FinanceRepository
 import com.soumil.moneytracker.parser.SmsParser
@@ -18,6 +19,7 @@ class AppContainer(context: Context) {
     private val setupPreferences by lazy { SetupPreferences(context) }
     val aiPreferences by lazy { AiPreferences(context) }
     val hapticPreferences by lazy { HapticPreferences(context) }
+    val securityPreferences by lazy { SecurityPreferences(context) }
     val hapticManager by lazy { HapticFeedbackManager(context, hapticPreferences) }
     val geminiApiClient by lazy { GeminiApiClient() }
     val onDeviceAiEngine by lazy { OnDeviceAiEngine(context) }
@@ -44,6 +46,7 @@ class AppContainer(context: Context) {
             setupPreferences = setupPreferences,
             aiPreferences = aiPreferences,
             hapticPreferences = hapticPreferences,
+            securityPreferences = securityPreferences,
             geminiApiClient = geminiApiClient,
             onDeviceAiEngine = onDeviceAiEngine,
         )

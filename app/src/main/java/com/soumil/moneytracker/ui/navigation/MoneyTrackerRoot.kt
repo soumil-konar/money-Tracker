@@ -110,6 +110,7 @@ fun MoneyTrackerRoot(
     val isInitialSetupComplete by viewModel.isInitialSetupComplete.collectAsStateWithLifecycle()
     val isHapticEnabled by viewModel.isHapticEnabled.collectAsStateWithLifecycle()
     val hapticIntensity by viewModel.hapticIntensity.collectAsStateWithLifecycle()
+    val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsStateWithLifecycle()
     val haptics = LocalAppHaptics.current
     val primaryBankAccount = accounts.firstOrNull { it.kind == AccountKind.BANK && it.institutionName != null }
         ?: accounts.firstOrNull { it.kind == AccountKind.BANK }
@@ -285,6 +286,9 @@ fun MoneyTrackerRoot(
                     hapticIntensity = hapticIntensity,
                     onToggleHapticEnabled = viewModel::setHapticEnabled,
                     onSelectHapticIntensity = viewModel::setHapticIntensity,
+                    isBiometricEnabled = isBiometricEnabled,
+                    isBiometricAvailable = viewModel.isBiometricHardwareAvailable(context),
+                    onToggleBiometricEnabled = viewModel::setBiometricEnabled,
                 )
             }
         }

@@ -53,6 +53,7 @@ import com.soumil.moneytracker.data.db.TransactionEmbeddingEntity
 import com.soumil.moneytracker.data.local.AiEngineMode
 import com.soumil.moneytracker.data.local.AiPreferences
 import com.soumil.moneytracker.data.local.HapticPreferences
+import com.soumil.moneytracker.data.local.SecurityPreferences
 import com.soumil.moneytracker.data.model.AssistantMessage
 import com.soumil.moneytracker.data.model.AssistantSender
 
@@ -68,6 +69,7 @@ class FinanceRepository(
     private val setupPreferences: SetupPreferences,
     val aiPreferences: AiPreferences,
     val hapticPreferences: HapticPreferences,
+    val securityPreferences: SecurityPreferences,
     val geminiApiClient: GeminiApiClient,
     val onDeviceAiEngine: OnDeviceAiEngine,
 ) {

@@ -1,6 +1,7 @@
 package com.soumil.moneytracker.ui
 
 import android.content.ContentResolver
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -217,6 +218,16 @@ class MainViewModel(
 
     fun setHapticIntensity(intensity: HapticIntensity) {
         repository.hapticPreferences.setHapticIntensity(intensity)
+    }
+
+    val isBiometricEnabled: StateFlow<Boolean> = repository.securityPreferences.isBiometricEnabled
+
+    fun setBiometricEnabled(enabled: Boolean) {
+        repository.securityPreferences.setBiometricEnabled(enabled)
+    }
+
+    fun isBiometricHardwareAvailable(context: Context): Boolean {
+        return repository.securityPreferences.isBiometricHardwareAvailable(context)
     }
 
     fun testAiConnection() {

@@ -67,6 +67,8 @@ fun SettingsScreen(
     aiTestStatus: String? = null,
     isHapticEnabled: Boolean = true,
     hapticIntensity: HapticIntensity = HapticIntensity.BALANCED,
+    isBiometricEnabled: Boolean = false,
+    isBiometricAvailable: Boolean = true,
     onUpdateApiKey: (String) -> Unit = {},
     onToggleAiEnabled: (Boolean) -> Unit = {},
     onSelectModel: (String) -> Unit = {},
@@ -74,6 +76,7 @@ fun SettingsScreen(
     onTestAiConnection: () -> Unit = {},
     onToggleHapticEnabled: (Boolean) -> Unit = {},
     onSelectHapticIntensity: (HapticIntensity) -> Unit = {},
+    onToggleBiometricEnabled: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val haptics = LocalAppHaptics.current
@@ -432,6 +435,46 @@ fun SettingsScreen(
 
         item {
             MotionReveal(index = 4) {
+                SectionCard(
+                    title = "App Security",
+                    subtitle = "Biometric lock & credential protection",
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Biometric App Lock",
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = if (isBiometricAvailable) {
+                                    "Require fingerprint, face, or device PIN to open Money Tracker."
+                                } else {
+                                    "Biometric hardware not available or not configured on this device."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(
+                            checked = isBiometricEnabled,
+                            enabled = isBiometricAvailable,
+                            onCheckedChange = { enabled ->
+                                onToggleBiometricEnabled(enabled)
+                                haptics.toggle(enabled)
+                            },
+                        )
+                    }
+                }
+            }
+        }
+
+        item {
+            MotionReveal(index = 5) {
                 PermissionBanner(
                     smsPermissionGranted = smsPermissionGranted,
                     onRequestPermissions = onRequestPermissions,
