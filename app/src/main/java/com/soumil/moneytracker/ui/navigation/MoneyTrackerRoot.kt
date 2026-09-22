@@ -41,6 +41,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
+import com.soumil.moneytracker.ui.haptics.LocalAppHaptics
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -107,6 +108,9 @@ fun MoneyTrackerRoot(
     val activeSubscriptions by viewModel.activeSubscriptions.collectAsStateWithLifecycle()
     val suggestedSubscriptions by viewModel.suggestedSubscriptions.collectAsStateWithLifecycle()
     val isInitialSetupComplete by viewModel.isInitialSetupComplete.collectAsStateWithLifecycle()
+    val isHapticEnabled by viewModel.isHapticEnabled.collectAsStateWithLifecycle()
+    val hapticIntensity by viewModel.hapticIntensity.collectAsStateWithLifecycle()
+    val haptics = LocalAppHaptics.current
     val primaryBankAccount = accounts.firstOrNull { it.kind == AccountKind.BANK && it.institutionName != null }
         ?: accounts.firstOrNull { it.kind == AccountKind.BANK }
 
@@ -277,6 +281,10 @@ fun MoneyTrackerRoot(
                     onSelectModel = viewModel::setSelectedModel,
                     onSelectEngineMode = viewModel::setAiEngineMode,
                     onTestAiConnection = viewModel::testAiConnection,
+                    isHapticEnabled = isHapticEnabled,
+                    hapticIntensity = hapticIntensity,
+                    onToggleHapticEnabled = viewModel::setHapticEnabled,
+                    onSelectHapticIntensity = viewModel::setHapticIntensity,
                 )
             }
         }
@@ -290,7 +298,10 @@ fun MoneyTrackerRoot(
         )
 
         FloatingActionButton(
-            onClick = { showAiChatSheet = true },
+            onClick = {
+                haptics.click()
+                showAiChatSheet = true
+            },
             containerColor = MaterialTheme.colorScheme.primary,
             contentColor = Color.White,
             shape = CircleShape,
@@ -310,6 +321,7 @@ fun MoneyTrackerRoot(
         TrackerBottomBar(
             currentRoute = currentRoute,
             onNavigate = { destination ->
+                haptics.selection()
                 navController.navigate(destination.route) {
                     popUpTo(navController.graph.startDestinationId) {
                         saveState = true
@@ -319,6 +331,7 @@ fun MoneyTrackerRoot(
                 }
             },
             onAddTransaction = {
+                haptics.click()
                 editingTransaction = null
                 transactionDialogKey += 1
                 showAddTransactionDialog = true

@@ -62,6 +62,7 @@ import com.soumil.moneytracker.ui.asMonthYear
 import com.soumil.moneytracker.ui.components.MotionReveal
 import com.soumil.moneytracker.ui.components.SectionCard
 import com.soumil.moneytracker.ui.components.TransactionItem
+import com.soumil.moneytracker.ui.haptics.LocalAppHaptics
 
 @Composable
 fun TransactionsScreen(
@@ -80,6 +81,7 @@ fun TransactionsScreen(
     onToggleBudgetInclusion: (TransactionRecord) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val haptics = LocalAppHaptics.current
     var selectedCardAccountId by rememberSaveable(filter) { mutableStateOf<Long?>(null) }
     val visibleTransactions = remember(transactions, filter, selectedCardAccountId) {
         if (filter == TransactionFilter.CARD && selectedCardAccountId != null) {
@@ -142,7 +144,10 @@ fun TransactionsScreen(
                     },
                     trailingIcon = {
                         if (searchQuery.isNotBlank()) {
-                            IconButton(onClick = { onSearchQueryChange("") }) {
+                            IconButton(onClick = {
+                                haptics.tick()
+                                onSearchQueryChange("")
+                            }) {
                                 Icon(
                                     imageVector = Icons.Outlined.Close,
                                     contentDescription = "Clear",
@@ -165,7 +170,10 @@ fun TransactionsScreen(
                     items(TransactionFilter.entries) { candidate ->
                         FilterChip(
                             selected = filter == candidate,
-                            onClick = { onFilterSelected(candidate) },
+                            onClick = {
+                                haptics.tick()
+                                onFilterSelected(candidate)
+                            },
                             label = { Text(candidate.label) },
                         )
                     }
@@ -183,14 +191,20 @@ fun TransactionsScreen(
                         item {
                             FilterChip(
                                 selected = selectedCardAccountId == null,
-                                onClick = { selectedCardAccountId = null },
+                                onClick = {
+                                    haptics.tick()
+                                    selectedCardAccountId = null
+                                },
                                 label = { Text("All cards") },
                             )
                         }
                         items(selectableCards, key = { it.id }) { account ->
                             FilterChip(
                                 selected = selectedCardAccountId == account.id,
-                                onClick = { selectedCardAccountId = account.id },
+                                onClick = {
+                                    haptics.tick()
+                                    selectedCardAccountId = account.id
+                                },
                                 label = {
                                     Text(
                                         account.lastFourDigits?.let { "${account.name} ending $it" } ?: account.name,
@@ -205,7 +219,10 @@ fun TransactionsScreen(
 
         item {
             MotionReveal(index = 3) {
-                OutlinedButton(onClick = onAddTransactionClick) {
+                OutlinedButton(onClick = {
+                    haptics.click()
+                    onAddTransactionClick()
+                }) {
                     Text("Add manual transaction")
                 }
             }
@@ -218,7 +235,10 @@ fun TransactionsScreen(
                         title = "No transactions yet",
                         subtitle = "SMS imports and manual entries will appear here.",
                     ) {
-                        Button(onClick = onAddTransactionClick) {
+                        Button(onClick = {
+                            haptics.click()
+                            onAddTransactionClick()
+                        }) {
                             Text("Add transaction")
                         }
                     }
@@ -254,7 +274,10 @@ fun TransactionsScreen(
                                 ) {
                                     if (onAnalyzeWithAi != null && !transaction.smsBody.isNullOrBlank()) {
                                         OutlinedButton(
-                                            onClick = { onAnalyzeWithAi(transaction.id) },
+                                            onClick = {
+                                                haptics.click()
+                                                onAnalyzeWithAi(transaction.id)
+                                            },
                                             enabled = !isAiAnalyzing,
                                         ) {
                                             Icon(
@@ -267,7 +290,10 @@ fun TransactionsScreen(
                                         }
                                     }
                                     Button(
-                                        onClick = { onApproveReview(transaction.id) },
+                                        onClick = {
+                                            haptics.success()
+                                            onApproveReview(transaction.id)
+                                        },
                                         modifier = Modifier.weight(1f),
                                     ) {
                                         Text("Approve")
@@ -355,6 +381,7 @@ private fun TransactionCardActions(
     onToggleBudgetInclusion: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val haptics = LocalAppHaptics.current
     val countsTowardBudget = transaction.countsTowardBudget
     Row(
         modifier = modifier,
@@ -377,21 +404,30 @@ private fun TransactionCardActions(
             } else {
                 MaterialTheme.colorScheme.surfaceVariant
             },
-            onClick = onToggleBudgetInclusion,
+            onClick = {
+                haptics.toggle()
+                onToggleBudgetInclusion()
+            },
         )
         TransactionActionButton(
             icon = Icons.Outlined.Edit,
             contentDescription = "Edit transaction",
             tint = MaterialTheme.colorScheme.onBackground,
             containerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.22f),
-            onClick = onEdit,
+            onClick = {
+                haptics.click()
+                onEdit()
+            },
         )
         TransactionActionButton(
             icon = Icons.Outlined.DeleteOutline,
             contentDescription = "Delete transaction",
             tint = MaterialTheme.colorScheme.primary,
             containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
-            onClick = onDelete,
+            onClick = {
+                haptics.warning()
+                onDelete()
+            },
         )
     }
 }

@@ -29,6 +29,7 @@ import com.soumil.moneytracker.ui.components.MotionReveal
 import com.soumil.moneytracker.ui.components.ScheduledTransactionItem
 import com.soumil.moneytracker.ui.components.SectionCard
 import com.soumil.moneytracker.ui.components.SubscriptionItem
+import com.soumil.moneytracker.ui.haptics.LocalAppHaptics
 
 @Composable
 fun MoreScreen(
@@ -46,6 +47,7 @@ fun MoreScreen(
     onExportCsv: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    val haptics = LocalAppHaptics.current
     val accountEntries = accounts.filter { it.kind != AccountKind.CARD }
     val cardEntries = accounts.filter { it.kind == AccountKind.CARD }
 
@@ -87,7 +89,10 @@ fun MoreScreen(
                     title = "Subscriptions",
                     subtitle = "Manual entries plus recurring-payment suggestions",
                 ) {
-                    Button(onClick = onAddSubscriptionClick) {
+                    Button(onClick = {
+                        haptics.click()
+                        onAddSubscriptionClick()
+                    }) {
                         Text("Add subscription")
                     }
                     Spacer(modifier = Modifier.height(14.dp))
@@ -149,10 +154,16 @@ fun MoreScreen(
                                         subscription = subscription,
                                         trailing = {
                                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                Button(onClick = { onAcceptSuggestion(subscription.id) }) {
+                                                Button(onClick = {
+                                                    haptics.success()
+                                                    onAcceptSuggestion(subscription.id)
+                                                }) {
                                                     Text("Keep")
                                                 }
-                                                OutlinedButton(onClick = { onDismissSuggestion(subscription.id) }) {
+                                                OutlinedButton(onClick = {
+                                                    haptics.warning()
+                                                    onDismissSuggestion(subscription.id)
+                                                }) {
                                                     Text("Dismiss")
                                                 }
                                             }
@@ -172,7 +183,10 @@ fun MoreScreen(
                     title = "Accounts",
                     subtitle = "Bank and balance sources used to route imported SMS",
                 ) {
-                    OutlinedButton(onClick = onAddBankClick) {
+                    OutlinedButton(onClick = {
+                        haptics.click()
+                        onAddBankClick()
+                    }) {
                         Text("Add bank")
                     }
                     Spacer(modifier = Modifier.height(14.dp))
@@ -188,8 +202,14 @@ fun MoreScreen(
                                 MotionReveal(index = index.coerceAtMost(4)) {
                                     AccountItem(
                                         account = account,
-                                        onEdit = { onEditAccount(account) },
-                                        onDelete = { onDeleteAccount(account) },
+                                        onEdit = {
+                                            haptics.click()
+                                            onEditAccount(account)
+                                        },
+                                        onDelete = {
+                                            haptics.warning()
+                                            onDeleteAccount(account)
+                                        },
                                     )
                                 }
                             }
@@ -205,7 +225,10 @@ fun MoreScreen(
                     title = "Cards",
                     subtitle = "Credit and debit cards matched by their last 4 digits",
                 ) {
-                    OutlinedButton(onClick = onAddCardClick) {
+                    OutlinedButton(onClick = {
+                        haptics.click()
+                        onAddCardClick()
+                    }) {
                         Text("Add card")
                     }
                     Spacer(modifier = Modifier.height(14.dp))
@@ -221,8 +244,14 @@ fun MoreScreen(
                                 MotionReveal(index = index.coerceAtMost(4)) {
                                     AccountItem(
                                         account = account,
-                                        onEdit = { onEditAccount(account) },
-                                        onDelete = { onDeleteAccount(account) },
+                                        onEdit = {
+                                            haptics.click()
+                                            onEditAccount(account)
+                                        },
+                                        onDelete = {
+                                            haptics.warning()
+                                            onDeleteAccount(account)
+                                        },
                                     )
                                 }
                             }
@@ -244,7 +273,10 @@ fun MoreScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(modifier = Modifier.height(12.dp))
-                    Button(onClick = onExportCsv) {
+                    Button(onClick = {
+                        haptics.success()
+                        onExportCsv()
+                    }) {
                         Text("Export ledger to CSV")
                     }
                 }

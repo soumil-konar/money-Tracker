@@ -62,6 +62,7 @@ import com.soumil.moneytracker.data.model.TransactionDirection
 import com.soumil.moneytracker.data.model.TransactionDraft
 import com.soumil.moneytracker.ui.asCurrency
 import com.soumil.moneytracker.ui.asFullDate
+import com.soumil.moneytracker.ui.haptics.LocalAppHaptics
 import java.time.LocalDate
 import java.time.ZoneId
 
@@ -71,6 +72,7 @@ fun BudgetDialog(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
+    val haptics = LocalAppHaptics.current
     var amount by rememberSaveable { mutableStateOf(currentValue?.toString().orEmpty()) }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -84,12 +86,18 @@ fun BudgetDialog(
             )
         },
         confirmButton = {
-            Button(onClick = { onConfirm(amount) }) {
+            Button(onClick = {
+                haptics.success()
+                onConfirm(amount)
+            }) {
                 Text("Save")
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(onClick = {
+                haptics.click()
+                onDismiss()
+            }) {
                 Text("Cancel")
             }
         },
@@ -107,6 +115,7 @@ fun AddTransactionDialog(
     initialDraft: TransactionDraft? = null,
     dialogKey: Int = 0,
 ) {
+    val haptics = LocalAppHaptics.current
     var merchant by rememberSaveable(dialogKey) { mutableStateOf(initialDraft?.merchant.orEmpty()) }
     var amount by rememberSaveable(dialogKey) { mutableStateOf(initialDraft?.amount?.toInputAmount().orEmpty()) }
     var note by rememberSaveable(dialogKey) { mutableStateOf(initialDraft?.note.orEmpty()) }
@@ -226,6 +235,7 @@ fun AddTransactionDialog(
                     DropdownMenuItem(
                         text = { Text(category.label) },
                         onClick = {
+                            haptics.tick()
                             selectedCategory = category
                             categoryExpanded = false
                         },
@@ -255,6 +265,7 @@ fun AddTransactionDialog(
                     DropdownMenuItem(
                         text = { Text(account.name) },
                         onClick = {
+                            haptics.tick()
                             selectedAccountId = account.id
                             accountExpanded = false
                         },
@@ -287,7 +298,10 @@ fun AddTransactionDialog(
             }
             Switch(
                 checked = countsTowardBudget,
-                onCheckedChange = { countsTowardBudget = it },
+                onCheckedChange = {
+                    haptics.toggle()
+                    countsTowardBudget = it
+                },
             )
         }
         Row(
@@ -295,7 +309,10 @@ fun AddTransactionDialog(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             OutlinedButton(
-                onClick = onDismiss,
+                onClick = {
+                    haptics.click()
+                    onDismiss()
+                },
                 modifier = Modifier.weight(1f),
             ) {
                 Text("Cancel")
@@ -304,6 +321,7 @@ fun AddTransactionDialog(
                 onClick = {
                     val parsedAmount = amount.replace(",", "").toDoubleOrNull() ?: return@Button
                     if (merchant.isBlank()) return@Button
+                    haptics.success()
                     onConfirm(
                         TransactionDraft(
                             amount = parsedAmount,
@@ -332,6 +350,7 @@ fun DeleteTransactionDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
+    val haptics = LocalAppHaptics.current
     TrackerDialogScaffold(
         eyebrow = "Ledger Cleanup",
         title = "Delete transaction",
@@ -359,13 +378,19 @@ fun DeleteTransactionDialog(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             OutlinedButton(
-                onClick = onDismiss,
+                onClick = {
+                    haptics.click()
+                    onDismiss()
+                },
                 modifier = Modifier.weight(1f),
             ) {
                 Text("Cancel")
             }
             Button(
-                onClick = onConfirm,
+                onClick = {
+                    haptics.heavy()
+                    onConfirm()
+                },
                 modifier = Modifier.weight(1f),
             ) {
                 Text("Delete")
@@ -380,6 +405,7 @@ fun DeleteAccountDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
+    val haptics = LocalAppHaptics.current
     val metadata = when (account.kind) {
         AccountKind.CARD -> listOfNotNull(
             account.cardType?.label,
@@ -427,13 +453,19 @@ fun DeleteAccountDialog(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             OutlinedButton(
-                onClick = onDismiss,
+                onClick = {
+                    haptics.click()
+                    onDismiss()
+                },
                 modifier = Modifier.weight(1f),
             ) {
                 Text("Cancel")
             }
             Button(
-                onClick = onConfirm,
+                onClick = {
+                    haptics.heavy()
+                    onConfirm()
+                },
                 modifier = Modifier.weight(1f),
             ) {
                 Text("Delete")
@@ -449,6 +481,7 @@ fun AddSubscriptionDialog(
     onDismiss: () -> Unit,
     onConfirm: (SubscriptionDraft) -> Unit,
 ) {
+    val haptics = LocalAppHaptics.current
     var merchant by rememberSaveable { mutableStateOf("") }
     var amount by rememberSaveable { mutableStateOf("") }
     var cycleDays by rememberSaveable { mutableStateOf("30") }
@@ -466,12 +499,20 @@ fun AddSubscriptionDialog(
             onDismissRequest = { showDatePicker = false },
             confirmButton = {
                 TextButton(onClick = {
+                    haptics.click()
                     datePickerState.selectedDateMillis?.let { nextDueMillis = it }
                     showDatePicker = false
-                }) { Text("OK") }
+                }) {
+                    Text("OK")
+                }
             },
             dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
+                TextButton(onClick = {
+                    haptics.click()
+                    showDatePicker = false
+                }) {
+                    Text("Cancel")
+                }
             },
         ) {
             DatePicker(state = datePickerState)
@@ -482,11 +523,11 @@ fun AddSubscriptionDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add subscription") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(
                     value = merchant,
                     onValueChange = { merchant = it },
-                    label = { Text("Merchant") },
+                    label = { Text("Service or merchant name") },
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
@@ -503,7 +544,10 @@ fun AddSubscriptionDialog(
                         modifier = Modifier.weight(1f),
                     )
                     OutlinedButton(
-                        onClick = { showDatePicker = true },
+                        onClick = {
+                            haptics.click()
+                            showDatePicker = true
+                        },
                         modifier = Modifier.weight(1f),
                     ) {
                         Text("Next due: ${nextDueMillis.asFullDate()}")
@@ -531,6 +575,7 @@ fun AddSubscriptionDialog(
                             DropdownMenuItem(
                                 text = { Text(account.name) },
                                 onClick = {
+                                    haptics.tick()
                                     selectedAccount = account
                                     accountExpanded = false
                                 },
@@ -551,6 +596,7 @@ fun AddSubscriptionDialog(
                     val parsedAmount = amount.replace(",", "").toDoubleOrNull() ?: return@Button
                     val parsedCycle = cycleDays.toIntOrNull() ?: return@Button
                     if (merchant.isBlank()) return@Button
+                    haptics.success()
                     onConfirm(
                         SubscriptionDraft(
                             merchant = merchant.trim(),
@@ -566,7 +612,10 @@ fun AddSubscriptionDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(onClick = {
+                haptics.click()
+                onDismiss()
+            }) {
                 Text("Cancel")
             }
         },
@@ -579,9 +628,13 @@ private fun RowScope.DirectionChoice(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
+    val haptics = LocalAppHaptics.current
     FilterChip(
         selected = selected,
-        onClick = onClick,
+        onClick = {
+            haptics.selection()
+            onClick()
+        },
         label = { Text(label) },
         colors = FilterChipDefaults.filterChipColors(
             selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
@@ -670,6 +723,7 @@ fun AccountEditorDialog(
     confirmLabel: String,
     dialogKey: Int = 0,
 ) {
+    val haptics = LocalAppHaptics.current
     val initialBankOption = remember(initialDraft.institutionName) {
         bankOptionFor(initialDraft.institutionName)
     }
@@ -727,7 +781,10 @@ fun AccountEditorDialog(
                     SupportedBankOptions.forEach { bank ->
                         FilterChip(
                             selected = selectedBankOption == bank,
-                            onClick = { selectedBankOption = bank },
+                            onClick = {
+                                haptics.tick()
+                                selectedBankOption = bank
+                            },
                             label = { Text(bank) },
                         )
                     }
@@ -776,7 +833,10 @@ fun AccountEditorDialog(
                 if (selectedCardType == CardType.CREDIT) {
                     FilterChip(
                         selected = isRupayCreditCard,
-                        onClick = { isRupayCreditCard = !isRupayCreditCard },
+                        onClick = {
+                            haptics.toggle()
+                            isRupayCreditCard = !isRupayCreditCard
+                        },
                         label = { Text("RuPay credit card") },
                     )
                 }
@@ -788,7 +848,10 @@ fun AccountEditorDialog(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             OutlinedButton(
-                onClick = onDismiss,
+                onClick = {
+                    haptics.click()
+                    onDismiss()
+                },
                 modifier = Modifier.weight(1f),
             ) {
                 Text("Cancel")
@@ -809,6 +872,7 @@ fun AccountEditorDialog(
                     if (initialDraft.kind == AccountKind.CARD && sanitizedLastFour == null) {
                         return@Button
                     }
+                    haptics.success()
                     onConfirm(
                         AccountDraft(
                             name = trimmedName,
@@ -844,6 +908,7 @@ fun InitialSetupDialog(
     onAddCard: (AccountDraft) -> Unit,
     onFinish: () -> Unit,
 ) {
+    val haptics = LocalAppHaptics.current
     val initialBankOption = remember(configuredBank?.institutionName) {
         bankOptionFor(configuredBank?.institutionName)
     }
@@ -886,6 +951,7 @@ fun InitialSetupDialog(
                         FilterChip(
                             selected = selectedBankOption == bank,
                             onClick = {
+                                haptics.tick()
                                 selectedBankOption = bank
                                 if (bank != OtherBankOption && bankAccountName.isBlank()) {
                                     bankAccountName = bank
@@ -988,7 +1054,10 @@ fun InitialSetupDialog(
                         if (selectedCardType == CardType.CREDIT) {
                             FilterChip(
                                 selected = isRupayCreditCard,
-                                onClick = { isRupayCreditCard = !isRupayCreditCard },
+                                onClick = {
+                                    haptics.toggle()
+                                    isRupayCreditCard = !isRupayCreditCard
+                                },
                                 label = { Text("RuPay credit card") },
                             )
                         }
@@ -997,6 +1066,7 @@ fun InitialSetupDialog(
                                 val institutionName = resolvedInstitutionName ?: return@Button
                                 val lastFourDigits = cardLastFourDigits.filter(Char::isDigit).takeLast(4)
                                 if (lastFourDigits.length != 4) return@Button
+                                haptics.success()
                                 onAddCard(
                                     AccountDraft(
                                         name = cardName.trim().ifBlank {
@@ -1033,7 +1103,10 @@ fun InitialSetupDialog(
         ) {
             if (step == 0) {
                 OutlinedButton(
-                    onClick = onDismiss,
+                    onClick = {
+                        haptics.click()
+                        onDismiss()
+                    },
                     modifier = Modifier.weight(1f),
                 ) {
                     Text("Later")
@@ -1042,6 +1115,7 @@ fun InitialSetupDialog(
                     onClick = {
                         val institutionName = resolvedInstitutionName ?: return@Button
                         val accountName = bankAccountName.trim().ifBlank { institutionName }
+                        haptics.click()
                         onSaveBank(institutionName, accountName)
                         step = 1
                     },
@@ -1051,13 +1125,19 @@ fun InitialSetupDialog(
                 }
             } else {
                 OutlinedButton(
-                    onClick = { step = 0 },
+                    onClick = {
+                        haptics.click()
+                        step = 0
+                    },
                     modifier = Modifier.weight(1f),
                 ) {
                     Text("Back")
                 }
                 Button(
-                    onClick = onFinish,
+                    onClick = {
+                        haptics.success()
+                        onFinish()
+                    },
                     modifier = Modifier.weight(1f),
                 ) {
                     Text("Finish")
@@ -1101,9 +1181,13 @@ private fun RowScope.CardTypeChoice(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
+    val haptics = LocalAppHaptics.current
     FilterChip(
         selected = selected,
-        onClick = onClick,
+        onClick = {
+            haptics.selection()
+            onClick()
+        },
         label = { Text(label) },
         colors = FilterChipDefaults.filterChipColors(
             selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),

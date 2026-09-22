@@ -61,6 +61,7 @@ import com.soumil.moneytracker.ui.components.PermissionBanner
 import com.soumil.moneytracker.ui.components.SectionCard
 import com.soumil.moneytracker.ui.components.SpendingPieChart
 import com.soumil.moneytracker.ui.components.TransactionItem
+import com.soumil.moneytracker.ui.haptics.LocalAppHaptics
 
 @Composable
 fun HomeScreen(
@@ -75,6 +76,7 @@ fun HomeScreen(
     onOpenAssistant: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
+    val haptics = LocalAppHaptics.current
     val statusBarInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
@@ -155,8 +157,14 @@ fun HomeScreen(
                     budget = dashboard.budgetLimit,
                     safeDailySpend = dashboard.safeDailySpend,
                     netSavings = dashboard.monthNetCashflow,
-                    onSetBudgetClick = onSetBudgetClick,
-                    onBudgetClick = onBudgetClick,
+                    onSetBudgetClick = {
+                        haptics.click()
+                        onSetBudgetClick()
+                    },
+                    onBudgetClick = {
+                        haptics.click()
+                        onBudgetClick()
+                    },
                 )
             }
         }
@@ -227,7 +235,10 @@ fun HomeScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Button(
-                                onClick = onRefreshAiInsights,
+                                onClick = {
+                                    haptics.click()
+                                    onRefreshAiInsights()
+                                },
                                 enabled = !dashboard.isAiLoading,
                             ) {
                                 if (dashboard.isAiLoading) {
@@ -276,7 +287,10 @@ fun HomeScreen(
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                             ) {
                                 OutlinedButton(
-                                    onClick = onRefreshAiInsights,
+                                    onClick = {
+                                        haptics.click()
+                                        onRefreshAiInsights()
+                                    },
                                     enabled = !dashboard.isAiLoading,
                                     modifier = Modifier.weight(1f),
                                 ) {
@@ -293,7 +307,10 @@ fun HomeScreen(
                                 }
                                 if (onOpenAssistant != null) {
                                     Button(
-                                        onClick = onOpenAssistant,
+                                        onClick = {
+                                            haptics.click()
+                                            onOpenAssistant.invoke()
+                                        },
                                         modifier = Modifier.weight(1f),
                                     ) {
                                         Icon(

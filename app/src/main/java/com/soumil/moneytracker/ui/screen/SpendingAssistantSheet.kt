@@ -81,6 +81,7 @@ import com.soumil.moneytracker.data.model.TransactionCategory
 import com.soumil.moneytracker.data.model.TransactionDirection
 import com.soumil.moneytracker.ui.asCurrency
 import com.soumil.moneytracker.ui.asShortDate
+import com.soumil.moneytracker.ui.haptics.LocalAppHaptics
 
 private data class PromptSuggestion(
     val label: String,
@@ -108,6 +109,7 @@ fun SpendingAssistantSheet(
     sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
     modifier: Modifier = Modifier,
 ) {
+    val haptics = LocalAppHaptics.current
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
 
@@ -203,7 +205,10 @@ fun SpendingAssistantSheet(
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
                     ) {
                         IconButton(
-                            onClick = onClearChat,
+                            onClick = {
+                                haptics.warning()
+                                onClearChat()
+                            },
                             modifier = Modifier.size(36.dp),
                         ) {
                             Icon(
@@ -220,7 +225,10 @@ fun SpendingAssistantSheet(
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
                     ) {
                         IconButton(
-                            onClick = onDismiss,
+                            onClick = {
+                                haptics.click()
+                                onDismiss()
+                            },
                             modifier = Modifier.size(36.dp),
                         ) {
                             Icon(
@@ -245,7 +253,10 @@ fun SpendingAssistantSheet(
                         shape = RoundedCornerShape(14.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
-                        modifier = Modifier.clickable { onSendMessage(suggestion.prompt) },
+                        modifier = Modifier.clickable {
+                            haptics.tick()
+                            onSendMessage(suggestion.prompt)
+                        },
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
@@ -359,6 +370,7 @@ fun SpendingAssistantSheet(
                             .clickable(enabled = isSendEnabled) {
                                 val textToSend = inputText.trim()
                                 if (textToSend.isNotBlank()) {
+                                    haptics.click()
                                     onSendMessage(textToSend)
                                     inputText = ""
                                 }

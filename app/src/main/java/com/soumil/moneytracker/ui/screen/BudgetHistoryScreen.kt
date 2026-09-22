@@ -43,6 +43,7 @@ import com.soumil.moneytracker.data.model.MonthBudgetSummary
 import com.soumil.moneytracker.ui.asCurrency
 import com.soumil.moneytracker.ui.components.MotionReveal
 import com.soumil.moneytracker.ui.components.TransactionItem
+import com.soumil.moneytracker.ui.haptics.LocalAppHaptics
 
 @Composable
 fun BudgetHistoryScreen(
@@ -52,6 +53,7 @@ fun BudgetHistoryScreen(
     onEditTransaction: (TransactionRecord) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val haptics = LocalAppHaptics.current
     var expandedKey by rememberSaveable { mutableStateOf(initiallyExpandedKey) }
 
     val statusBarInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
@@ -70,7 +72,10 @@ fun BudgetHistoryScreen(
         item {
             MotionReveal(index = 0) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = {
+                        haptics.click()
+                        onBack()
+                    }) {
                         Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back")
                     }
                     Column {
@@ -120,6 +125,7 @@ fun BudgetHistoryScreen(
                             summary = summary,
                             expanded = expandedKey == summary.yearMonthKey,
                             onToggle = {
+                                haptics.tick()
                                 expandedKey = if (expandedKey == summary.yearMonthKey) {
                                     null
                                 } else {
@@ -246,6 +252,7 @@ private fun BudgetTransactionSection(
     onEditTransaction: (TransactionRecord) -> Unit,
 ) {
     if (transactions.isEmpty()) return
+    val haptics = LocalAppHaptics.current
     Text(
         text = label,
         style = MaterialTheme.typography.labelMedium,
@@ -267,7 +274,10 @@ private fun BudgetTransactionSection(
                     transaction = transaction,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onEditTransaction(transaction) },
+                        .clickable {
+                            haptics.click()
+                            onEditTransaction(transaction)
+                        },
                 )
                 Box(
                     modifier = Modifier
