@@ -156,13 +156,24 @@ class OnDeviceAiEngine(
         val lowerQuery = userQuery.lowercase(Locale.getDefault())
 
         val isFoodQuery = listOf("food", "dining", "eat", "restaurant", "cafe", "swiggy", "zomato").any { it in lowerQuery }
-        val isPlaceQuery = listOf("where", "place", "location", "indiranagar", "branch").any { it in lowerQuery }
-        val isBudgetQuery = listOf("budget", "pace", "pacing", "left", "save").any { it in lowerQuery }
+        val isTravelQuery = listOf("travel", "transport", "transportation", "uber", "ola", "metro", "fuel", "petrol", "cab", "ride", "auto", "train", "flight").any { it in lowerQuery }
+        val isShoppingQuery = listOf("shopping", "clothes", "amazon", "flipkart", "myntra", "retail", "mart", "store", "buy", "bought").any { it in lowerQuery }
+        val isBillsQuery = listOf("bill", "bills", "utility", "electricity", "water", "recharge", "broadband", "wifi", "airtel", "jio").any { it in lowerQuery }
+        val isHealthQuery = listOf("health", "medical", "medicine", "doctor", "hospital", "pharmacy", "apollo").any { it in lowerQuery }
+        val isSubscriptionQuery = listOf("subscription", "subscriptions", "netflix", "spotify", "prime", "hotstar", "youtube", "recurring").any { it in lowerQuery }
+        val isCardQuery = listOf("credit card", "card spend", "card debits", "cards").any { it in lowerQuery }
+        val isPlaceQuery = listOf("where", "place", "location", "indiranagar", "branch", "outlet", "city").any { it in lowerQuery }
+        val isBudgetQuery = listOf("budget", "pace", "pacing", "left", "save", "saving", "advice", "target", "cap").any { it in lowerQuery }
 
-        val relevantTxs = if (isFoodQuery) {
-            retrievedTransactions.filter { it.category == TransactionCategory.FOOD }
-        } else {
-            retrievedTransactions
+        val relevantTxs = when {
+            isFoodQuery -> retrievedTransactions.filter { it.category == TransactionCategory.FOOD }
+            isTravelQuery -> retrievedTransactions.filter { it.category == TransactionCategory.TRAVEL }
+            isShoppingQuery -> retrievedTransactions.filter { it.category == TransactionCategory.SHOPPING }
+            isBillsQuery -> retrievedTransactions.filter { it.category == TransactionCategory.BILLS }
+            isHealthQuery -> retrievedTransactions.filter { it.category == TransactionCategory.HEALTH }
+            isSubscriptionQuery -> retrievedTransactions.filter { it.category == TransactionCategory.SUBSCRIPTION }
+            isCardQuery -> retrievedTransactions.filter { it.accountKind == AccountKind.CARD }
+            else -> retrievedTransactions
         }
 
         val totalDebit = relevantTxs.filter { it.direction == TransactionDirection.DEBIT }.sumOf { it.amount }
@@ -192,6 +203,37 @@ class OnDeviceAiEngine(
                     append(topMerchants.joinToString(", ") { "${it.key} (₹${it.value.toInt()})" })
                     append(".\n\n*Tip: Setting a dedicated Food budget can help track dining spikes.*")
                 }
+            } else if (isTravelQuery) {
+                append("**Transportation & Travel Breakdown:**\n")
+                append("You have spent **₹${totalDebit.toInt()}** across ${relevantTxs.size} transit and travel expenses.\n")
+                val topTransit = relevantTxs.groupBy { it.merchant }
+                    .mapValues { it.value.sumOf(TransactionRecord::amount) }
+                    .entries.sortedByDescending { it.value }.take(3)
+                if (topTransit.isNotEmpty()) {
+                    append("Top services: ")
+                    append(topTransit.joinToString(", ") { "${it.key} (₹${it.value.toInt()})" })
+                    append(".\n\n*Tip: Using monthly transit passes or metro cards can reduce daily commute costs.*")
+                }
+            } else if (isShoppingQuery) {
+                append("**Shopping Breakdown:**\n")
+                append("You have spent **₹${totalDebit.toInt()}** across ${relevantTxs.size} retail and online purchases.\n")
+                val topStores = relevantTxs.groupBy { it.merchant }
+                    .mapValues { it.value.sumOf(TransactionRecord::amount) }
+                    .entries.sortedByDescending { it.value }.take(3)
+                if (topStores.isNotEmpty()) {
+                    append("Top retailers: ")
+                    append(topStores.joinToString(", ") { "${it.key} (₹${it.value.toInt()})" })
+                    append(".")
+                }
+            } else if (isBillsQuery) {
+                append("**Bills & Utilities Breakdown:**\n")
+                append("You have spent **₹${totalDebit.toInt()}** across ${relevantTxs.size} utility and bill payments.\n")
+            } else if (isSubscriptionQuery) {
+                append("**Subscriptions Overview:**\n")
+                append("You have **${relevantTxs.size} recurring subscription charges** totaling **₹${totalDebit.toInt()}**.\n")
+            } else if (isCardQuery) {
+                append("**Credit Card Spends:**\n")
+                append("Total card debits amount to **₹${totalDebit.toInt()}** across ${relevantTxs.size} transactions.\n")
             } else if (isBudgetQuery) {
                 append("**Budget & Spending Status (On-Device):**\n")
                 append("Your tracked expenses for this period total **₹${totalDebit.toInt()}** across ${relevantTxs.size} entries.\n")
@@ -273,12 +315,23 @@ class OnDeviceAiEngine(
     }
 
     private fun cleanMerchantName(raw: String): String {
+        val trimmed = raw.trim()
+        val digitsOnly = trimmed.filter { it.isDigit() }
+        if (digitsOnly.length in 10..12) {
+            val nonDigits = trimmed.replace(Regex("[0-9]"), "").trim()
+            val last4 = digitsOnly.takeLast(4)
+            return if (nonDigits.isNotBlank()) {
+                "$nonDigits (..$last4)"
+            } else {
+                "UPI Transfer (..$last4)"
+            }
+        }
         val stopWords = listOf("the", "ltd", "pvt", "limited", "bank", "india", "on", "at", "ref", "avl", "bal")
-        return raw.split(Regex("[^a-zA-Z0-9]+"))
+        return trimmed.split(Regex("[^a-zA-Z0-9]+"))
             .filter { it.lowercase(Locale.getDefault()) !in stopWords && it.length > 1 }
             .joinToString(" ")
             .take(28)
-            .ifBlank { raw.take(20) }
+            .ifBlank { trimmed.take(20) }
     }
 
     private fun extractPlaceDetail(body: String, lower: String, merchant: String): String? {
@@ -302,7 +355,10 @@ class OnDeviceAiEngine(
         if ("metro" in lower) return "Metro transit recharge"
         if ("cinema" in lower || "pvr" in lower || "inox" in lower) return "Movie tickets"
 
-        return if (merchant.isNotBlank() && merchant != "Merchant") "$merchant outlet" else null
+        if (merchant.isBlank() || merchant == "Merchant" || merchant.contains("..") || merchant.startsWith("UPI") || merchant.any { it.isDigit() }) {
+            return null
+        }
+        return "$merchant outlet"
     }
 
     private fun inferCategory(merchant: String, lower: String, place: String?): TransactionCategory {
