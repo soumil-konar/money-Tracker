@@ -20,6 +20,7 @@ import com.soumil.moneytracker.data.model.TransactionDirection
 import com.soumil.moneytracker.data.model.AssistantMessage
 import com.soumil.moneytracker.data.model.AssistantSender
 import com.soumil.moneytracker.data.local.AiEngineMode
+import com.soumil.moneytracker.data.local.HapticIntensity
 import com.soumil.moneytracker.data.model.TransactionDraft
 import com.soumil.moneytracker.data.model.TransactionFilter
 import com.soumil.moneytracker.data.model.TransactionStatus
@@ -205,6 +206,17 @@ class MainViewModel(
     fun setAiEngineMode(mode: AiEngineMode) {
         repository.aiPreferences.setEngineMode(mode)
         emitMessage("AI Engine switched to: ${mode.label}")
+    }
+
+    val isHapticEnabled: StateFlow<Boolean> = repository.hapticPreferences.isHapticEnabled
+    val hapticIntensity: StateFlow<HapticIntensity> = repository.hapticPreferences.hapticIntensity
+
+    fun setHapticEnabled(enabled: Boolean) {
+        repository.hapticPreferences.setHapticEnabled(enabled)
+    }
+
+    fun setHapticIntensity(intensity: HapticIntensity) {
+        repository.hapticPreferences.setHapticIntensity(intensity)
     }
 
     fun testAiConnection() {

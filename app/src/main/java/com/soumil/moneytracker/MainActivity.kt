@@ -4,8 +4,10 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.soumil.moneytracker.ui.MainViewModel
+import com.soumil.moneytracker.ui.haptics.LocalAppHaptics
 import com.soumil.moneytracker.ui.navigation.MoneyTrackerRoot
 import com.soumil.moneytracker.ui.theme.MoneyTrackerTheme
 
@@ -15,13 +17,15 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            val repository = (application as MoneyTrackerApp).container.repository
+            val container = (application as MoneyTrackerApp).container
             val mainViewModel: MainViewModel = viewModel(
-                factory = MainViewModel.provideFactory(repository),
+                factory = MainViewModel.provideFactory(container.repository),
             )
 
             MoneyTrackerTheme {
-                MoneyTrackerRoot(viewModel = mainViewModel)
+                CompositionLocalProvider(LocalAppHaptics provides container.hapticManager) {
+                    MoneyTrackerRoot(viewModel = mainViewModel)
+                }
             }
         }
     }
