@@ -3,6 +3,7 @@ package com.soumil.moneytracker.ui.screen
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -29,13 +31,19 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Send
+import androidx.compose.material.icons.outlined.AccountBalance
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.CreditCard
 import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.DirectionsCar
 import androidx.compose.material.icons.outlined.Place
+import androidx.compose.material.icons.outlined.Restaurant
+import androidx.compose.material.icons.outlined.Savings
+import androidx.compose.material.icons.outlined.Speed
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -51,28 +59,42 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.soumil.moneytracker.data.db.TransactionRecord
 import com.soumil.moneytracker.data.model.AssistantMessage
 import com.soumil.moneytracker.data.model.AssistantSender
+import com.soumil.moneytracker.data.model.TransactionCategory
 import com.soumil.moneytracker.data.model.TransactionDirection
 import com.soumil.moneytracker.ui.asCurrency
 import com.soumil.moneytracker.ui.asShortDate
 
+private data class PromptSuggestion(
+    val label: String,
+    val icon: ImageVector,
+    val prompt: String,
+)
+
 private val PROMPT_SUGGESTIONS = listOf(
-    "Pacing vs budget" to "How am I pacing against my budget this month?",
-    "Dining out" to "Break down my food and dining expenses this month.",
-    "Spends with places" to "Show me expenses where location details were recorded.",
-    "Saving advice" to "Based on my recent spending, how can I save money?",
-    "Card debits" to "What are my biggest credit card debits?",
+    PromptSuggestion("Budget pace", Icons.Outlined.Speed, "How am I pacing against my budget this month?"),
+    PromptSuggestion("Dining out", Icons.Outlined.Restaurant, "Break down my food and dining expenses this month."),
+    PromptSuggestion("Transport", Icons.Outlined.DirectionsCar, "How much did I spend on transportation and transit?"),
+    PromptSuggestion("Places", Icons.Outlined.Place, "Show me expenses where location details were recorded."),
+    PromptSuggestion("Card debits", Icons.Outlined.CreditCard, "What are my credit card spends this month?"),
+    PromptSuggestion("Saving tips", Icons.Outlined.Savings, "How can I optimize my spending and save money?"),
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -83,7 +105,7 @@ fun SpendingAssistantSheet(
     onSendMessage: (String) -> Unit,
     onClearChat: () -> Unit,
     onDismiss: () -> Unit,
-    sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false),
+    sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
     modifier: Modifier = Modifier,
 ) {
     var inputText by remember { mutableStateOf("") }
@@ -98,7 +120,15 @@ fun SpendingAssistantSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = MaterialTheme.colorScheme.surface,
+        scrimColor = Color.Black.copy(alpha = 0.65f),
+        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+        dragHandle = {
+            BottomSheetDefaults.DragHandle(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.8f),
+            )
+        },
+        contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
         modifier = modifier.fillMaxHeight(0.92f),
     ) {
         Column(
@@ -107,59 +137,99 @@ fun SpendingAssistantSheet(
                 .navigationBarsPadding()
                 .imePadding(),
         ) {
-            // Header
+            // Expressive Header
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                    .padding(start = 20.dp, end = 16.dp, top = 2.dp, bottom = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                            .size(42.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(
+                                        MaterialTheme.colorScheme.primary,
+                                        MaterialTheme.colorScheme.tertiary,
+                                    ),
+                                ),
+                            ),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.AutoAwesome,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp),
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp),
                         )
                     }
+
                     Column {
                         Text(
                             text = "Spending Assistant",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
                         )
-                        Text(
-                            text = "Local RAG • Grounded with your data",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.tertiary),
+                            )
+                            Text(
+                                text = "Local RAG • Grounded with your data",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    IconButton(onClick = onClearChat) {
-                        Icon(
-                            imageVector = Icons.Outlined.DeleteOutline,
-                            contentDescription = "Clear chat",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                    ) {
+                        IconButton(
+                            onClick = onClearChat,
+                            modifier = Modifier.size(36.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.DeleteOutline,
+                                contentDescription = "Clear chat",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
                     }
-                    IconButton(onClick = onDismiss) {
-                        Icon(
-                            imageVector = Icons.Outlined.Close,
-                            contentDescription = "Close",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                    ) {
+                        IconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.size(36.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Close,
+                                contentDescription = "Close",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
                     }
                 }
             }
@@ -170,13 +240,32 @@ fun SpendingAssistantSheet(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                items(PROMPT_SUGGESTIONS) { (label, prompt) ->
-                    FilterChip(
-                        selected = false,
-                        onClick = { onSendMessage(prompt) },
-                        label = { Text(label, style = MaterialTheme.typography.bodySmall) },
-                        shape = RoundedCornerShape(16.dp),
-                    )
+                items(PROMPT_SUGGESTIONS) { suggestion ->
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+                        modifier = Modifier.clickable { onSendMessage(suggestion.prompt) },
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Icon(
+                                imageVector = suggestion.icon,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                            Text(
+                                text = suggestion.label,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
                 }
             }
 
@@ -186,8 +275,8 @@ fun SpendingAssistantSheet(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 items(messages, key = { it.id }) { message ->
                     ChatMessageItem(message = message)
@@ -195,21 +284,28 @@ fun SpendingAssistantSheet(
 
                 if (isThinking) {
                     item {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.padding(start = 4.dp, top = 4.dp),
+                        Surface(
+                            shape = RoundedCornerShape(topStart = 4.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 20.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                            modifier = Modifier.padding(top = 4.dp),
                         ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                            Text(
-                                text = "Gemini is analyzing your data...",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                                Text(
+                                    text = "Analyzing your spending...",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
                 }
@@ -218,7 +314,8 @@ fun SpendingAssistantSheet(
             // Bottom Input Bar
             Surface(
                 color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 4.dp,
+                tonalElevation = 6.dp,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Row(
@@ -226,7 +323,7 @@ fun SpendingAssistantSheet(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     OutlinedTextField(
                         value = inputText,
@@ -236,47 +333,45 @@ fun SpendingAssistantSheet(
                             Text(
                                 "Ask about your spending...",
                                 style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                             )
                         },
                         shape = RoundedCornerShape(24.dp),
                         singleLine = false,
                         maxLines = 3,
                         colors = OutlinedTextFieldDefaults.colors(
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                             focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            cursorColor = MaterialTheme.colorScheme.primary,
+                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
                         ),
                     )
 
-                    IconButton(
-                        onClick = {
-                            val textToSend = inputText.trim()
-                            if (textToSend.isNotBlank()) {
-                                onSendMessage(textToSend)
-                                inputText = ""
-                            }
-                        },
-                        enabled = inputText.isNotBlank() && !isThinking,
+                    val isSendEnabled = inputText.isNotBlank() && !isThinking
+                    Surface(
+                        shape = CircleShape,
+                        color = if (isSendEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
                         modifier = Modifier
                             .size(46.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (inputText.isNotBlank() && !isThinking) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    MaterialTheme.colorScheme.surfaceVariant
-                                },
-                            ),
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Outlined.Send,
-                            contentDescription = "Send",
-                            tint = if (inputText.isNotBlank() && !isThinking) {
-                                Color.White
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            .clickable(enabled = isSendEnabled) {
+                                val textToSend = inputText.trim()
+                                if (textToSend.isNotBlank()) {
+                                    onSendMessage(textToSend)
+                                    inputText = ""
+                                }
                             },
-                            modifier = Modifier.size(20.dp),
-                        )
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Outlined.Send,
+                                contentDescription = "Send",
+                                tint = if (isSendEnabled) Color.White else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
                     }
                 }
             }
@@ -295,47 +390,159 @@ fun ChatMessageItem(
         modifier = modifier.fillMaxWidth(),
         horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
     ) {
-        Surface(
-            shape = RoundedCornerShape(
-                topStart = 20.dp,
-                topEnd = 20.dp,
-                bottomStart = if (isUser) 20.dp else 4.dp,
-                bottomEnd = if (isUser) 4.dp else 20.dp,
-            ),
-            color = if (isUser) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.surface
-            },
-            tonalElevation = if (isUser) 0.dp else 2.dp,
-            modifier = Modifier.widthIn(max = 320.dp),
-        ) {
-            Text(
-                text = message.text,
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (isUser) Color.White else MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            )
-        }
-
-        // Render horizontal cards for cited transactions if available
-        if (!isUser && message.citedTransactions.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "Referenced Transactions:",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 4.dp, bottom = 4.dp),
-            )
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(horizontal = 2.dp),
+        if (isUser) {
+            Surface(
+                shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp, bottomStart = 22.dp, bottomEnd = 4.dp),
+                color = MaterialTheme.colorScheme.primary,
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.18f)),
+                modifier = Modifier.widthIn(max = 310.dp),
             ) {
-                items(message.citedTransactions) { tx ->
-                    CitedTransactionCard(transaction = tx)
+                Text(
+                    text = message.text,
+                    style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
+                    color = Color.White,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                )
+            }
+        } else {
+            Surface(
+                shape = RoundedCornerShape(topStart = 4.dp, topEnd = 22.dp, bottomStart = 22.dp, bottomEnd = 22.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+                modifier = Modifier.widthIn(max = 330.dp),
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                    FormattedAssistantText(
+                        text = message.text,
+                        textColor = MaterialTheme.colorScheme.onSurface,
+                        accentColor = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+
+            // Render horizontal cards for cited transactions if available
+            if (message.citedTransactions.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = "Referenced Transactions",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 4.dp, bottom = 4.dp),
+                )
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(horizontal = 2.dp),
+                ) {
+                    items(message.citedTransactions) { tx ->
+                        CitedTransactionCard(transaction = tx)
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+fun FormattedAssistantText(
+    text: String,
+    textColor: Color,
+    accentColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    val annotated = remember(text, textColor, accentColor) {
+        parseMarkdownToAnnotated(text, textColor, accentColor)
+    }
+
+    Text(
+        text = annotated,
+        style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
+        color = textColor,
+        modifier = modifier,
+    )
+}
+
+private fun parseMarkdownToAnnotated(
+    rawText: String,
+    textColor: Color,
+    accentColor: Color,
+): AnnotatedString {
+    return buildAnnotatedString {
+        val lines = rawText.split("\n")
+        lines.forEachIndexed { lineIdx, line ->
+            var remaining = line
+
+            // Check if this line is a section header like **Title:** or **Title**
+            val headerMatch = Regex("""^\*\*([^*]+)\*\*:\s*(.*)""").find(remaining)
+            if (headerMatch != null) {
+                val headerTitle = headerMatch.groupValues[1]
+                val headerRest = headerMatch.groupValues[2]
+
+                pushStyle(SpanStyle(fontWeight = FontWeight.Bold, color = accentColor, fontSize = 14.sp))
+                append(headerTitle)
+                append(":")
+                pop()
+
+                if (headerRest.isNotBlank()) {
+                    append(" ")
+                    appendInlineMarkdown(headerRest, textColor, accentColor)
+                }
+            } else {
+                appendInlineMarkdown(remaining, textColor, accentColor)
+            }
+
+            if (lineIdx < lines.size - 1) {
+                append("\n")
+            }
+        }
+    }
+}
+
+private fun AnnotatedString.Builder.appendInlineMarkdown(
+    text: String,
+    textColor: Color,
+    accentColor: Color,
+) {
+    // Regex matching bold **...** and italic *...* and currency ₹...
+    val tokenRegex = Regex("""(\*\*[^*]+\*\*|\*[^*]+\*|₹[0-9,]+)""")
+    var currentIndex = 0
+
+    tokenRegex.findAll(text).forEach { match ->
+        // Append text before match
+        if (match.range.first > currentIndex) {
+            append(text.substring(currentIndex, match.range.first))
+        }
+
+        val token = match.value
+        when {
+            token.startsWith("**") && token.endsWith("**") -> {
+                val content = token.removeSurrounding("**")
+                pushStyle(SpanStyle(fontWeight = FontWeight.Bold, color = textColor))
+                append(content)
+                pop()
+            }
+            token.startsWith("*") && token.endsWith("*") -> {
+                val content = token.removeSurrounding("*")
+                pushStyle(SpanStyle(fontStyle = FontStyle.Italic, color = textColor.copy(alpha = 0.85f)))
+                append(content)
+                pop()
+            }
+            token.startsWith("₹") -> {
+                pushStyle(SpanStyle(fontWeight = FontWeight.Bold, color = accentColor))
+                append(token)
+                pop()
+            }
+            else -> {
+                append(token)
+            }
+        }
+
+        currentIndex = match.range.last + 1
+    }
+
+    if (currentIndex < text.length) {
+        append(text.substring(currentIndex))
     }
 }
 
@@ -344,20 +551,61 @@ fun CitedTransactionCard(
     transaction: TransactionRecord,
     modifier: Modifier = Modifier,
 ) {
+    val isCredit = transaction.direction == TransactionDirection.CREDIT
+    val icon = when (transaction.category) {
+        TransactionCategory.FOOD -> Icons.Outlined.Restaurant
+        TransactionCategory.TRAVEL -> Icons.Outlined.DirectionsCar
+        TransactionCategory.SHOPPING -> Icons.Outlined.CreditCard
+        TransactionCategory.BILLS -> Icons.Outlined.AccountBalance
+        TransactionCategory.TRANSFER -> Icons.Outlined.CreditCard
+        else -> Icons.Outlined.AutoAwesome
+    }
+
     Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-        tonalElevation = 1.dp,
-        modifier = modifier.widthIn(min = 140.dp, max = 200.dp),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+        modifier = modifier.widthIn(min = 160.dp, max = 220.dp),
     ) {
-        Column(modifier = Modifier.padding(10.dp)) {
-            Text(
-                text = transaction.merchant,
-                style = MaterialTheme.typography.titleSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(modifier = Modifier.height(2.dp))
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isCredit) {
+                                MaterialTheme.colorScheme.tertiary.copy(alpha = 0.15f)
+                            } else {
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                            },
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = if (isCredit) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(15.dp),
+                    )
+                }
+
+                Text(
+                    text = transaction.merchant,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -365,34 +613,42 @@ fun CitedTransactionCard(
             ) {
                 Text(
                     text = buildString {
-                        append(if (transaction.direction == TransactionDirection.CREDIT) "+ " else "- ")
+                        append(if (isCredit) "+ " else "- ")
                         append(transaction.amount.asCurrency())
                     },
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (transaction.direction == TransactionDirection.CREDIT) {
+                    style = MaterialTheme.typography.titleSmall,
+                    color = if (isCredit) {
                         MaterialTheme.colorScheme.tertiary
                     } else {
                         MaterialTheme.colorScheme.primary
                     },
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Bold,
                 )
-                Text(
-                    text = transaction.occurredAtMillis.asShortDate(),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+                ) {
+                    Text(
+                        text = transaction.occurredAtMillis.asShortDate(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
+                }
             }
+
             if (!transaction.note.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.Place,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
-                        modifier = Modifier.size(11.dp),
+                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                        modifier = Modifier.size(12.dp),
                     )
                     Text(
                         text = transaction.note,
