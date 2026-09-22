@@ -258,6 +258,91 @@ class OnDeviceAiEngine(
         )
     }
 
+    fun generateSpendingInsightsOnDevice(
+        transactions: List<TransactionRecord>,
+        budgetLimit: Double?,
+        monthSpent: Double,
+        monthIncome: Double,
+    ): List<String> {
+        val insights = mutableListOf<String>()
+        val debitTxs = transactions.filter { it.direction == TransactionDirection.DEBIT }
+
+        if (debitTxs.isEmpty()) {
+            insights.add("No debits recorded for this month yet. Import recent SMS or log an expense to generate tailored insights.")
+            if (budgetLimit != null && budgetLimit > 0.0) {
+                insights.add("Monthly budget is set to ₹${budgetLimit.toInt()}. You have the full allowance remaining.")
+            }
+            return insights
+        }
+
+        // 1. Budget Pacing / Safe Burn Observation
+        if (budgetLimit != null && budgetLimit > 0.0) {
+            val pct = ((monthSpent / budgetLimit) * 100).toInt()
+            val remaining = (budgetLimit - monthSpent).coerceAtLeast(0.0).toInt()
+            if (monthSpent > budgetLimit) {
+                insights.add("Over budget by **₹${(monthSpent - budgetLimit).toInt()}** (${pct}% utilized). Consider pausing discretionary expenses.")
+            } else if (pct >= 85) {
+                insights.add("Budget alert: You have used **${pct}%** of your ₹${budgetLimit.toInt()} limit. **₹$remaining** remaining.")
+            } else {
+                insights.add("Budget pacing is healthy: **${pct}%** used (**₹${monthSpent.toInt()}** of ₹${budgetLimit.toInt()}) with **₹$remaining** remaining cushion.")
+            }
+        } else {
+            insights.add("Total outflow this month is **₹${monthSpent.toInt()}**. Setting a monthly budget target can help pace discretionary spends.")
+        }
+
+        // 2. Spend Driver / Top Category & Merchant
+        val categorySpends = debitTxs.groupBy { it.category }
+            .mapValues { it.value.sumOf(TransactionRecord::amount) }
+            .entries.sortedByDescending { it.value }
+
+        if (categorySpends.isNotEmpty()) {
+            val topCategory = categorySpends.first()
+            val topCatTransactions = debitTxs.filter { it.category == topCategory.key }
+            val topMerchant = topCatTransactions.groupBy { it.merchant }
+                .mapValues { it.value.sumOf(TransactionRecord::amount) }
+                .entries.maxByOrNull { it.value }
+
+            val merchantClause = if (topMerchant != null && topMerchant.value > 0) {
+                ", led by **${topMerchant.key}** (₹${topMerchant.value.toInt()})"
+            } else ""
+
+            insights.add("Top spend driver is **${topCategory.key.label}** at **₹${topCategory.value.toInt()}**$merchantClause.")
+        }
+
+        // 3. Cashflow / Savings Rate
+        if (monthIncome > 0) {
+            val net = monthIncome - monthSpent
+            val saveRate = (((monthIncome - monthSpent) / monthIncome) * 100).toInt()
+            if (net >= 0) {
+                insights.add("Net positive cashflow of **₹${net.toInt()}** (${saveRate}% savings rate) across verified monthly earnings.")
+            } else {
+                insights.add("Cashflow deficit of **-₹${(-net).toInt()}**. Outflow currently exceeds monthly recorded income.")
+            }
+        }
+
+        // 4. Actionable Tailored Tip
+        val hasHighFood = debitTxs.any { it.category == TransactionCategory.FOOD && it.amount > 500 }
+        val hasSubscriptions = debitTxs.any { it.category == TransactionCategory.SUBSCRIPTION }
+        val cardDebits = debitTxs.filter { it.accountKind == AccountKind.CARD }.sumOf { it.amount }
+
+        when {
+            cardDebits > 0 && cardDebits > monthSpent * 0.4 -> {
+                insights.add("Credit card charges account for **${((cardDebits / monthSpent) * 100).toInt()}%** of outflow. Ensure timely payment before due dates to avoid finance charges.")
+            }
+            hasSubscriptions -> {
+                insights.add("Review active recurring subscriptions to identify unused memberships or duplicate entertainment plans.")
+            }
+            hasHighFood -> {
+                insights.add("Dining and takeaway comprise a significant share of expenses. Preparing meals at home on weekdays could save ~₹2,500/month.")
+            }
+            else -> {
+                insights.add("Review pending transactions in your ledger to ensure all expenses are categorized accurately.")
+            }
+        }
+
+        return insights.take(4)
+    }
+
     fun generateEmbeddingOnDevice(text: String): Result<List<Float>> {
         val lower = text.lowercase(Locale.getDefault())
         val vector = FloatArray(256)

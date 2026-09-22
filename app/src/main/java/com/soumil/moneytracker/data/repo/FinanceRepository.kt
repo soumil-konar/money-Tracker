@@ -357,20 +357,62 @@ class FinanceRepository(
         val body = existing.smsBody
             ?: return Result.failure(IllegalArgumentException("No SMS content available for this transaction"))
         val apiKey = aiPreferences.apiKey.value
-        if (apiKey.isBlank()) {
-            return Result.failure(IllegalStateException("Google AI Studio API key is not configured in Settings."))
+        val engineMode = aiPreferences.engineMode.value
+
+        val (updatedMerchant, updatedCategory, updatedNote) = when (engineMode) {
+            AiEngineMode.ON_DEVICE_ONLY -> {
+                val parsed = onDeviceAiEngine.parseSmsOnDevice(body, existing.sourceSender)
+                    .getOrElse { return Result.failure(it) }
+                Triple(
+                    parsed.merchant?.takeIf { it.isNotBlank() } ?: existing.merchant,
+                    parsed.category,
+                    parsed.placeDetail ?: existing.note,
+                )
+            }
+            AiEngineMode.AUTO_PIXEL_FIRST -> {
+                if (apiKey.isNotBlank()) {
+                    val parsed = geminiApiClient.parseSms(
+                        smsBody = body,
+                        sender = existing.sourceSender,
+                        apiKey = apiKey,
+                        model = aiPreferences.selectedModel.value,
+                    ).getOrElse {
+                        // Fall back to On-Device Engine on Tensor G4 TPU
+                        onDeviceAiEngine.parseSmsOnDevice(body, existing.sourceSender)
+                            .getOrElse { return Result.failure(it) }
+                    }
+                    Triple(
+                        parsed.merchant?.takeIf { it.isNotBlank() } ?: existing.merchant,
+                        parsed.category,
+                        parsed.placeDetail ?: existing.note,
+                    )
+                } else {
+                    val parsed = onDeviceAiEngine.parseSmsOnDevice(body, existing.sourceSender)
+                        .getOrElse { return Result.failure(it) }
+                    Triple(
+                        parsed.merchant?.takeIf { it.isNotBlank() } ?: existing.merchant,
+                        parsed.category,
+                        parsed.placeDetail ?: existing.note,
+                    )
+                }
+            }
+            AiEngineMode.CLOUD_ONLY -> {
+                if (apiKey.isBlank()) {
+                    return Result.failure(IllegalStateException("Google AI Studio API key is not configured in Settings."))
+                }
+                val parsed = geminiApiClient.parseSms(
+                    smsBody = body,
+                    sender = existing.sourceSender,
+                    apiKey = apiKey,
+                    model = aiPreferences.selectedModel.value,
+                ).getOrElse { return Result.failure(it) }
+                Triple(
+                    parsed.merchant?.takeIf { it.isNotBlank() } ?: existing.merchant,
+                    parsed.category,
+                    parsed.placeDetail ?: existing.note,
+                )
+            }
         }
-
-        val aiResult = geminiApiClient.parseSms(
-            smsBody = body,
-            sender = existing.sourceSender,
-            apiKey = apiKey,
-            model = aiPreferences.selectedModel.value,
-        ).getOrElse { return Result.failure(it) }
-
-        val updatedMerchant = aiResult.merchant?.takeIf { it.isNotBlank() } ?: existing.merchant
-        val updatedCategory = aiResult.category
-        val updatedNote = aiResult.placeDetail ?: existing.note
 
         val updatedEntity = existing.copy(
             merchant = updatedMerchant,
@@ -387,9 +429,7 @@ class FinanceRepository(
 
     suspend fun refreshAiSpendingInsights(): Result<List<String>> {
         val apiKey = aiPreferences.apiKey.value
-        if (apiKey.isBlank()) {
-            return Result.failure(IllegalStateException("Configure your Google AI Studio API key in Settings."))
-        }
+        val engineMode = aiPreferences.engineMode.value
         _isAiLoading.value = true
         try {
             val posted = postedTransactions.first()
@@ -399,24 +439,83 @@ class FinanceRepository(
                 YearMonth.from(it.toLocalDate()) == currentMonth
             }
             val monthSpent = currentMonthTransactions
-                .filter { it.direction == TransactionDirection.DEBIT && it.category != TransactionCategory.TRANSFER && it.countsTowardBudget }
+                .filter {
+                    it.direction == TransactionDirection.DEBIT &&
+                        it.category != TransactionCategory.TRANSFER &&
+                        it.countsTowardBudget &&
+                        !isRepaymentOrTransfer(it)
+                }
                 .sumOf(TransactionRecord::amount)
             val monthIncome = currentMonthTransactions
-                .filter { it.direction == TransactionDirection.CREDIT }
+                .filter {
+                    it.direction == TransactionDirection.CREDIT &&
+                        it.category != TransactionCategory.TRANSFER &&
+                        it.countsTowardBudget &&
+                        !isRepaymentOrTransfer(it)
+                }
                 .sumOf(TransactionRecord::amount)
 
-            val result = geminiApiClient.generateSpendingInsights(
-                transactions = currentMonthTransactions,
-                budgetLimit = budget,
-                monthSpent = monthSpent,
-                monthIncome = monthIncome,
-                apiKey = apiKey,
-                model = aiPreferences.selectedModel.value,
-            )
-            result.onSuccess {
+            val insightsResult: Result<List<String>> = when (engineMode) {
+                AiEngineMode.ON_DEVICE_ONLY -> {
+                    Result.success(
+                        onDeviceAiEngine.generateSpendingInsightsOnDevice(
+                            transactions = currentMonthTransactions,
+                            budgetLimit = budget,
+                            monthSpent = monthSpent,
+                            monthIncome = monthIncome,
+                        ),
+                    )
+                }
+                AiEngineMode.AUTO_PIXEL_FIRST -> {
+                    if (apiKey.isNotBlank()) {
+                        geminiApiClient.generateSpendingInsights(
+                            transactions = currentMonthTransactions,
+                            budgetLimit = budget,
+                            monthSpent = monthSpent,
+                            monthIncome = monthIncome,
+                            apiKey = apiKey,
+                            model = aiPreferences.selectedModel.value,
+                        ).recoverCatching {
+                            // Graceful fallback to on-device engine if cloud request fails
+                            onDeviceAiEngine.generateSpendingInsightsOnDevice(
+                                transactions = currentMonthTransactions,
+                                budgetLimit = budget,
+                                monthSpent = monthSpent,
+                                monthIncome = monthIncome,
+                            )
+                        }
+                    } else {
+                        // Offline or Pixel 9 without cloud API key
+                        Result.success(
+                            onDeviceAiEngine.generateSpendingInsightsOnDevice(
+                                transactions = currentMonthTransactions,
+                                budgetLimit = budget,
+                                monthSpent = monthSpent,
+                                monthIncome = monthIncome,
+                            ),
+                        )
+                    }
+                }
+                AiEngineMode.CLOUD_ONLY -> {
+                    if (apiKey.isBlank()) {
+                        Result.failure(IllegalStateException("Configure your Google AI Studio API key in Settings."))
+                    } else {
+                        geminiApiClient.generateSpendingInsights(
+                            transactions = currentMonthTransactions,
+                            budgetLimit = budget,
+                            monthSpent = monthSpent,
+                            monthIncome = monthIncome,
+                            apiKey = apiKey,
+                            model = aiPreferences.selectedModel.value,
+                        )
+                    }
+                }
+            }
+
+            insightsResult.onSuccess {
                 _spendingInsights.value = it
             }
-            return result
+            return insightsResult
         } finally {
             _isAiLoading.value = false
         }

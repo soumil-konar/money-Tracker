@@ -254,4 +254,88 @@ class OnDeviceAiEngineTest {
         val simDifferent = cosineSimilarity(emb1, emb3)
         assertTrue(simDifferent < 0.95f)
     }
+
+    @Test
+    fun `generateSpendingInsightsOnDevice produces structured insights with pacing and spend drivers`() {
+        val tx1 = TransactionRecord(
+            id = 1L,
+            amount = 1450.0,
+            direction = TransactionDirection.DEBIT,
+            merchant = "Swiggy",
+            category = TransactionCategory.FOOD,
+            accountId = 1L,
+            accountName = "HDFC Bank",
+            sourceSender = "HDFCBK",
+            smsBody = null,
+            confidence = 0.95,
+            note = null,
+            occurredAtMillis = System.currentTimeMillis(),
+            status = TransactionStatus.POSTED,
+            countsTowardBudget = true,
+            accountKind = AccountKind.BANK,
+        )
+        val tx2 = TransactionRecord(
+            id = 2L,
+            amount = 3500.0,
+            direction = TransactionDirection.DEBIT,
+            merchant = "Uber",
+            category = TransactionCategory.TRAVEL,
+            accountId = 2L,
+            accountName = "ICICI Card",
+            sourceSender = "ICICIB",
+            smsBody = null,
+            confidence = 0.95,
+            note = null,
+            occurredAtMillis = System.currentTimeMillis(),
+            status = TransactionStatus.POSTED,
+            countsTowardBudget = true,
+            accountKind = AccountKind.CARD,
+        )
+        val tx3 = TransactionRecord(
+            id = 3L,
+            amount = 50000.0,
+            direction = TransactionDirection.CREDIT,
+            merchant = "Employer Payroll",
+            category = TransactionCategory.SALARY,
+            accountId = 1L,
+            accountName = "HDFC Bank",
+            sourceSender = "HDFCBK",
+            smsBody = null,
+            confidence = 0.95,
+            note = null,
+            occurredAtMillis = System.currentTimeMillis(),
+            status = TransactionStatus.POSTED,
+            countsTowardBudget = true,
+            accountKind = AccountKind.BANK,
+        )
+
+        val insights = engine.generateSpendingInsightsOnDevice(
+            transactions = listOf(tx1, tx2, tx3),
+            budgetLimit = 20000.0,
+            monthSpent = 4950.0,
+            monthIncome = 50000.0,
+        )
+
+        assertFalse(insights.isEmpty())
+        assertTrue(insights.size in 3..4)
+        // Verify budget pacing check
+        assertTrue(insights.any { it.contains("budget", ignoreCase = true) || it.contains("used", ignoreCase = true) })
+        // Verify spend driver check
+        assertTrue(insights.any { it.contains("spend driver", ignoreCase = true) || it.contains("Travel", ignoreCase = true) })
+        // Verify cashflow / savings check
+        assertTrue(insights.any { it.contains("cashflow", ignoreCase = true) || it.contains("savings", ignoreCase = true) })
+    }
+
+    @Test
+    fun `generateSpendingInsightsOnDevice handles empty transactions gracefully`() {
+        val insights = engine.generateSpendingInsightsOnDevice(
+            transactions = emptyList(),
+            budgetLimit = 15000.0,
+            monthSpent = 0.0,
+            monthIncome = 0.0,
+        )
+
+        assertFalse(insights.isEmpty())
+        assertTrue(insights.any { it.contains("No debits", ignoreCase = true) })
+    }
 }

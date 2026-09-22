@@ -37,9 +37,13 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.soumil.moneytracker.data.model.CategorySlice
@@ -213,7 +217,7 @@ fun HomeScreen(
             MotionReveal(index = 5) {
                 SectionCard(
                     title = "AI Financial Insights",
-                    subtitle = "Powered by Google AI Studio Gemini models",
+                    subtitle = "Personalized budget pacing, drivers, and money-saving advice",
                 ) {
                     if (dashboard.spendingInsights.isEmpty()) {
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -233,7 +237,7 @@ fun HomeScreen(
                                         strokeWidth = 2.dp,
                                     )
                                     Spacer(modifier = Modifier.size(8.dp))
-                                    Text("Analyzing with Gemini...")
+                                    Text("Analyzing finances...")
                                 } else {
                                     Icon(
                                         imageVector = Icons.Outlined.AutoAwesome,
@@ -260,10 +264,9 @@ fun HomeScreen(
                                             .size(18.dp)
                                             .padding(top = 2.dp),
                                     )
-                                    Text(
+                                    FormattedInsightText(
                                         text = tip,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onBackground,
+                                        modifier = Modifier.weight(1f),
                                     )
                                 }
                             }
@@ -409,4 +412,51 @@ private fun legendColors(slices: List<CategorySlice>): List<Pair<Color, String>>
     return slices.mapIndexed { index, slice ->
         palette[index % palette.size] to "${slice.category.label} ${slice.amount.asCurrency()}"
     }
+}
+
+@Composable
+private fun FormattedInsightText(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    val annotated = remember(text) {
+        buildAnnotatedString {
+            val tokenRegex = Regex("""(\*\*[^*]+\*\*|\*[^*]+\*|₹[0-9,]+)""")
+            var currentIndex = 0
+            tokenRegex.findAll(text).forEach { match ->
+                if (match.range.first > currentIndex) {
+                    append(text.substring(currentIndex, match.range.first))
+                }
+                val token = match.value
+                when {
+                    token.startsWith("**") && token.endsWith("**") -> {
+                        pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
+                        append(token.removeSurrounding("**"))
+                        pop()
+                    }
+                    token.startsWith("*") && token.endsWith("*") -> {
+                        pushStyle(SpanStyle(fontStyle = FontStyle.Italic))
+                        append(token.removeSurrounding("*"))
+                        pop()
+                    }
+                    token.startsWith("₹") -> {
+                        pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
+                        append(token)
+                        pop()
+                    }
+                    else -> append(token)
+                }
+                currentIndex = match.range.last + 1
+            }
+            if (currentIndex < text.length) {
+                append(text.substring(currentIndex))
+            }
+        }
+    }
+    Text(
+        text = annotated,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onBackground,
+        modifier = modifier,
+    )
 }
