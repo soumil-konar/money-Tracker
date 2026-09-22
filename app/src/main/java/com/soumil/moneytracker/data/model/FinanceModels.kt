@@ -84,6 +84,7 @@ data class ParsedSmsTransaction(
     val isCardBillPayment: Boolean = false,
     val placeDetail: String? = null,
     val aiEnriched: Boolean = false,
+    val countsTowardBudget: Boolean = true,
 )
 
 data class ParsedScheduledTransaction(
@@ -113,6 +114,11 @@ data class DashboardState(
     val trackedBalance: Double = 0.0,
     val monthSpent: Double = 0.0,
     val monthIncome: Double = 0.0,
+    val monthNetCashflow: Double = 0.0,
+    val cardSpendThisMonth: Double = 0.0,
+    val bankSpendThisMonth: Double = 0.0,
+    val safeDailySpend: Double = 0.0,
+    val budgetPercentUsed: Float = 0f,
     val budgetLimit: Double? = null,
     val reviewCount: Int = 0,
     val activeSubscriptionsCount: Int = 0,

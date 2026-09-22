@@ -79,7 +79,24 @@ class OnDeviceAiEngine(
         }
 
         // 3. Direction
-        val isCreditCardPayment = listOf("received towards your", "payment received for credit card", "credited towards credit card").any { it in lower }
+        val isCreditCardPayment = listOf(
+            "received towards your",
+            "received towards",
+            "payment received for credit card",
+            "payment received towards",
+            "credited towards credit card",
+            "card bill payment",
+            "credit card bill",
+            "towards credit card",
+            "paid towards your",
+            "paid towards",
+            "payment towards",
+            "via cred",
+            "on cred",
+            "through cred",
+            "via billdesk",
+            "through billdesk",
+        ).any { it in lower }
         val isDebit = listOf("debited", "spent", "paid", "withdrawn", "sent", "deducted", "purchase").any { it in lower } || isCreditCardPayment
         val isCredit = listOf("credited", "received", "refund", "deposited").any { it in lower } && !isCreditCardPayment
 
@@ -97,7 +114,9 @@ class OnDeviceAiEngine(
         val placeDetail = extractPlaceDetail(smsBody, lower, merchant)
 
         // 6. Category
-        val category = inferCategory(merchant, lower, placeDetail)
+        val isSelfTransfer = listOf("to self", "to own account", "from own account", "wallet topup", "added to wallet", "loaded to wallet").any { it in lower }
+        val category = if (isCreditCardPayment || isSelfTransfer) TransactionCategory.TRANSFER else inferCategory(merchant, lower, placeDetail)
+        val countsTowardBudget = !isCreditCardPayment && !isSelfTransfer && category != TransactionCategory.TRANSFER
 
         // 7. Institution
         val institution = extractInstitution(sender, smsBody)
@@ -123,6 +142,7 @@ class OnDeviceAiEngine(
             isCardBillPayment = isCreditCardPayment,
             placeDetail = placeDetail,
             confidence = 0.96,
+            countsTowardBudget = countsTowardBudget,
         )
 
         return Result.success(parsed)

@@ -623,6 +623,27 @@ class FinanceRepository(
         }
     }
 
+    private fun isRepaymentOrTransfer(record: TransactionRecord): Boolean {
+        if (record.category == TransactionCategory.TRANSFER) return true
+        val text = "${record.merchant} ${record.smsBody.orEmpty()} ${record.note.orEmpty()}".lowercase(java.util.Locale.getDefault())
+        return listOf(
+            "credit card bill",
+            "card bill payment",
+            "payment received towards",
+            "payment received for credit card",
+            "received towards your credit card",
+            "credited towards credit card",
+            "towards credit card",
+            "paid towards your credit card",
+            "to self",
+            "to own account",
+            "from own account",
+            "self transfer",
+            "cred",
+            "billdesk",
+        ).any { text.contains(it) }
+    }
+
     private fun buildDashboardState(
         postedTransactions: List<TransactionRecord>,
         allTransactions: List<TransactionRecord>,
@@ -638,41 +659,70 @@ class FinanceRepository(
         val spendTransactions = currentMonthTransactions.filter {
             it.direction == TransactionDirection.DEBIT &&
                 it.category != TransactionCategory.TRANSFER &&
-                it.countsTowardBudget
+                it.countsTowardBudget &&
+                !isRepaymentOrTransfer(it)
         }
         val monthSpent = spendTransactions.sumOf(TransactionRecord::amount)
-        val monthIncome = currentMonthTransactions
-            .filter { it.direction == TransactionDirection.CREDIT }
-            .sumOf(TransactionRecord::amount)
-        val trackedBalance = postedTransactions.sumOf {
-            if (it.direction == TransactionDirection.CREDIT) it.amount else -it.amount
+
+        val incomeTransactions = currentMonthTransactions.filter {
+            it.direction == TransactionDirection.CREDIT &&
+                it.category != TransactionCategory.TRANSFER &&
+                it.countsTowardBudget &&
+                !isRepaymentOrTransfer(it)
         }
+        val monthIncome = incomeTransactions.sumOf(TransactionRecord::amount)
+
+        val cardSpendThisMonth = spendTransactions
+            .filter { it.accountKind == AccountKind.CARD }
+            .sumOf(TransactionRecord::amount)
+        val bankSpendThisMonth = spendTransactions
+            .filter { it.accountKind != AccountKind.CARD }
+            .sumOf(TransactionRecord::amount)
+
+        val monthNetCashflow = monthIncome - monthSpent
+        val today = LocalDate.now()
+        val daysInMonth = currentMonth.lengthOfMonth()
+        val daysRemaining = (daysInMonth - today.dayOfMonth + 1).coerceAtLeast(1)
+        val remainingBudget = if (budget != null) (budget - monthSpent).coerceAtLeast(0.0) else 0.0
+        val safeDailySpend = if (budget != null && budget > 0.0) remainingBudget / daysRemaining else 0.0
+        val budgetPercentUsed = if (budget != null && budget > 0.0) (monthSpent / budget).toFloat() else 0f
+
         val categoryBreakdown = spendTransactions
             .groupBy(TransactionRecord::category)
             .map { (category, items) -> CategorySlice(category, items.sumOf(TransactionRecord::amount)) }
             .sortedByDescending(CategorySlice::amount)
 
-        val today = LocalDate.now()
         val trendPoints = (6 downTo 0).map { daysAgo ->
             val date = today.minusDays(daysAgo.toLong())
             val dayTransactions = currentMonthTransactions.filter { it.toLocalDate() == date }
             TrendPoint(
                 date = date,
-                income = dayTransactions.filter { it.direction == TransactionDirection.CREDIT }.sumOf(TransactionRecord::amount),
+                income = dayTransactions.filter {
+                    it.direction == TransactionDirection.CREDIT &&
+                        it.category != TransactionCategory.TRANSFER &&
+                        it.countsTowardBudget &&
+                        !isRepaymentOrTransfer(it)
+                }.sumOf(TransactionRecord::amount),
                 expense = dayTransactions
                     .filter {
                         it.direction == TransactionDirection.DEBIT &&
                             it.category != TransactionCategory.TRANSFER &&
-                            it.countsTowardBudget
+                            it.countsTowardBudget &&
+                            !isRepaymentOrTransfer(it)
                     }
                     .sumOf(TransactionRecord::amount),
             )
         }
 
         return DashboardState(
-            trackedBalance = trackedBalance,
+            trackedBalance = monthNetCashflow,
             monthSpent = monthSpent,
             monthIncome = monthIncome,
+            monthNetCashflow = monthNetCashflow,
+            cardSpendThisMonth = cardSpendThisMonth,
+            bankSpendThisMonth = bankSpendThisMonth,
+            safeDailySpend = safeDailySpend,
+            budgetPercentUsed = budgetPercentUsed,
             budgetLimit = budget,
             reviewCount = allTransactions.count { it.status == TransactionStatus.REVIEW },
             activeSubscriptionsCount = subscriptions.count { it.state == SubscriptionState.ACTIVE },
@@ -872,6 +922,12 @@ class FinanceRepository(
             isCardBillPayment = isCardBillPayment,
         )
         val status = if (confidence >= 0.7) TransactionStatus.POSTED else TransactionStatus.REVIEW
+        val countsTowardBudget = if (isCardBillPayment || category == TransactionCategory.TRANSFER) {
+            false
+        } else {
+            parsed?.countsTowardBudget ?: true
+        }
+
         val inserted = transactionDao.insert(
             TransactionEntity(
                 amount = amount,
@@ -886,6 +942,7 @@ class FinanceRepository(
                 fingerprint = fingerprint,
                 status = status,
                 note = note,
+                countsTowardBudget = countsTowardBudget,
             ),
         )
         if (inserted == -1L) {

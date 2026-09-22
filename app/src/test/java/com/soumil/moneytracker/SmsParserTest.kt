@@ -61,6 +61,22 @@ class SmsParserTest {
         assertEquals(CardType.CREDIT, result.cardType)
         assertEquals("1234", result.cardLastFourDigits)
         assertTrue(result.isCardBillPayment)
+        assertFalse(result.countsTowardBudget)
+    }
+
+    @Test
+    fun `treats bill payment via CRED as transfer excluded from budget`() {
+        val result = parser.parse(
+            sender = "HDFCBK",
+            body = "Rs.25,000 paid towards credit card bill via CRED from A/c XX5566 on 10-05-2026.",
+        )
+
+        assertFalse(result.shouldIgnore)
+        assertEquals(25000.0, result.amount ?: 0.0, 0.0)
+        assertEquals(TransactionDirection.DEBIT, result.direction)
+        assertEquals(TransactionCategory.TRANSFER, result.inferredCategory)
+        assertTrue(result.isCardBillPayment)
+        assertFalse(result.countsTowardBudget)
     }
 
     @Test

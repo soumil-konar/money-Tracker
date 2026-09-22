@@ -85,16 +85,42 @@ class SmsParser {
 
     private val cardRepaymentKeywords = listOf(
         "credit card bill payment",
-        "credit card payment",
         "card bill payment",
-        "bill payment",
+        "credit card bill",
         "statement payment",
+        "payment received towards your credit card",
+        "payment received towards credit card",
         "payment received towards",
-        "payment received for",
+        "payment received for credit card",
+        "payment made towards credit card",
         "payment made towards",
+        "received towards your",
         "received towards",
+        "paid towards your",
         "paid towards",
         "payment towards",
+        "towards credit card",
+        "towards your credit card",
+        "towards your card",
+        "towards card",
+        "via cred",
+        "on cred",
+        "through cred",
+        "via billdesk",
+        "through billdesk",
+    )
+
+    private val selfTransferKeywords = listOf(
+        "to self",
+        "to own account",
+        "from own account",
+        "self transfer",
+        "wallet topup",
+        "wallet top-up",
+        "added to wallet",
+        "loaded to wallet",
+        "funds transfer to self",
+        "transfer to own",
     )
 
     private val billIgnoreKeywords = listOf(
@@ -293,8 +319,10 @@ class SmsParser {
             cardType = cardType,
             cardLastFourDigits = cardLastFourDigits,
         )
+        val isSelfTransfer = selfTransferKeywords.any(normalized::contains)
         val inferredCategory = when {
             isCardBillPayment -> TransactionCategory.TRANSFER
+            isSelfTransfer -> TransactionCategory.TRANSFER
             else -> inferCategory(
                 merchant = merchant,
                 sender = sender,
@@ -302,6 +330,7 @@ class SmsParser {
                 direction = direction,
             )
         }
+        val countsTowardBudget = !isCardBillPayment && !isSelfTransfer && inferredCategory != TransactionCategory.TRANSFER
 
         var confidence = 0.2
         confidence += 0.35
@@ -332,6 +361,7 @@ class SmsParser {
                 isUpiPayment = isUpiPayment,
                 isCardPayment = isCardPayment,
                 isCardBillPayment = isCardBillPayment,
+                countsTowardBudget = countsTowardBudget,
             ),
         )
     }

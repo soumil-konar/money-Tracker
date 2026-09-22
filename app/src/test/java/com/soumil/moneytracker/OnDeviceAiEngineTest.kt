@@ -101,6 +101,38 @@ class OnDeviceAiEngineTest {
     }
 
     @Test
+    fun `parseSmsOnDevice detects credit card bill payment and excludes from budget`() {
+        val sms = "Payment of INR 15,000 received towards your HDFC Bank credit card ending 4321 from A/c xx9999 on 15-Nov-24."
+        val sender = "HDFCBK"
+
+        val result = engine.parseSmsOnDevice(sms, sender)
+        assertTrue(result.isSuccess)
+        val parsed = result.getOrNull()
+        assertNotNull(parsed)
+        assertTrue(parsed!!.isTransaction)
+        assertEquals(15000.0, parsed.amount ?: 0.0, 0.01)
+        assertEquals(TransactionDirection.DEBIT, parsed.direction)
+        assertEquals(TransactionCategory.TRANSFER, parsed.category)
+        assertTrue(parsed.isCardBillPayment)
+        assertFalse(parsed.countsTowardBudget)
+    }
+
+    @Test
+    fun `parseSmsOnDevice detects self transfer and excludes from budget`() {
+        val sms = "Rs 10,000 debited from A/c xx1234 on transfer to self account xx5678."
+        val sender = "ICICIB"
+
+        val result = engine.parseSmsOnDevice(sms, sender)
+        assertTrue(result.isSuccess)
+        val parsed = result.getOrNull()
+        assertNotNull(parsed)
+        assertTrue(parsed!!.isTransaction)
+        assertEquals(10000.0, parsed.amount ?: 0.0, 0.01)
+        assertEquals(TransactionCategory.TRANSFER, parsed.category)
+        assertFalse(parsed.countsTowardBudget)
+    }
+
+    @Test
     fun `queryAssistantOnDevice calculates food spending accurately`() {
         val tx1 = TransactionRecord(
             id = 1L,
