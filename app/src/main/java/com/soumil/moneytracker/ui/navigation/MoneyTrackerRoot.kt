@@ -285,6 +285,7 @@ fun MoneyTrackerRoot(
             hostState = snackbarHostState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
                 .padding(bottom = 110.dp),
         )
 
@@ -295,6 +296,7 @@ fun MoneyTrackerRoot(
             shape = CircleShape,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
+                .navigationBarsPadding()
                 .padding(end = 20.dp, bottom = 95.dp),
         ) {
             Row(

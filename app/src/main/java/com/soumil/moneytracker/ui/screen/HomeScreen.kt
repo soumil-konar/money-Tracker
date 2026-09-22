@@ -4,41 +4,57 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ArrowDownward
+import androidx.compose.material.icons.outlined.AssignmentTurnedIn
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.CreditCard
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Savings
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.ui.Alignment
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.soumil.moneytracker.data.model.CategorySlice
 import com.soumil.moneytracker.data.model.DashboardState
 import com.soumil.moneytracker.ui.asCurrency
+import com.soumil.moneytracker.ui.asMonthYear
+import com.soumil.moneytracker.ui.components.BentoMetricCard
 import com.soumil.moneytracker.ui.components.BudgetGauge
 import com.soumil.moneytracker.ui.components.CashflowTrendChart
 import com.soumil.moneytracker.ui.components.CategoryLegend
+import com.soumil.moneytracker.ui.components.ExpressiveHeroCard
 import com.soumil.moneytracker.ui.components.InsightBadge
 import com.soumil.moneytracker.ui.components.MotionReveal
 import com.soumil.moneytracker.ui.components.PermissionBanner
 import com.soumil.moneytracker.ui.components.SectionCard
 import com.soumil.moneytracker.ui.components.SpendingPieChart
-import androidx.compose.material.icons.outlined.AutoAwesome
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.OutlinedButton
 import com.soumil.moneytracker.ui.components.TransactionItem
 
 @Composable
@@ -54,23 +70,61 @@ fun HomeScreen(
     onOpenAssistant: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
+    val statusBarInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val navBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 120.dp),
+        contentPadding = PaddingValues(
+            start = 20.dp,
+            end = 20.dp,
+            top = statusBarInset + 16.dp,
+            bottom = navBarInset + 120.dp,
+        ),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
             MotionReveal(index = 0) {
                 Column {
-                    Text(
-                        text = "Welcome back",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "Welcome back",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.CalendarMonth,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(13.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = System.currentTimeMillis().asMonthYear(),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                            }
+                        }
+                    }
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = "Money at a glance",
                         style = MaterialTheme.typography.headlineLarge,
+                        fontWeight = FontWeight.Bold,
                     )
                 }
             }
@@ -88,44 +142,14 @@ fun HomeScreen(
 
         item {
             MotionReveal(index = 2) {
-                SectionCard(
-                    title = "This month",
-                    subtitle = "Budget-led dashboard with auto-tracked SMS transactions",
-                    containerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.9f),
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = dashboard.monthSpent.asCurrency(),
-                                style = MaterialTheme.typography.headlineLarge,
-                            )
-                            Text(
-                                text = "Spent this month",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        IconButton(onClick = onSetBudgetClick) {
-                            Icon(
-                                imageVector = Icons.Outlined.Edit,
-                                contentDescription = if (dashboard.budgetLimit == null) {
-                                    "Set budget"
-                                } else {
-                                    "Update budget"
-                                },
-                            )
-                        }
-                    }
-                    Box(modifier = Modifier.clickable(onClick = onBudgetClick)) {
-                        BudgetGauge(
-                            spent = dashboard.monthSpent,
-                            budget = dashboard.budgetLimit,
-                        )
-                    }
-                }
+                ExpressiveHeroCard(
+                    monthSpent = dashboard.monthSpent,
+                    budget = dashboard.budgetLimit,
+                    safeDailySpend = dashboard.safeDailySpend,
+                    netSavings = dashboard.monthNetCashflow,
+                    onSetBudgetClick = onSetBudgetClick,
+                    onBudgetClick = onBudgetClick,
+                )
             }
         }
 
@@ -135,14 +159,20 @@ fun HomeScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    InsightBadge(
-                        title = "Income",
+                    BentoMetricCard(
+                        title = "Monthly Inflow",
                         value = dashboard.monthIncome.asCurrency(),
+                        icon = Icons.Outlined.ArrowDownward,
+                        iconTint = MaterialTheme.colorScheme.tertiary,
+                        subtitle = "Income",
                         modifier = Modifier.weight(1f),
                     )
-                    InsightBadge(
-                        title = "Review",
-                        value = dashboard.reviewCount.toString(),
+                    BentoMetricCard(
+                        title = "Net Cashflow",
+                        value = (if (dashboard.monthNetCashflow >= 0) "+" else "") + dashboard.monthNetCashflow.asCurrency(),
+                        icon = Icons.Outlined.Savings,
+                        iconTint = if (dashboard.monthNetCashflow >= 0) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
+                        subtitle = if (dashboard.monthNetCashflow >= 0) "Surplus" else "Deficit",
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -155,14 +185,20 @@ fun HomeScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    InsightBadge(
-                        title = "Tracked balance",
-                        value = dashboard.trackedBalance.asCurrency(),
+                    BentoMetricCard(
+                        title = "Credit Card Spend",
+                        value = dashboard.cardSpendThisMonth.asCurrency(),
+                        icon = Icons.Outlined.CreditCard,
+                        iconTint = MaterialTheme.colorScheme.secondary,
+                        subtitle = "Bank: ${dashboard.bankSpendThisMonth.asCurrency()}",
                         modifier = Modifier.weight(1f),
                     )
-                    InsightBadge(
-                        title = "Subscriptions",
-                        value = dashboard.activeSubscriptionsCount.toString(),
+                    BentoMetricCard(
+                        title = "Pending Review",
+                        value = "${dashboard.reviewCount} items",
+                        icon = Icons.Outlined.AssignmentTurnedIn,
+                        iconTint = if (dashboard.reviewCount > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        subtitle = "Subs: ${dashboard.activeSubscriptionsCount}",
                         modifier = Modifier.weight(1f),
                     )
                 }
