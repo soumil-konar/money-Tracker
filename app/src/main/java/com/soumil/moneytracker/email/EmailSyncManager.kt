@@ -1,9 +1,9 @@
 package com.soumil.moneytracker.email
 
 import java.io.BufferedReader
+import java.io.BufferedWriter
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
-import java.io.PrintWriter
 import java.text.SimpleDateFormat
 import java.util.Locale
 import javax.net.ssl.SSLSocket
@@ -23,7 +23,7 @@ class EmailSyncManager {
     companion object {
         private const val IMAP_HOST = "imap.gmail.com"
         private const val IMAP_PORT = 993
-        private const val SOCKET_TIMEOUT_MS = 15000
+        private const val SOCKET_TIMEOUT_MS = 30000
 
         val MONITORED_BANK_DOMAINS = listOf(
             "hdfcbank.net",
@@ -39,10 +39,19 @@ class EmailSyncManager {
             "cred.club",
             "paytm.com",
         )
+
+        private val BANK_HEADER_KEYWORDS = listOf(
+            "hdfc", "icici", "sbi", "axis", "kotak", "indusind", "pnb", "baroda",
+            "cred", "paytm", "razorpay", "billdesk", "bank", "alert", "upi", "credit card",
+            "debit", "credited", "debited", "spent", "statement", "vpa",
+        )
     }
 
     suspend fun testCredentials(email: String, appPassword: String): Result<Boolean> = withContext(Dispatchers.IO) {
-        if (email.isBlank() || appPassword.isBlank()) {
+        val cleanEmail = email.trim()
+        val cleanPassword = appPassword.replace(" ", "").trim()
+
+        if (cleanEmail.isBlank() || cleanPassword.isBlank()) {
             return@withContext Result.failure(IllegalArgumentException("Email and app password cannot be blank."))
         }
 
@@ -50,20 +59,18 @@ class EmailSyncManager {
             val socket = createTlsSocket()
             try {
                 val reader = BufferedReader(InputStreamReader(socket.inputStream, Charsets.UTF_8))
-                val writer = PrintWriter(OutputStreamWriter(socket.outputStream, Charsets.UTF_8), true)
+                val writer = BufferedWriter(OutputStreamWriter(socket.outputStream, Charsets.UTF_8))
 
-                // Read server greeting
+                // 1. Read server greeting
                 reader.readLine()
 
-                // Execute login
-                writer.println("T01 LOGIN \"$email\" \"$appPassword\"")
-                var response = reader.readLine().orEmpty()
-                while (!response.startsWith("T01 ") && response.isNotBlank()) {
-                    response = reader.readLine().orEmpty()
-                }
+                // 2. Execute login with strict CRLF
+                sendCommand(writer, "T01", "LOGIN \"$cleanEmail\" \"$cleanPassword\"")
+                val response = readUntilTag(reader, "T01")
 
                 if (response.startsWith("T01 OK", ignoreCase = true)) {
-                    writer.println("T02 LOGOUT")
+                    sendCommand(writer, "T02", "LOGOUT")
+                    readUntilTag(reader, "T02")
                     Result.success(true)
                 } else {
                     Result.failure(IllegalStateException("Gmail authentication failed: $response"))
@@ -81,7 +88,10 @@ class EmailSyncManager {
         appPassword: String,
         maxMessages: Int = 30,
     ): Result<List<EmailTransactionMessage>> = withContext(Dispatchers.IO) {
-        if (email.isBlank() || appPassword.isBlank()) {
+        val cleanEmail = email.trim()
+        val cleanPassword = appPassword.replace(" ", "").trim()
+
+        if (cleanEmail.isBlank() || cleanPassword.isBlank()) {
             return@withContext Result.failure(IllegalArgumentException("Email and app password are not configured."))
         }
 
@@ -91,87 +101,85 @@ class EmailSyncManager {
             val socket = createTlsSocket()
             try {
                 val reader = BufferedReader(InputStreamReader(socket.inputStream, Charsets.UTF_8))
-                val writer = PrintWriter(OutputStreamWriter(socket.outputStream, Charsets.UTF_8), true)
+                val writer = BufferedWriter(OutputStreamWriter(socket.outputStream, Charsets.UTF_8))
 
                 // 1. Read greeting
                 reader.readLine()
 
-                // 2. Login
-                writer.println("A01 LOGIN \"$email\" \"$appPassword\"")
-                var line = reader.readLine().orEmpty()
-                while (!line.startsWith("A01 ") && line.isNotBlank()) {
-                    line = reader.readLine().orEmpty()
-                }
-                if (!line.startsWith("A01 OK", ignoreCase = true)) {
-                    return@withContext Result.failure(IllegalStateException("Authentication failed."))
-                }
-
-                // 3. Select Inbox
-                writer.println("A02 SELECT INBOX")
-                line = reader.readLine().orEmpty()
-                while (!line.startsWith("A02 ") && line.isNotBlank()) {
-                    line = reader.readLine().orEmpty()
+                // 2. Login with strict CRLF
+                sendCommand(writer, "A01", "LOGIN \"$cleanEmail\" \"$cleanPassword\"")
+                val loginResponse = readUntilTag(reader, "A01")
+                if (!loginResponse.startsWith("A01 OK", ignoreCase = true)) {
+                    return@withContext Result.failure(
+                        IllegalStateException("Authentication failed. Please verify your 16-character Google App Password: $loginResponse"),
+                    )
                 }
 
-                // 4. Search recent messages from bank senders
+                // 3. Select Inbox and read message count
+                var totalMessages = 0
+                sendCommand(writer, "A02", "SELECT INBOX")
+                readUntilTag(reader, "A02") { line ->
+                    val existsMatch = Regex("""\* (\d+) EXISTS""").find(line)
+                    if (existsMatch != null) {
+                        totalMessages = existsMatch.groupValues[1].toIntOrNull() ?: 0
+                    }
+                }
+
+                // 4. Fast search strategy:
+                // Primary: Use Gmail's native indexed search (X-GM-RAW) for near-instant search across the last 45 days
                 val messageIds = mutableSetOf<Int>()
-
-                for ((idx, domain) in MONITORED_BANK_DOMAINS.take(8).withIndex()) {
-                    val tag = "S$idx"
-                    writer.println("$tag SEARCH FROM \"$domain\"")
-                    var searchResponse = reader.readLine().orEmpty()
-                    while (!searchResponse.startsWith("$tag ") && searchResponse.isNotBlank()) {
-                        if (searchResponse.startsWith("* SEARCH", ignoreCase = true)) {
-                            val ids = searchResponse.removePrefix("* SEARCH").trim()
-                                .split(" ")
-                                .mapNotNull { it.trim().toIntOrNull() }
-                            messageIds.addAll(ids.takeLast(10))
-                        }
-                        searchResponse = reader.readLine().orEmpty()
+                val rawQuery = "from:(hdfc OR icici OR sbi OR axis OR kotak OR indusind OR pnb OR baroda OR cred OR paytm OR alert OR upi) newer_than:45d"
+                sendCommand(writer, "A03", "SEARCH X-GM-RAW \"$rawQuery\"")
+                readUntilTag(reader, "A03") { line ->
+                    if (line.startsWith("* SEARCH", ignoreCase = true)) {
+                        val ids = line.removePrefix("* SEARCH").trim()
+                            .split(" ")
+                            .mapNotNull { it.trim().toIntOrNull() }
+                        messageIds.addAll(ids)
                     }
                 }
 
-                // If no domain-specific matches, fallback to recent UNSEEN
-                if (messageIds.isEmpty()) {
-                    writer.println("S99 SEARCH UNSEEN")
-                    var searchResponse = reader.readLine().orEmpty()
-                    while (!searchResponse.startsWith("S99 ") && searchResponse.isNotBlank()) {
-                        if (searchResponse.startsWith("* SEARCH", ignoreCase = true)) {
-                            val ids = searchResponse.removePrefix("* SEARCH").trim()
-                                .split(" ")
-                                .mapNotNull { it.trim().toIntOrNull() }
-                            messageIds.addAll(ids.takeLast(maxMessages))
+                // Fallback: If X-GM-RAW returned no IDs, inspect the latest 50 message headers from the inbox sequence
+                if (messageIds.isEmpty() && totalMessages > 0) {
+                    val startSeq = maxOf(1, totalMessages - 49)
+                    val candidateIds = mutableSetOf<Int>()
+                    var currentMsgSeq = 0
+
+                    sendCommand(writer, "A04", "FETCH $startSeq:$totalMessages (BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])")
+                    readUntilTag(reader, "A04") { line ->
+                        val fetchMatch = Regex("""\* (\d+) FETCH""").find(line)
+                        if (fetchMatch != null) {
+                            currentMsgSeq = fetchMatch.groupValues[1].toIntOrNull() ?: 0
+                        } else if (currentMsgSeq > 0 && isBankRelatedHeader(line)) {
+                            candidateIds.add(currentMsgSeq)
                         }
-                        searchResponse = reader.readLine().orEmpty()
                     }
+                    messageIds.addAll(candidateIds)
                 }
 
-                // 5. Fetch message details for newest IDs
+                // 5. Fetch message details for the newest IDs
                 val sortedIds = messageIds.sortedDescending().take(maxMessages)
 
                 for ((fetchIdx, msgId) in sortedIds.withIndex()) {
                     val tag = "F$fetchIdx"
-                    writer.println("$tag FETCH $msgId (BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)] BODY.PEEK[TEXT]<0.4096>)")
+                    sendCommand(writer, tag, "FETCH $msgId (BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)] BODY.PEEK[TEXT]<0.4096>)")
 
                     val headerLines = mutableListOf<String>()
                     val bodyLines = mutableListOf<String>()
-                    var readingBody = false
+                    var inHeader = true
 
-                    var fetchLine = reader.readLine()
-                    while (fetchLine != null && !fetchLine.startsWith("$tag ")) {
-                        if (fetchLine.startsWith("* $msgId FETCH")) {
-                            readingBody = false
-                        } else if (fetchLine.startsWith("From:", ignoreCase = true) ||
-                            fetchLine.startsWith("Subject:", ignoreCase = true) ||
-                            fetchLine.startsWith("Date:", ignoreCase = true)
-                        ) {
-                            headerLines.add(fetchLine)
-                        } else if (fetchLine.startsWith(") ") || fetchLine == ")") {
-                            readingBody = false
-                        } else {
-                            bodyLines.add(fetchLine)
+                    readUntilTag(reader, tag) { line ->
+                        if (line.startsWith("* $msgId FETCH")) {
+                            inHeader = true
+                        } else if (inHeader) {
+                            if (line.isBlank() || line.startsWith(")") || line.contains("BODY[TEXT]")) {
+                                inHeader = false
+                            } else {
+                                headerLines.add(line)
+                            }
+                        } else if (!line.startsWith(")") && !line.startsWith("$tag ")) {
+                            bodyLines.add(line)
                         }
-                        fetchLine = reader.readLine()
                     }
 
                     val fromHeader = headerLines.firstOrNull { it.startsWith("From:", ignoreCase = true) }
@@ -183,7 +191,6 @@ class EmailSyncManager {
 
                     val rawBodyText = bodyLines.joinToString("\n").trim()
                     val cleanedBody = cleanEmailBody(rawBodyText)
-
                     val parsedDate = dateHeader?.let { parseEmailDate(it) } ?: System.currentTimeMillis()
 
                     if (cleanedBody.isNotBlank() || subjectHeader.isNotBlank()) {
@@ -198,8 +205,9 @@ class EmailSyncManager {
                     }
                 }
 
-                // 6. Logout
-                writer.println("A99 LOGOUT")
+                // 6. Logout cleanly
+                sendCommand(writer, "A99", "LOGOUT")
+                readUntilTag(reader, "A99")
 
                 Result.success(messages)
             } finally {
@@ -218,6 +226,32 @@ class EmailSyncManager {
         return socket
     }
 
+    private fun sendCommand(writer: BufferedWriter, tag: String, command: String) {
+        writer.write("$tag $command\r\n")
+        writer.flush()
+    }
+
+    private fun readUntilTag(
+        reader: BufferedReader,
+        tag: String,
+        onLine: (String) -> Unit = {},
+    ): String {
+        val tagPrefix = "$tag "
+        while (true) {
+            val line = reader.readLine() ?: break
+            onLine(line)
+            if (line.startsWith(tagPrefix)) {
+                return line
+            }
+        }
+        return ""
+    }
+
+    private fun isBankRelatedHeader(line: String): Boolean {
+        val lower = line.lowercase()
+        return BANK_HEADER_KEYWORDS.any { lower.contains(it) }
+    }
+
     private fun extractSenderName(fromHeader: String): String {
         val clean = fromHeader.replace("\"", "").trim()
         val emailMatch = Regex("<([^>]+)>").find(clean)
@@ -234,6 +268,8 @@ class EmailSyncManager {
         // Handle basic quoted-printable
         if (text.contains("=")) {
             text = text.replace("=\r\n", "").replace("=\n", "")
+                .replace("=20", " ")
+                .replace("=3D", "=")
         }
         // Strip HTML tags if email is HTML
         if (text.contains("<") && text.contains(">")) {
@@ -244,6 +280,10 @@ class EmailSyncManager {
                 .replace("&amp;", "&")
                 .replace("&gt;", ">")
                 .replace("&lt;", "<")
+                .replace("&#39;", "'")
+                .replace("&quot;", "\"")
+                .replace("&#8377;", "INR ")
+                .replace("&#x20B9;", "INR ")
         }
         return text.lines().map(String::trim).filter(String::isNotEmpty).joinToString(" ")
     }

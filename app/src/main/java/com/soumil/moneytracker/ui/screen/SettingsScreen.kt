@@ -510,7 +510,11 @@ fun SettingsScreen(
                             }
 
                             if (emailLastSyncTimestamp > 0L) {
-                                val isSuccess = emailLastSyncStatus?.startsWith("Failed", ignoreCase = true) != true
+                                val isSuccess = emailLastSyncStatus?.let {
+                                    !it.startsWith("Sync error", ignoreCase = true) &&
+                                    !it.startsWith("Failed", ignoreCase = true) &&
+                                    !it.startsWith("Error", ignoreCase = true)
+                                } ?: false
                                 Surface(
                                     shape = RoundedCornerShape(14.dp),
                                     color = if (isSuccess) {
