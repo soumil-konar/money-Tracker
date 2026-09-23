@@ -1,7 +1,6 @@
 package com.soumil.moneytracker.ai
 
 import android.content.Context
-import android.content.pm.PackageManager
 import android.os.Build
 import com.soumil.moneytracker.data.db.TransactionRecord
 import com.soumil.moneytracker.data.model.AccountKind
@@ -10,9 +9,6 @@ import com.soumil.moneytracker.data.model.TransactionCategory
 import com.soumil.moneytracker.data.model.TransactionDirection
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
-import java.time.LocalDate
-import java.time.YearMonth
-import java.time.ZoneId
 import java.util.Date
 import java.util.Locale
 import kotlin.math.sqrt

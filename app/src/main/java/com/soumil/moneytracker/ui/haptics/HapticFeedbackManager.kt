@@ -54,6 +54,7 @@ class HapticFeedbackManager(
         }
     }
 
+    @Suppress("DEPRECATION")
     private fun isHapticsAllowed(): Boolean {
         if (!preferences.isHapticEnabled.value) return false
         val vib = vibrator ?: return false

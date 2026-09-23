@@ -36,11 +36,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.text.font.FontWeight
 import com.soumil.moneytracker.ui.haptics.LocalAppHaptics
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect

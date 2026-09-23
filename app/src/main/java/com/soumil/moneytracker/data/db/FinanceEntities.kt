@@ -1,6 +1,5 @@
 package com.soumil.moneytracker.data.db
 
-import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Fts4

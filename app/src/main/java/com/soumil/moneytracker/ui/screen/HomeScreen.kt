@@ -1,9 +1,7 @@
 package com.soumil.moneytracker.ui.screen
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -27,12 +25,10 @@ import androidx.compose.material.icons.outlined.AssignmentTurnedIn
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.CreditCard
-import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Savings
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -53,11 +49,9 @@ import com.soumil.moneytracker.ui.asCurrency
 import com.soumil.moneytracker.ui.asMonthYear
 import com.soumil.moneytracker.ui.components.AccountBalanceCard
 import com.soumil.moneytracker.ui.components.BentoMetricCard
-import com.soumil.moneytracker.ui.components.BudgetGauge
 import com.soumil.moneytracker.ui.components.CashflowTrendChart
 import com.soumil.moneytracker.ui.components.CategoryLegend
 import com.soumil.moneytracker.ui.components.ExpressiveHeroCard
-import com.soumil.moneytracker.ui.components.InsightBadge
 import com.soumil.moneytracker.ui.components.MotionReveal
 import com.soumil.moneytracker.ui.components.PermissionBanner
 import com.soumil.moneytracker.ui.components.SectionCard

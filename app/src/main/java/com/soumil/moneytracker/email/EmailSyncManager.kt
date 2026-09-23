@@ -1,6 +1,5 @@
 package com.soumil.moneytracker.email
 
-import android.util.Base64
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
