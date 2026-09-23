@@ -20,6 +20,8 @@ class AppContainer(context: Context) {
     val aiPreferences by lazy { AiPreferences(context) }
     val hapticPreferences by lazy { HapticPreferences(context) }
     val securityPreferences by lazy { SecurityPreferences(context) }
+    val emailPreferences by lazy { com.soumil.moneytracker.data.local.EmailPreferences(context) }
+    val emailSyncManager by lazy { com.soumil.moneytracker.email.EmailSyncManager() }
     val hapticManager by lazy { HapticFeedbackManager(context, hapticPreferences) }
     val geminiApiClient by lazy { GeminiApiClient() }
     val onDeviceAiEngine by lazy { OnDeviceAiEngine(context) }
@@ -47,6 +49,8 @@ class AppContainer(context: Context) {
             aiPreferences = aiPreferences,
             hapticPreferences = hapticPreferences,
             securityPreferences = securityPreferences,
+            emailPreferences = emailPreferences,
+            emailSyncManager = emailSyncManager,
             geminiApiClient = geminiApiClient,
             onDeviceAiEngine = onDeviceAiEngine,
         )

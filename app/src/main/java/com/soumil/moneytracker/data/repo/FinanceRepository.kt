@@ -52,8 +52,10 @@ import com.soumil.moneytracker.data.db.TransactionEmbeddingDao
 import com.soumil.moneytracker.data.db.TransactionEmbeddingEntity
 import com.soumil.moneytracker.data.local.AiEngineMode
 import com.soumil.moneytracker.data.local.AiPreferences
+import com.soumil.moneytracker.data.local.EmailPreferences
 import com.soumil.moneytracker.data.local.HapticPreferences
 import com.soumil.moneytracker.data.local.SecurityPreferences
+import com.soumil.moneytracker.email.EmailSyncManager
 import com.soumil.moneytracker.data.model.AssistantMessage
 import com.soumil.moneytracker.data.model.AssistantSender
 
@@ -70,6 +72,8 @@ class FinanceRepository(
     val aiPreferences: AiPreferences,
     val hapticPreferences: HapticPreferences,
     val securityPreferences: SecurityPreferences,
+    val emailPreferences: EmailPreferences,
+    val emailSyncManager: EmailSyncManager,
     val geminiApiClient: GeminiApiClient,
     val onDeviceAiEngine: OnDeviceAiEngine,
 ) {
@@ -100,6 +104,7 @@ class FinanceRepository(
         transactions,
         currentBudget,
         subscriptions,
+        accounts,
         _spendingInsights,
         _isAiLoading,
     ) { args: Array<Any?> ->
@@ -111,13 +116,16 @@ class FinanceRepository(
         @Suppress("UNCHECKED_CAST")
         val subs = args[3] as List<SubscriptionRecord>
         @Suppress("UNCHECKED_CAST")
-        val insights = args[4] as List<String>
-        val isLoading = args[5] as Boolean
+        val accountsList = args[4] as List<AccountEntity>
+        @Suppress("UNCHECKED_CAST")
+        val insights = args[5] as List<String>
+        val isLoading = args[6] as Boolean
         buildDashboardState(
             postedTransactions = posted,
             allTransactions = all,
             budget = budget?.amountLimit,
             subscriptions = subs,
+            accountsList = accountsList,
             insights = insights,
             isAiLoading = isLoading,
         )
@@ -209,6 +217,8 @@ class FinanceRepository(
                 lastFourDigits = sanitizedDraft.lastFourDigits,
                 isRupayCreditCard = sanitizedDraft.isRupayCreditCard,
                 isSystemGenerated = false,
+                currentBalance = sanitizedDraft.currentBalance,
+                balanceUpdatedAtMillis = System.currentTimeMillis(),
             ),
         )
     }
@@ -227,6 +237,8 @@ class FinanceRepository(
                 lastFourDigits = sanitizedDraft.lastFourDigits,
                 isRupayCreditCard = sanitizedDraft.isRupayCreditCard,
                 isSystemGenerated = false,
+                currentBalance = sanitizedDraft.currentBalance,
+                balanceUpdatedAtMillis = System.currentTimeMillis(),
             ),
         )
     }
@@ -274,7 +286,11 @@ class FinanceRepository(
             note = draft.note?.takeIf { it.isNotBlank() },
             countsTowardBudget = draft.countsTowardBudget,
         )
-        transactionDao.insert(transaction)
+        val insertedId = transactionDao.insert(transaction)
+        if (insertedId != -1L && draft.accountId != null) {
+            val delta = if (draft.direction == TransactionDirection.CREDIT) draft.amount else -draft.amount
+            accountDao.adjustBalance(draft.accountId, delta)
+        }
     }
 
     suspend fun updateTransaction(transactionId: Long, draft: TransactionDraft) {
@@ -688,6 +704,47 @@ class FinanceRepository(
         )
     }
 
+    suspend fun syncRecentEmails(maxMessages: Int = 30): Result<Int> {
+        val email = emailPreferences.emailAddress.value
+        val password = emailPreferences.appPassword.value
+        if (email.isBlank() || password.isBlank()) {
+            return Result.failure(IllegalStateException("Gmail address or App Password is not configured."))
+        }
+
+        val result = emailSyncManager.fetchRecentBankAlerts(email, password, maxMessages)
+        return result.fold(
+            onSuccess = { messages ->
+                var importedCount = 0
+                messages.forEach { msg ->
+                    val outcome = ingestMessage(
+                        sender = msg.sender,
+                        body = msg.body,
+                        receivedAtMillis = msg.timestampMillis,
+                    )
+                    if (outcome == SmsIngestionOutcome.IMPORTED || outcome == SmsIngestionOutcome.REVIEW) {
+                        importedCount++
+                    }
+                }
+                emailPreferences.updateSyncResult(
+                    timestampMillis = System.currentTimeMillis(),
+                    status = "Synced ${messages.size} alerts ($importedCount new)",
+                )
+                Result.success(importedCount)
+            },
+            onFailure = { error ->
+                emailPreferences.updateSyncResult(
+                    timestampMillis = System.currentTimeMillis(),
+                    status = "Sync error: ${error.message ?: "Authentication failed"}",
+                )
+                Result.failure(error)
+            },
+        )
+    }
+
+    suspend fun testEmailCredentials(email: String, appPassword: String): Result<Boolean> {
+        return emailSyncManager.testCredentials(email, appPassword)
+    }
+
     suspend fun refreshRecurringSuggestions() {
         val existingMerchants = subscriptionDao.getAll().associateBy { normalizeMerchant(it.merchant) }
         val debitTransactions = postedTransactions.first().filter {
@@ -735,14 +792,23 @@ class FinanceRepository(
             "payment received towards",
             "payment received for credit card",
             "received towards your credit card",
+            "received towards your card",
             "credited towards credit card",
+            "credited to your credit card",
+            "credited to credit card",
+            "credited to your card",
+            "credited to card",
             "towards credit card",
+            "towards your credit card",
+            "towards your card",
             "paid towards your credit card",
+            "paid towards credit card",
             "to self",
             "to own account",
             "from own account",
             "self transfer",
             "cred",
+            "cheq",
             "billdesk",
         ).any { text.contains(it) }
     }
@@ -752,6 +818,7 @@ class FinanceRepository(
         allTransactions: List<TransactionRecord>,
         budget: Double?,
         subscriptions: List<SubscriptionRecord>,
+        accountsList: List<AccountEntity> = emptyList(),
         insights: List<String> = emptyList(),
         isAiLoading: Boolean = false,
     ): DashboardState {
@@ -817,8 +884,10 @@ class FinanceRepository(
             )
         }
 
+        val totalBankBalance = accountsList.filter { it.kind != AccountKind.CARD }.sumOf { it.currentBalance }
+
         return DashboardState(
-            trackedBalance = monthNetCashflow,
+            trackedBalance = if (totalBankBalance != 0.0) totalBankBalance else monthNetCashflow,
             monthSpent = monthSpent,
             monthIncome = monthIncome,
             monthNetCashflow = monthNetCashflow,
@@ -834,6 +903,7 @@ class FinanceRepository(
             recentTransactions = allTransactions.take(6),
             spendingInsights = insights,
             isAiLoading = isAiLoading,
+            accounts = accountsList,
         )
     }
 
@@ -938,6 +1008,7 @@ class FinanceRepository(
         var cardLastFour = parsed?.cardLastFourDigits
         var cardType = parsed?.cardType
         var isCardBillPayment = parsed?.isCardBillPayment ?: false
+        var availableBalance = parsed?.availableBalance
         var confidence = parsed?.confidence ?: 0.5
         var note: String? = null
 
@@ -1000,6 +1071,9 @@ class FinanceRepository(
                         cardType = result.cardType
                     }
                     isCardBillPayment = result.isCardBillPayment
+                    if (result.availableBalance != null) {
+                        availableBalance = result.availableBalance
+                    }
                     note = result.placeDetail
                     confidence = result.confidence
                 }
@@ -1046,11 +1120,22 @@ class FinanceRepository(
                 status = status,
                 note = note,
                 countsTowardBudget = countsTowardBudget,
+                availableBalance = availableBalance,
             ),
         )
         if (inserted == -1L) {
             return SmsIngestionOutcome.DUPLICATE
         }
+
+        if (accountId != null) {
+            if (availableBalance != null) {
+                accountDao.updateBalance(accountId, availableBalance, parsed?.occurredAtMillis ?: receivedAtMillis)
+            } else {
+                val delta = if (direction == TransactionDirection.CREDIT) amount else -amount
+                accountDao.adjustBalance(accountId, delta)
+            }
+        }
+
         return if (status == TransactionStatus.POSTED) {
             SmsIngestionOutcome.IMPORTED
         } else {

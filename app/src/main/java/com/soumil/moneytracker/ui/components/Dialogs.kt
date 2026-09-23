@@ -18,6 +18,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
@@ -47,8 +49,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -741,6 +741,9 @@ fun AccountEditorDialog(
     var isRupayCreditCard by rememberSaveable(dialogKey) {
         mutableStateOf(initialDraft.isRupayCreditCard)
     }
+    var balanceText by rememberSaveable(dialogKey) {
+        mutableStateOf(if (initialDraft.currentBalance != 0.0) initialDraft.currentBalance.toString() else "")
+    }
     val resolvedInstitutionName = resolveInstitutionName(
         selectedOption = selectedBankOption,
         customBankName = customBankName,
@@ -765,6 +768,15 @@ fun AccountEditorDialog(
             onValueChange = { name = it },
             label = { Text("Account name") },
             singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        OutlinedTextField(
+            value = balanceText,
+            onValueChange = { balanceText = it },
+            label = { Text(if (initialDraft.kind == AccountKind.CARD) "Card Balance / Outflow (₹)" else "Available Balance (₹)") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             modifier = Modifier.fillMaxWidth(),
         )
 
@@ -887,6 +899,7 @@ fun AccountEditorDialog(
                             } else {
                                 false
                             },
+                            currentBalance = balanceText.toDoubleOrNull() ?: 0.0,
                         ),
                     )
                 },

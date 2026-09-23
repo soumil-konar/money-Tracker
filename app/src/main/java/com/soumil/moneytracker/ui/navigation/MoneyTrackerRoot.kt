@@ -111,6 +111,12 @@ fun MoneyTrackerRoot(
     val isHapticEnabled by viewModel.isHapticEnabled.collectAsStateWithLifecycle()
     val hapticIntensity by viewModel.hapticIntensity.collectAsStateWithLifecycle()
     val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsStateWithLifecycle()
+    val isEmailSyncEnabled by viewModel.isEmailSyncEnabled.collectAsStateWithLifecycle()
+    val emailAddress by viewModel.emailAddress.collectAsStateWithLifecycle()
+    val emailAppPassword by viewModel.emailAppPassword.collectAsStateWithLifecycle()
+    val emailLastSyncTimestamp by viewModel.emailLastSyncTimestamp.collectAsStateWithLifecycle()
+    val emailLastSyncStatus by viewModel.emailLastSyncStatus.collectAsStateWithLifecycle()
+    val isEmailSyncing by viewModel.isEmailSyncing.collectAsStateWithLifecycle()
     val haptics = LocalAppHaptics.current
     val primaryBankAccount = accounts.firstOrNull { it.kind == AccountKind.BANK && it.institutionName != null }
         ?: accounts.firstOrNull { it.kind == AccountKind.BANK }
@@ -176,6 +182,7 @@ fun MoneyTrackerRoot(
                     },
                     onRefreshAiInsights = { viewModel.refreshAiSpendingInsights() },
                     onOpenAssistant = { showAiChatSheet = true },
+                    onAccountsClick = { navController.navigate(AppDestination.More.route) },
                 )
             }
             composable(AppDestination.BudgetHistory.route) {
@@ -289,6 +296,16 @@ fun MoneyTrackerRoot(
                     isBiometricEnabled = isBiometricEnabled,
                     isBiometricAvailable = viewModel.isBiometricHardwareAvailable(context),
                     onToggleBiometricEnabled = viewModel::setBiometricEnabled,
+                    isEmailSyncEnabled = isEmailSyncEnabled,
+                    emailAddress = emailAddress,
+                    emailAppPassword = emailAppPassword,
+                    emailLastSyncTimestamp = emailLastSyncTimestamp,
+                    emailLastSyncStatus = emailLastSyncStatus,
+                    isEmailSyncing = isEmailSyncing,
+                    onToggleEmailSync = viewModel::setEmailSyncEnabled,
+                    onUpdateEmailCredentials = viewModel::updateEmailCredentials,
+                    onClearEmailCredentials = viewModel::clearEmailCredentials,
+                    onSyncRecentEmails = viewModel::syncRecentEmails,
                 )
             }
         }
@@ -484,6 +501,7 @@ private fun AccountEntity.toDraft(): AccountDraft {
         cardType = cardType,
         lastFourDigits = lastFourDigits,
         isRupayCreditCard = isRupayCreditCard,
+        currentBalance = currentBalance,
     )
 }
 

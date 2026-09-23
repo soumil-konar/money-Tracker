@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -50,6 +51,7 @@ import com.soumil.moneytracker.data.model.CategorySlice
 import com.soumil.moneytracker.data.model.DashboardState
 import com.soumil.moneytracker.ui.asCurrency
 import com.soumil.moneytracker.ui.asMonthYear
+import com.soumil.moneytracker.ui.components.AccountBalanceCard
 import com.soumil.moneytracker.ui.components.BentoMetricCard
 import com.soumil.moneytracker.ui.components.BudgetGauge
 import com.soumil.moneytracker.ui.components.CashflowTrendChart
@@ -74,6 +76,7 @@ fun HomeScreen(
     onBudgetClick: () -> Unit,
     onRefreshAiInsights: () -> Unit = {},
     onOpenAssistant: (() -> Unit)? = null,
+    onAccountsClick: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val haptics = LocalAppHaptics.current
@@ -217,6 +220,47 @@ fun HomeScreen(
                         subtitle = "Subs: ${dashboard.activeSubscriptionsCount}",
                         modifier = Modifier.weight(1f),
                     )
+                }
+            }
+        }
+
+        if (dashboard.accounts.isNotEmpty()) {
+            item {
+                MotionReveal(index = 5) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                text = "Accounts & Balances",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onBackground,
+                            )
+                            Text(
+                                text = "Tracked: ${dashboard.trackedBalance.asCurrency()}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            contentPadding = PaddingValues(horizontal = 2.dp),
+                        ) {
+                            items(dashboard.accounts) { account ->
+                                AccountBalanceCard(
+                                    account = account,
+                                    onClick = {
+                                        haptics.click()
+                                        onAccountsClick()
+                                    },
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

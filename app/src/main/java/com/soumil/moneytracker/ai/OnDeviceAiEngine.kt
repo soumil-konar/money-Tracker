@@ -83,17 +83,32 @@ class OnDeviceAiEngine(
             "received towards your",
             "received towards",
             "payment received for credit card",
+            "payment received for your card",
             "payment received towards",
             "credited towards credit card",
+            "credited to your credit card",
+            "credited to credit card",
+            "credited to your card",
+            "credited to card",
+            "credited to your sbi card",
+            "credited to sbi card",
             "card bill payment",
             "credit card bill",
             "towards credit card",
+            "towards your credit card",
+            "towards your card",
+            "towards card",
+            "paid towards your credit card",
+            "paid towards your card",
             "paid towards your",
             "paid towards",
+            "payment towards credit card",
+            "payment towards card",
             "payment towards",
             "via cred",
             "on cred",
             "through cred",
+            "via cheq",
             "via billdesk",
             "through billdesk",
         ).any { it in lower }
@@ -128,13 +143,16 @@ class OnDeviceAiEngine(
         val isCard = listOf("credit card", "debit card", "card ending", "card xx").any { it in lower }
         val isUpi = listOf("upi", "vpa", "/p2a/", "@okhdfc", "@okaxis", "@okicici", "@ybl").any { it in lower }
 
+        val balRegex = Regex("""(?:avl(?:[\.\s]+)?bal(?:ance)?|available\s+balance|avail(?:[\.\s]+)?bal(?:ance)?|total\s+balance|bal(?:ance)?\s*[:=])\s*(?:is|:|-)?\s*(?:rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)""", RegexOption.IGNORE_CASE)
+        val availableBalance = balRegex.find(smsBody)?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
+
         val parsed = AiParsedTransaction(
             isTransaction = true,
             amount = amount,
             direction = direction,
             merchant = merchant,
             category = category,
-            accountKind = if (isCard) AccountKind.CARD else if (isUpi) AccountKind.UPI else AccountKind.BANK,
+            accountKind = if (isCard && !isCreditCardPayment) AccountKind.CARD else if (isUpi) AccountKind.UPI else AccountKind.BANK,
             institutionName = institution,
             accountLastFour = last4,
             cardType = if (isCard) CardType.CREDIT else null,
@@ -143,6 +161,7 @@ class OnDeviceAiEngine(
             placeDetail = placeDetail,
             confidence = 0.96,
             countsTowardBudget = countsTowardBudget,
+            availableBalance = availableBalance,
         )
 
         return Result.success(parsed)

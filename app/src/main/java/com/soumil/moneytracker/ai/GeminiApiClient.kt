@@ -31,6 +31,7 @@ data class AiParsedTransaction(
     val placeDetail: String?,
     val confidence: Double = 0.95,
     val countsTowardBudget: Boolean = !isCardBillPayment && category != TransactionCategory.TRANSFER,
+    val availableBalance: Double? = null,
 )
 
 data class RagAnswerResponse(

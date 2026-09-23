@@ -237,15 +237,59 @@ class SmsParserTest {
     }
 
     @Test
-    fun `ignores bill payment sms even when it mentions a paid amount`() {
+    fun `parses executed utility bill payment as debit under bills category`() {
         val result = parser.parseMessage(
             sender = "AXISBK",
             body = "Bill payment of INR 1899 paid for ELECTRICITY on 02-05-2026 from A/c XX6942.",
         )
 
+        assertFalse(result.shouldIgnore)
+        assertNotNull(result.transaction)
+        assertEquals(1899.0, result.transaction?.amount ?: 0.0, 0.0)
+        assertEquals(TransactionDirection.DEBIT, result.transaction?.direction)
+        assertEquals(TransactionCategory.BILLS, result.transaction?.inferredCategory)
+        assertEquals("6942", result.transaction?.bankAccountLastFourDigits)
+    }
+
+    @Test
+    fun `still ignores pending bill due notices`() {
+        val result = parser.parseMessage(
+            sender = "BESCOM",
+            body = "Your electricity bill for CA 10293847 is Rs 1,450. Due date is 25-05-2026. Pay now to avoid late fee.",
+        )
+
         assertTrue(result.shouldIgnore)
         assertNull(result.transaction)
-        assertNull(result.scheduledTransaction)
+    }
+
+    @Test
+    fun `extracts available balance from banking sms accurately`() {
+        val result1 = parser.parse(
+            sender = "HDFCBK",
+            body = "Rs.1,250 debited from A/c XX1234 on 05-05-2026 via UPI to SWIGGY. Avl bal Rs.40,000",
+        )
+        assertEquals(40000.0, result1.availableBalance ?: 0.0, 0.0)
+
+        val result2 = parser.parse(
+            sender = "ICICIB",
+            body = "INR 2,500.00 debited from A/c XX5678 on 12-05-2026. Available balance is INR 1,25,400.75.",
+        )
+        assertEquals(125400.75, result2.availableBalance ?: 0.0, 0.0)
+    }
+
+    @Test
+    fun `credit card bill payment receipt is treated as transfer without affecting budget`() {
+        val result = parser.parse(
+            sender = "SBICRD",
+            body = "Payment of INR 15,000 received towards your SBI Card ending 9876 from A/c XX4321 on 15-05-2026.",
+        )
+
+        assertFalse(result.shouldIgnore)
+        assertEquals(15000.0, result.amount ?: 0.0, 0.0)
+        assertEquals(TransactionDirection.DEBIT, result.direction)
+        assertEquals(TransactionCategory.TRANSFER, result.inferredCategory)
+        assertTrue(result.isCardBillPayment)
+        assertFalse(result.countsTowardBudget)
     }
 }
 

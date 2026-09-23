@@ -30,6 +30,12 @@ interface AccountDao {
     @Update
     suspend fun update(account: AccountEntity)
 
+    @Query("UPDATE accounts SET currentBalance = :balance, balanceUpdatedAtMillis = :updatedAt WHERE id = :accountId")
+    suspend fun updateBalance(accountId: Long, balance: Double, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE accounts SET currentBalance = currentBalance + :delta WHERE id = :accountId")
+    suspend fun adjustBalance(accountId: Long, delta: Double)
+
     @Query("DELETE FROM accounts WHERE id = :accountId")
     suspend fun deleteById(accountId: Long)
 }
@@ -39,7 +45,7 @@ interface TransactionDao {
     @Query(
         """
         SELECT t.id, t.amount, t.direction, t.occurredAtMillis, t.merchant, t.category, t.accountId, t.sourceSender,
-               t.smsBody, t.confidence, t.status, t.note, t.countsTowardBudget,
+               t.smsBody, t.confidence, t.status, t.note, t.countsTowardBudget, t.availableBalance,
                a.name AS accountName, a.kind AS accountKind
         FROM transactions t
         LEFT JOIN accounts a ON t.accountId = a.id
@@ -51,7 +57,7 @@ interface TransactionDao {
     @Query(
         """
         SELECT t.id, t.amount, t.direction, t.occurredAtMillis, t.merchant, t.category, t.accountId, t.sourceSender,
-               t.smsBody, t.confidence, t.status, t.note, t.countsTowardBudget,
+               t.smsBody, t.confidence, t.status, t.note, t.countsTowardBudget, t.availableBalance,
                a.name AS accountName, a.kind AS accountKind
         FROM transactions t
         LEFT JOIN accounts a ON t.accountId = a.id
@@ -85,7 +91,7 @@ interface TransactionDao {
     @Query(
         """
         SELECT t.id, t.amount, t.direction, t.occurredAtMillis, t.merchant, t.category, t.accountId, t.sourceSender,
-               t.smsBody, t.confidence, t.status, t.note, t.countsTowardBudget,
+               t.smsBody, t.confidence, t.status, t.note, t.countsTowardBudget, t.availableBalance,
                a.name AS accountName, a.kind AS accountKind
         FROM transactions t
         JOIN transactions_fts f ON t.id = f.docid
@@ -100,7 +106,7 @@ interface TransactionDao {
     @Query(
         """
         SELECT t.id, t.amount, t.direction, t.occurredAtMillis, t.merchant, t.category, t.accountId, t.sourceSender,
-               t.smsBody, t.confidence, t.status, t.note, t.countsTowardBudget,
+               t.smsBody, t.confidence, t.status, t.note, t.countsTowardBudget, t.availableBalance,
                a.name AS accountName, a.kind AS accountKind
         FROM transactions t
         LEFT JOIN accounts a ON t.accountId = a.id
@@ -113,7 +119,7 @@ interface TransactionDao {
     @Query(
         """
         SELECT t.id, t.amount, t.direction, t.occurredAtMillis, t.merchant, t.category, t.accountId, t.sourceSender,
-               t.smsBody, t.confidence, t.status, t.note, t.countsTowardBudget,
+               t.smsBody, t.confidence, t.status, t.note, t.countsTowardBudget, t.availableBalance,
                a.name AS accountName, a.kind AS accountKind
         FROM transactions t
         LEFT JOIN accounts a ON t.accountId = a.id

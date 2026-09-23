@@ -1,5 +1,6 @@
 package com.soumil.moneytracker.data.model
 
+import com.soumil.moneytracker.data.db.AccountEntity
 import com.soumil.moneytracker.data.db.TransactionRecord
 import java.time.LocalDate
 
@@ -85,6 +86,7 @@ data class ParsedSmsTransaction(
     val placeDetail: String? = null,
     val aiEnriched: Boolean = false,
     val countsTowardBudget: Boolean = true,
+    val availableBalance: Double? = null,
 )
 
 data class ParsedScheduledTransaction(
@@ -127,6 +129,7 @@ data class DashboardState(
     val recentTransactions: List<TransactionRecord> = emptyList(),
     val spendingInsights: List<String> = emptyList(),
     val isAiLoading: Boolean = false,
+    val accounts: List<AccountEntity> = emptyList(),
 )
 
 data class CategorySlice(
@@ -158,6 +161,7 @@ data class AccountDraft(
     val cardType: CardType? = null,
     val lastFourDigits: String? = null,
     val isRupayCreditCard: Boolean = false,
+    val currentBalance: Double = 0.0,
 )
 
 data class SubscriptionDraft(

@@ -73,6 +73,14 @@ class MainViewModel(
     val isPixelDevice: Boolean = repository.onDeviceAiEngine.isPixelDevice()
     val isTensorG4Ready: Boolean = repository.onDeviceAiEngine.isTensorSoc()
 
+    val isEmailSyncEnabled: StateFlow<Boolean> = repository.emailPreferences.isEmailSyncEnabled
+    val emailAddress: StateFlow<String> = repository.emailPreferences.emailAddress
+    val emailAppPassword: StateFlow<String> = repository.emailPreferences.appPassword
+    val emailLastSyncTimestamp: StateFlow<Long> = repository.emailPreferences.lastSyncTimestamp
+    val emailLastSyncStatus: StateFlow<String?> = repository.emailPreferences.lastSyncStatus
+    private val _isEmailSyncing = MutableStateFlow(false)
+    val isEmailSyncing: StateFlow<Boolean> = _isEmailSyncing
+
     val dashboard: StateFlow<DashboardState> = repository.dashboard.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
@@ -496,6 +504,35 @@ class MainViewModel(
                 )
             }.onFailure {
                 emitMessage("Could not import SMS. Check permissions and try again.")
+            }
+        }
+    }
+
+    fun setEmailSyncEnabled(enabled: Boolean) {
+        repository.emailPreferences.setEmailSyncEnabled(enabled)
+    }
+
+    fun updateEmailCredentials(email: String, appPassword: String) {
+        repository.emailPreferences.setCredentials(email, appPassword)
+    }
+
+    fun clearEmailCredentials() {
+        repository.emailPreferences.clearCredentials()
+    }
+
+    fun syncRecentEmails() {
+        viewModelScope.launch {
+            _isEmailSyncing.value = true
+            try {
+                repository.syncRecentEmails()
+                    .onSuccess { count ->
+                        emitMessage("Email sync complete. Ingested $count new transaction alerts.")
+                    }
+                    .onFailure { error ->
+                        emitMessage("Email sync failed: ${error.message ?: "Authentication error"}")
+                    }
+            } finally {
+                _isEmailSyncing.value = false
             }
         }
     }

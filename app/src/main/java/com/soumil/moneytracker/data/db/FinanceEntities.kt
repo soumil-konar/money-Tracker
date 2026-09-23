@@ -25,6 +25,8 @@ data class AccountEntity(
     val lastFourDigits: String? = null,
     val isRupayCreditCard: Boolean = false,
     val isSystemGenerated: Boolean = false,
+    val currentBalance: Double = 0.0,
+    val balanceUpdatedAtMillis: Long? = null,
 )
 
 @Entity(
@@ -59,6 +61,7 @@ data class TransactionEntity(
     val status: TransactionStatus,
     val note: String? = null,
     val countsTowardBudget: Boolean = true,
+    val availableBalance: Double? = null,
     val createdAtMillis: Long = System.currentTimeMillis(),
 )
 
@@ -193,6 +196,7 @@ data class TransactionRecord(
     val countsTowardBudget: Boolean,
     val accountName: String?,
     val accountKind: AccountKind?,
+    val availableBalance: Double? = null,
 )
 
 data class ScheduledTransactionRecord(

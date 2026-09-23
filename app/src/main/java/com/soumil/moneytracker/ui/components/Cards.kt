@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -57,6 +58,7 @@ import com.soumil.moneytracker.data.model.TransactionCategory
 import com.soumil.moneytracker.data.model.TransactionDirection
 import com.soumil.moneytracker.data.model.TransactionStatus
 import com.soumil.moneytracker.ui.asCurrency
+import com.soumil.moneytracker.ui.asDayMonth
 import com.soumil.moneytracker.ui.asFullDate
 
 @Composable
@@ -805,9 +807,28 @@ fun AccountItem(
                     text = metadata,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                Spacer(modifier = Modifier.height(3.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(
+                        text = if (account.kind == AccountKind.CARD) "Balance: ${account.currentBalance.asCurrency()}" else "Avl: ${account.currentBalance.asCurrency()}",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (account.currentBalance >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    account.balanceUpdatedAtMillis?.let {
+                        Text(
+                            text = "• ${it.asDayMonth()}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CompactCardActionButton(
@@ -825,6 +846,78 @@ fun AccountItem(
                     onClick = onDelete,
                 )
             }
+        }
+    }
+}
+
+@Composable
+fun AccountBalanceCard(
+    account: AccountEntity,
+    onClick: () -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
+    val isCard = account.kind == AccountKind.CARD
+    val accent = if (isCard) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary
+
+    Card(
+        modifier = modifier
+            .width(185.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(accent.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = if (isCard) Icons.Outlined.CreditCard else Icons.Outlined.AccountBalance,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = accent,
+                    )
+                }
+                account.lastFourDigits?.let {
+                    Text(
+                        text = "•••• $it",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = account.institutionName ?: account.name,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = account.currentBalance.asCurrency(),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+            Text(
+                text = if (isCard) "Card Balance" else "Available Balance",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+            )
         }
     }
 }

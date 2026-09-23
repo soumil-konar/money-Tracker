@@ -92,22 +92,39 @@ class SmsParser {
         "payment received towards credit card",
         "payment received towards",
         "payment received for credit card",
+        "payment received for your card",
         "payment made towards credit card",
         "payment made towards",
+        "received towards your credit card",
+        "received towards your card",
         "received towards your",
         "received towards",
+        "credited towards credit card",
+        "credited to your credit card",
+        "credited to credit card",
+        "credited to your card",
+        "credited to card",
+        "credited to your sbi card",
+        "credited to sbi card",
+        "paid towards your credit card",
+        "paid towards your card",
         "paid towards your",
         "paid towards",
+        "payment towards credit card",
+        "payment towards card",
         "payment towards",
         "towards credit card",
         "towards your credit card",
         "towards your card",
         "towards card",
+        "thank you for paying",
+        "thank you for payment",
         "via cred",
         "on cred",
         "through cred",
         "via billdesk",
         "through billdesk",
+        "via cheq",
     )
 
     private val selfTransferKeywords = listOf(
@@ -124,9 +141,6 @@ class SmsParser {
     )
 
     private val billIgnoreKeywords = listOf(
-        "bill payment",
-        "billpay",
-        "amount due",
         "total amount due",
         "minimum amount due",
         "payment due",
@@ -207,6 +221,18 @@ class SmsParser {
         Regex("(?i)(?:on|using|for)\\s+(?:[a-z ]+)?card[\\s:.-]*[*xX]*([0-9]{4})"),
         Regex("(?i)(?:visa|mastercard|rupay)[\\s:.-]*[*xX]*([0-9]{4})"),
     )
+
+    private val balanceRegexes = listOf(
+        Regex("(?i)(?:avl(?:\\.|\\s+)?bal(?:ance)?|available\\s+balance|avail(?:\\.|\\s+)?bal(?:ance)?|total\\s+balance|acct\\s+bal(?:ance)?)\\s*(?:is|:|-)?\\s*(?:rs\\.?|inr)?\\s*([0-9,]+(?:\\.\\d{1,2})?)"),
+        Regex("(?i)(?:rs\\.?|inr)\\s*([0-9,]+(?:\\.\\d{1,2})?)\\s*(?:is\\s+)?(?:avl(?:\\.|\\s+)?bal(?:ance)?|available\\s+balance|avail(?:\\.|\\s+)?bal)"),
+        Regex("(?i)\\bbal(?:ance)?\\s*[:=]\\s*(?:rs\\.?|inr)?\\s*([0-9,]+(?:\\.\\d{1,2})?)"),
+    )
+
+    private fun extractAvailableBalance(body: String): Double? {
+        return balanceRegexes.firstNotNullOfOrNull { regex ->
+            regex.find(body)?.groupValues?.getOrNull(1)?.replace(",", "")?.toDoubleOrNull()
+        }
+    }
 
     private val fullDatePatterns = listOf(
         "d/M/yyyy",
@@ -343,6 +369,8 @@ class SmsParser {
         if (occurredAtMillis != null) confidence += 0.05
         if (isCardBillPayment) confidence += 0.08
 
+        val availableBalance = extractAvailableBalance(body)
+
         return ParsedSmsMessage(
             transaction = ParsedSmsTransaction(
                 amount = amount,
@@ -362,6 +390,7 @@ class SmsParser {
                 isCardPayment = isCardPayment,
                 isCardBillPayment = isCardBillPayment,
                 countsTowardBudget = countsTowardBudget,
+                availableBalance = availableBalance,
             ),
         )
     }
@@ -690,8 +719,36 @@ class SmsParser {
         normalized: String,
         hasCardSignal: Boolean,
     ): Boolean {
-        if (!hasCardSignal) return false
-        val hasPaymentSignal = cardRepaymentKeywords.any(normalized::contains)
+        val explicitCardRepayment = listOf(
+            "credit card bill",
+            "card bill",
+            "towards credit card",
+            "towards your credit card",
+            "towards your card",
+            "towards card",
+            "credited to your credit card",
+            "credited to credit card",
+            "credited to your card",
+            "credited to card",
+            "credited towards credit card",
+            "payment received towards your credit card",
+            "payment received towards credit card",
+            "payment received for credit card",
+            "payment received for your card",
+            "payment received towards",
+            "paid towards your credit card",
+            "paid towards credit card",
+            "received towards your credit card",
+            "received towards your card",
+            "via cred",
+            "on cred",
+            "through cred",
+            "via cheq",
+            "via billdesk",
+            "through billdesk",
+        ).any(normalized::contains)
+
+        val hasPaymentSignal = explicitCardRepayment || (hasCardSignal && cardRepaymentKeywords.any(normalized::contains))
         val isStatementReminder = statementOnlyKeywords.any(normalized::contains) && actualPaymentKeywords.none(normalized::contains)
         return hasPaymentSignal && !isStatementReminder
     }
@@ -707,6 +764,13 @@ class SmsParser {
     }
 
     private fun shouldIgnoreBillOrDueMessage(normalized: String): Boolean {
+        val looksExecuted = actualPaymentKeywords.any(normalized::contains) ||
+            listOf("paid", "debited", "successful", "processed").any(normalized::contains)
+
+        if (looksExecuted) {
+            return false
+        }
+
         if (billIgnoreKeywords.any(normalized::contains)) return true
         return (normalized.contains("due date") || normalized.contains("due on")) &&
             (normalized.contains("bill") || normalized.contains("statement") || normalized.contains("credit card"))
