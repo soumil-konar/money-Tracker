@@ -51,27 +51,38 @@ class EmailSyncManager {
     fun sanitizeEmail(email: String): String {
         val trimmed = email.trim()
         return if (trimmed.isNotBlank() && !trimmed.contains("@")) {
-            "$trimmed@gmail.com"
+            "${trimmed.lowercase()}@gmail.com"
         } else {
-            trimmed
+            trimmed.lowercase()
         }
     }
 
     fun sanitizeAppPassword(password: String): String {
-        val trimmed = password.trim()
-        // If it's a 16-letter space-delimited Google App Password like "abcd efgh ijkl mnop" or "abcd-efgh-ijkl-mnop", clean delimiters
-        return if (trimmed.matches(Regex("""[a-zA-Z]{4}[\s\-]+[a-zA-Z]{4}[\s\-]+[a-zA-Z]{4}[\s\-]+[a-zA-Z]{4}"""))) {
-            trimmed.replace(Regex("""[\s\-]+"""), "").lowercase()
+        // Strip common copy-paste delimiters and spaces (including non-breaking space \u00A0, zero-width spaces, and hyphens)
+        val compact = password.filterNot {
+            it.isWhitespace() || it == '\u00A0' || it == '\u200B' || it == '\uFEFF' || it == '-'
+        }
+        // If the compact string is a 16-character alphabetic Google App Password, normalize to 16 lowercase characters
+        return if (compact.length == 16 && compact.all { it.isLetter() }) {
+            compact.lowercase()
         } else {
-            trimmed
+            password.trim()
         }
     }
 
-    fun parseImapError(rawResponse: String): String {
+    fun escapeImapString(str: String): String {
+        return str.replace("\\", "\\\\").replace("\"", "\\\"")
+    }
+
+    fun parseImapError(rawResponse: String, passwordLength: Int = 0): String {
         val lower = rawResponse.lowercase()
         return when {
             "authenticationfailed" in lower || "invalid credentials" in lower -> {
-                "Authentication failed. Check your password. If using a Google Account with 2-Step Verification, ensure you use a Google App Password and that IMAP is enabled in your Gmail settings (Settings > Forwarding and POP/IMAP > Enable IMAP)."
+                if (passwordLength in 1..15 || passwordLength > 16) {
+                    "Authentication failed ($passwordLength chars entered). Google blocks your standard account password on IMAP. You must generate and use a 16-letter App Password from myaccount.google.com/apppasswords."
+                } else {
+                    "Authentication failed. Google rejected these credentials. If you enabled 2-Step Verification, ensure you generated a dedicated 16-letter App Password at myaccount.google.com/apppasswords rather than using your Google account password."
+                }
             }
             "application-specific password required" in lower || "app password" in lower -> {
                 "Google requires an App Password. Go to Google Account > Security > 2-Step Verification > App Passwords, create an App Password for 'Mail', and enter it here."
@@ -105,8 +116,8 @@ class EmailSyncManager {
                 // 1. Read server greeting
                 reader.readLine()
 
-                // 2. Execute login with strict CRLF
-                sendCommand(writer, "T01", "LOGIN \"$cleanEmail\" \"$cleanPassword\"")
+                // 2. Execute login with strict CRLF and escaped quotes
+                sendCommand(writer, "T01", "LOGIN \"${escapeImapString(cleanEmail)}\" \"${escapeImapString(cleanPassword)}\"")
                 val response = readUntilTag(reader, "T01")
 
                 if (response.startsWith("T01 OK", ignoreCase = true)) {
@@ -114,7 +125,7 @@ class EmailSyncManager {
                     readUntilTag(reader, "T02")
                     Result.success(true)
                 } else {
-                    Result.failure(IllegalStateException(parseImapError(response)))
+                    Result.failure(IllegalStateException(parseImapError(response, cleanPassword.length)))
                 }
             } finally {
                 runCatching { socket.close() }
@@ -150,11 +161,11 @@ class EmailSyncManager {
                 // 1. Read greeting
                 reader.readLine()
 
-                // 2. Login with strict CRLF
-                sendCommand(writer, "A01", "LOGIN \"$cleanEmail\" \"$cleanPassword\"")
+                // 2. Login with strict CRLF and escaped quotes
+                sendCommand(writer, "A01", "LOGIN \"${escapeImapString(cleanEmail)}\" \"${escapeImapString(cleanPassword)}\"")
                 val loginResponse = readUntilTag(reader, "A01")
                 if (!loginResponse.startsWith("A01 OK", ignoreCase = true)) {
-                    return@withContext Result.failure(IllegalStateException(parseImapError(loginResponse)))
+                    return@withContext Result.failure(IllegalStateException(parseImapError(loginResponse, cleanPassword.length)))
                 }
 
                 // 3. Select Inbox and read message count

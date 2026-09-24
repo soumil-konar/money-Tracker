@@ -23,6 +23,9 @@ class EmailSyncManagerTest {
         assertEquals("abcdefghijklmnop", emailSyncManager.sanitizeAppPassword("abcd efgh ijkl mnop"))
         assertEquals("abcdefghijklmnop", emailSyncManager.sanitizeAppPassword("ABCD EFGH IJKL MNOP"))
         assertEquals("abcdefghijklmnop", emailSyncManager.sanitizeAppPassword("abcd-efgh-ijkl-mnop"))
+        // Handles non-breaking spaces and zero-width spaces often copied from Google Account web UI
+        assertEquals("abcdefghijklmnop", emailSyncManager.sanitizeAppPassword("abcd\u00A0efgh\u00A0ijkl\u00A0mnop"))
+        assertEquals("abcdefghijklmnop", emailSyncManager.sanitizeAppPassword("  abcd\u200Befgh\u00A0ijkl-mnop  "))
         // Passwords of any length with numbers and symbols are preserved
         assertEquals("MySecret123!", emailSyncManager.sanitizeAppPassword("  MySecret123!  "))
         assertEquals("Simple8c", emailSyncManager.sanitizeAppPassword("Simple8c"))
@@ -30,11 +33,24 @@ class EmailSyncManagerTest {
     }
 
     @Test
+    fun `escapeImapString escapes backslashes and double quotes`() {
+        assertEquals("normal", emailSyncManager.escapeImapString("normal"))
+        assertEquals("pass\\\\word", emailSyncManager.escapeImapString("pass\\word"))
+        assertEquals("pass\\\"word", emailSyncManager.escapeImapString("pass\"word"))
+    }
+
+    @Test
     fun `parseImapError returns actionable guidance for authentication failures`() {
-        val authError = emailSyncManager.parseImapError("A01 NO [AUTHENTICATIONFAILED] Invalid credentials (Failure)")
+        val authErrorShort = emailSyncManager.parseImapError("A01 NO [AUTHENTICATIONFAILED] Invalid credentials (Failure)", passwordLength = 8)
         assertTrue(
-            "Should explain Google App Password and IMAP settings",
-            authError.contains("Google App Password") && authError.contains("IMAP"),
+            "Should explain that 8-char standard password is blocked by Google",
+            authErrorShort.contains("8 chars entered") && authErrorShort.contains("myaccount.google.com/apppasswords"),
+        )
+
+        val authError16 = emailSyncManager.parseImapError("A01 NO [AUTHENTICATIONFAILED] Invalid credentials (Failure)", passwordLength = 16)
+        assertTrue(
+            "Should guide user to check App Password at myaccount.google.com/apppasswords",
+            authError16.contains("App Password"),
         )
 
         val alertError = emailSyncManager.parseImapError("A01 NO [ALERT] Application-specific password required")

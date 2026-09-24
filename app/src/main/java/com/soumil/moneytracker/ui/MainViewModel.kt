@@ -540,6 +540,7 @@ class MainViewModel(
             _emailTestStatus.value = "Testing Gmail connection..."
             repository.testEmailCredentials(email, appPassword)
                 .onSuccess {
+                    repository.emailPreferences.setCredentials(email, appPassword)
                     _emailTestStatus.value = "Success: Connected and authenticated with Gmail IMAP."
                     emitMessage("Gmail IMAP connected successfully!")
                 }

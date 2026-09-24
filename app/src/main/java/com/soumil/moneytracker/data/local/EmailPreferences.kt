@@ -40,13 +40,9 @@ class EmailPreferences(
     }
 
     fun setCredentials(email: String, appPassword: String) {
-        val trimmedEmail = if (email.isNotBlank() && !email.contains("@")) "${email.trim()}@gmail.com" else email.trim()
-        val trimmed = appPassword.trim()
-        val cleanedPassword = if (trimmed.matches(Regex("""[a-zA-Z]{4}[\s\-]+[a-zA-Z]{4}[\s\-]+[a-zA-Z]{4}[\s\-]+[a-zA-Z]{4}"""))) {
-            trimmed.replace(Regex("""[\s\-]+"""), "").lowercase()
-        } else {
-            trimmed
-        }
+        val sanitizer = com.soumil.moneytracker.email.EmailSyncManager()
+        val trimmedEmail = sanitizer.sanitizeEmail(email)
+        val cleanedPassword = sanitizer.sanitizeAppPassword(appPassword)
         preferences.edit()
             .putString(KEY_EMAIL_ADDRESS, trimmedEmail)
             .putString(KEY_APP_PASSWORD, cleanedPassword)
