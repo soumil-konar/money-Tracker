@@ -12,6 +12,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.sqrt
+import com.soumil.moneytracker.bank.BalanceProofVerifier
+import com.soumil.moneytracker.bank.BankDetector
 
 class OnDeviceAiEngine(
     private val context: Context? = null,
@@ -205,15 +207,39 @@ class OnDeviceAiEngine(
         val category = if (isCreditCardPayment || isSelfTransfer) TransactionCategory.TRANSFER else inferCategory(merchant, lower, placeDetail)
         val countsTowardBudget = !isCreditCardPayment && !isSelfTransfer && category != TransactionCategory.TRANSFER
 
-        // 7. Account Last 4
+        // 7. Account & Bank Detection
         val last4Regex = Regex("""(?:a/c|acct|card|ending|xx)\s*[:#\s]*([0-9]{4})""", RegexOption.IGNORE_CASE)
-        val last4 = last4Regex.find(smsBody)?.groupValues?.get(1)
+        val fallbackLast4 = last4Regex.find(smsBody)?.groupValues?.get(1)
+
+        val bankDetection = BankDetector.detectBankAccount(sender, smsBody)
+        val resolvedInstitution = bankDetection.institutionName
+            ?: institution.takeIf { it.isNotBlank() }
+            ?: BankDetector.resolveBankInstitution(sender, smsBody)
 
         val isCard = listOf("credit card", "debit card", "card ending", "card xx").any { it in lower }
+        val isExplicitCreditCard = listOf("credit card", "credit card ending", "card ending").any { it in lower } && !bankDetection.isBankAccount
         val isUpi = listOf("upi", "vpa", "/p2a/", "@okhdfc", "@okaxis", "@okicici", "@ybl").any { it in lower }
 
+        val accountKind = when {
+            isExplicitCreditCard && !isCreditCardPayment -> AccountKind.CARD
+            bankDetection.isBankAccount -> AccountKind.BANK
+            resolvedInstitution != null -> AccountKind.BANK
+            isUpi -> AccountKind.UPI
+            isCard && !isCreditCardPayment -> AccountKind.CARD
+            else -> AccountKind.BANK
+        }
+
+        val resolvedLast4 = bankDetection.accountLastFour ?: fallbackLast4
+
         val balRegex = Regex("""(?:avl(?:[\.\s]+)?bal(?:ance)?|available\s+balance|avail(?:[\.\s]+)?bal(?:ance)?|total\s+balance|bal(?:ance)?\s*[:=])\s*(?:is|:|-)?\s*(?:rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)""", RegexOption.IGNORE_CASE)
-        val availableBalance = balRegex.find(smsBody)?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
+        val availableBalance = BalanceProofVerifier.verifyBalance(sender, smsBody).balance
+            ?: balRegex.find(smsBody)?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()?.takeIf {
+                val match = balRegex.find(smsBody)
+                val start = (match?.range?.first ?: 0 - 30).coerceAtLeast(0)
+                val end = ((match?.range?.last ?: 0) + 30).coerceAtMost(smsBody.length)
+                val ctx = smsBody.substring(start, end).lowercase(Locale.ENGLISH)
+                !listOf("limit", "due", "points", "maintain").any { ctx.contains(it) }
+            }
 
         val detailedDescription = generateDetailedDescription(
             merchant = merchant,
@@ -221,7 +247,7 @@ class OnDeviceAiEngine(
             category = category,
             isUpi = isUpi,
             isCard = isCard,
-            institution = institution,
+            institution = resolvedInstitution ?: institution,
             placeDetail = placeDetail,
             isCreditCardPayment = isCreditCardPayment,
         ) ?: placeDetail
@@ -232,10 +258,10 @@ class OnDeviceAiEngine(
             direction = direction,
             merchant = merchant,
             category = category,
-            accountKind = if (isCard && !isCreditCardPayment) AccountKind.CARD else if (isUpi) AccountKind.UPI else AccountKind.BANK,
-            institutionName = institution,
-            accountLastFour = last4,
-            cardType = if (isCard) CardType.CREDIT else null,
+            accountKind = accountKind,
+            institutionName = resolvedInstitution,
+            accountLastFour = resolvedLast4,
+            cardType = if (isCard) (if (bankDetection.isDebitCard) CardType.DEBIT else CardType.CREDIT) else null,
             isUpi = isUpi,
             isCardBillPayment = isCreditCardPayment,
             placeDetail = placeDetail,
@@ -616,20 +642,9 @@ class OnDeviceAiEngine(
     }
 
     private fun extractInstitution(sender: String, body: String): String {
-        val combined = "$sender $body".uppercase(Locale.getDefault())
-
-        return when {
-            "HDFC" in combined -> "HDFC Bank"
-            "ICICI" in combined -> "ICICI Bank"
-            "SBI" in combined || "STATE BANK" in combined -> "State Bank of India"
-            "AXIS" in combined -> "Axis Bank"
-            "KOTAK" in combined -> "Kotak Bank"
-            "CITI" in combined -> "Citi"
-            "PNB" in combined -> "PNB"
-            "INDUSIND" in combined -> "IndusInd Bank"
-            "BOB" in combined || "BARODA" in combined -> "Bank of Baroda"
-            else -> sender.uppercase(Locale.getDefault()).take(8)
-        }
+        return BankDetector.resolveBankInstitution(sender, body)
+            ?: BankDetector.normalizeToCanonicalBank(sender)
+            ?: ""
     }
 
     private fun createNonTransaction(): AiParsedTransaction {

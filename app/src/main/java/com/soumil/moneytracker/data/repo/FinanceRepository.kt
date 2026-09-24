@@ -30,6 +30,8 @@ import com.soumil.moneytracker.data.model.TransactionDirection
 import com.soumil.moneytracker.data.model.TransactionDraft
 import com.soumil.moneytracker.data.model.TransactionStatus
 import com.soumil.moneytracker.data.model.TrendPoint
+import com.soumil.moneytracker.bank.BalanceProofVerifier
+import com.soumil.moneytracker.bank.BankDetector
 import com.soumil.moneytracker.parser.SmsParser
 import com.soumil.moneytracker.sms.SmsImportManager
 import java.security.MessageDigest
@@ -136,7 +138,9 @@ class FinanceRepository(
     }
 
     suspend fun bootstrap() {
+        reconcileAccountsAndBalances()
         refreshRecurringSuggestions()
+        deduplicateTransactions()
     }
 
     fun markInitialSetupComplete() {
@@ -223,6 +227,9 @@ class FinanceRepository(
                 isSystemGenerated = false,
                 currentBalance = sanitizedDraft.currentBalance,
                 balanceUpdatedAtMillis = System.currentTimeMillis(),
+                balanceProofSnippet = sanitizedDraft.balanceProofSnippet ?: if (sanitizedDraft.currentBalance != 0.0) "Manually entered by user" else null,
+                balanceProofSource = sanitizedDraft.balanceProofSource ?: if (sanitizedDraft.currentBalance != 0.0) "User Entry" else null,
+                isBalanceVerified = sanitizedDraft.isBalanceVerified,
             ),
         )
     }
@@ -233,6 +240,8 @@ class FinanceRepository(
     ) {
         val existing = accountDao.findById(accountId) ?: error("Account $accountId not found")
         val sanitizedDraft = sanitizeAccountDraft(draft.copy(kind = existing.kind))
+        val isBalanceChanged = sanitizedDraft.currentBalance != existing.currentBalance
+
         accountDao.update(
             existing.copy(
                 name = sanitizedDraft.name,
@@ -242,7 +251,10 @@ class FinanceRepository(
                 isRupayCreditCard = sanitizedDraft.isRupayCreditCard,
                 isSystemGenerated = false,
                 currentBalance = sanitizedDraft.currentBalance,
-                balanceUpdatedAtMillis = System.currentTimeMillis(),
+                balanceUpdatedAtMillis = if (isBalanceChanged) System.currentTimeMillis() else existing.balanceUpdatedAtMillis,
+                balanceProofSnippet = if (isBalanceChanged) "Manually updated by user" else existing.balanceProofSnippet,
+                balanceProofSource = if (isBalanceChanged) "User Entry" else existing.balanceProofSource,
+                isBalanceVerified = if (isBalanceChanged) false else existing.isBalanceVerified,
             ),
         )
     }
@@ -769,7 +781,7 @@ class FinanceRepository(
         var review = 0
         var scheduled = 0
         var ignored = 0
-        val messages = importer.readRecentMessages(limit)
+        val messages = importer.readRecentMessages(limit).sortedBy { it.timestampMillis }
         messages.forEach { message ->
             when (
                 ingestMessage(
@@ -786,6 +798,7 @@ class FinanceRepository(
             }
         }
         deduplicateTransactions()
+        reconcileAccountsAndBalances()
         return ImportReport(
             scanned = messages.size,
             imported = imported,
@@ -806,7 +819,8 @@ class FinanceRepository(
         return result.fold(
             onSuccess = { messages ->
                 var importedCount = 0
-                messages.forEach { msg ->
+                val sortedMessages = messages.sortedBy { it.timestampMillis }
+                sortedMessages.forEach { msg ->
                     val outcome = ingestMessage(
                         sender = msg.sender,
                         body = msg.body,
@@ -817,6 +831,7 @@ class FinanceRepository(
                     }
                 }
                 deduplicateTransactions()
+                reconcileAccountsAndBalances()
                 emailPreferences.updateSyncResult(
                     timestampMillis = System.currentTimeMillis(),
                     status = "Synced ${messages.size} alerts ($importedCount new)",
@@ -1248,6 +1263,9 @@ class FinanceRepository(
             parsed?.countsTowardBudget ?: true
         }
 
+        val balanceProof = BalanceProofVerifier.verifyBalance(sender, body, resolvedOccurredAt)
+        val verifiedAvailableBalance = if (balanceProof.isVerified) balanceProof.balance else availableBalance
+
         val inserted = transactionDao.insert(
             TransactionEntity(
                 amount = amount,
@@ -1263,7 +1281,7 @@ class FinanceRepository(
                 status = status,
                 note = note,
                 countsTowardBudget = countsTowardBudget,
-                availableBalance = availableBalance,
+                availableBalance = verifiedAvailableBalance,
             ),
         )
         if (inserted == -1L) {
@@ -1271,11 +1289,25 @@ class FinanceRepository(
         }
 
         if (accountId != null) {
-            if (availableBalance != null) {
-                accountDao.updateBalance(accountId, availableBalance, parsed?.occurredAtMillis ?: receivedAtMillis)
-            } else {
-                val delta = if (direction == TransactionDirection.CREDIT) amount else -amount
-                accountDao.adjustBalance(accountId, delta)
+            if (balanceProof.isVerified && balanceProof.balance != null) {
+                accountDao.updateVerifiedBalance(
+                    accountId = accountId,
+                    balance = balanceProof.balance,
+                    updatedAt = resolvedOccurredAt,
+                    proofSnippet = balanceProof.proofSnippet,
+                    proofSource = balanceProof.proofSource,
+                    isVerified = true,
+                )
+            } else if (verifiedAvailableBalance != null) {
+                val snippet = BalanceProofVerifier.extractProofSnippet(sender, body, occurredAtMillis = resolvedOccurredAt)
+                accountDao.updateVerifiedBalance(
+                    accountId = accountId,
+                    balance = verifiedAvailableBalance,
+                    updatedAt = resolvedOccurredAt,
+                    proofSnippet = snippet,
+                    proofSource = "SMS (${sender.substringAfter("-")})",
+                    isVerified = true,
+                )
             }
         }
 
@@ -1348,6 +1380,12 @@ class FinanceRepository(
         val normalizedBankLastFour = normalizeLastFourDigits(bankAccountLastFourDigits)
         val normalizedLastFour = normalizeLastFourDigits(cardLastFourDigits)
 
+        val effectiveKind = if (accountKind == AccountKind.UPI && (normalizedInstitution != null || normalizedBankLastFour != null)) {
+            AccountKind.BANK
+        } else {
+            accountKind
+        }
+
         if (isCardBillPayment) {
             findConfiguredBankAccount(
                 accounts = existingAccounts,
@@ -1357,7 +1395,7 @@ class FinanceRepository(
             findPrimaryBankAccount(existingAccounts, normalizedInstitution)?.let { return it.id }
         }
 
-        if (accountKind == AccountKind.BANK) {
+        if (effectiveKind == AccountKind.BANK) {
             findConfiguredBankAccount(
                 accounts = existingAccounts,
                 lastFourDigits = normalizedBankLastFour,
@@ -1374,7 +1412,7 @@ class FinanceRepository(
             )?.let { return it.id }
         }
 
-        return when (accountKind) {
+        return when (effectiveKind) {
             AccountKind.BANK -> {
                 val bankAccount = findConfiguredBankAccount(
                     accounts = existingAccounts,
@@ -1409,8 +1447,8 @@ class FinanceRepository(
             AccountKind.WALLET,
             AccountKind.UPI,
             AccountKind.CASH -> resolveAccount(
-                name = accountLabel ?: defaultAccountName(accountKind),
-                kind = accountKind,
+                name = accountLabel ?: defaultAccountName(effectiveKind),
+                kind = effectiveKind,
             )
         }
     }
@@ -1425,6 +1463,17 @@ class FinanceRepository(
         val normalizedInstitution = normalizeInstitutionName(institutionName)
         val normalizedLastFour = normalizeLastFourDigits(lastFourDigits)
         val existingAccounts = accountDao.getAccounts()
+
+        if (kind == AccountKind.BANK) {
+            val isLegitBank = normalizedInstitution != null ||
+                BankDetector.isLegitimateBank(name) ||
+                existingAccounts.any { it.kind == AccountKind.BANK && it.name.equals(name, ignoreCase = true) }
+
+            if (!isLegitBank) {
+                val primary = findPrimaryBankAccount(existingAccounts, null)
+                if (primary != null) return primary.id
+            }
+        }
         val existing = when (kind) {
             AccountKind.BANK -> findPrimaryBankAccount(existingAccounts, normalizedInstitution)
                 ?.takeIf { normalizedInstitution != null }
@@ -1577,15 +1626,9 @@ class FinanceRepository(
     }
 
     private fun normalizeInstitutionName(value: String?): String? {
-        val normalized = value?.trim()?.lowercase()?.takeIf { it.isNotBlank() } ?: return null
-        return when {
-            "axis" in normalized -> "Axis Bank"
-            normalized.contains("state bank") || normalized == "sbi" -> "State Bank of India"
-            "hdfc" in normalized -> "HDFC Bank"
-            "icici" in normalized -> "ICICI Bank"
-            "kotak" in normalized -> "Kotak Bank"
-            else -> value.trim()
-        }
+        val canonical = BankDetector.normalizeToCanonicalBank(value)
+        if (canonical != null) return canonical
+        return value?.trim()?.takeIf { it.isNotBlank() && BankDetector.isLegitimateBank(it) }
     }
 
     private fun normalizeLastFourDigits(value: String?): String? {
@@ -1632,6 +1675,88 @@ class FinanceRepository(
             transactionDao.deleteById(id)
         }
         return duplicatesToDelete.size
+    }
+
+    suspend fun reconcileAccountsAndBalances(): Int {
+        val existingAccounts = accountDao.getAccounts()
+        val allTransactions = transactionDao.getAllTransactions()
+        var reconciledCount = 0
+
+        // 1. Identify and purge bogus accounts (system-generated non-banks, e.g. "UPI", "VM-MYNTR", generic merchants)
+        for (account in existingAccounts) {
+            val isLegitBank = BankDetector.isLegitimateBank(account.institutionName ?: account.name)
+            val isBogus = (account.kind == AccountKind.BANK && account.isSystemGenerated && !isLegitBank) ||
+                (account.name.equals("UPI", ignoreCase = true) && account.kind == AccountKind.UPI && account.isSystemGenerated)
+
+            if (isBogus) {
+                // Re-route transactions to a genuine bank account if possible
+                val orphanTxs = allTransactions.filter { it.accountId == account.id }
+                for (tx in orphanTxs) {
+                    val matchingBank = existingAccounts.firstOrNull {
+                        it.id != account.id && it.kind == AccountKind.BANK &&
+                            BankDetector.isLegitimateBank(it.institutionName ?: it.name)
+                    }
+                    transactionDao.update(tx.copy(accountId = matchingBank?.id))
+                }
+                accountDao.deleteById(account.id)
+                reconciledCount++
+            }
+        }
+
+        // 2. Re-anchor genuine bank accounts with verified substantial proof
+        val refreshedAccounts = accountDao.getAccounts()
+        val updatedTransactions = transactionDao.getAllTransactions()
+
+        for (account in refreshedAccounts) {
+            if (account.kind != AccountKind.BANK && account.kind != AccountKind.CARD) continue
+
+            // Find the most recent transaction with a verified available balance
+            val txWithBalance = updatedTransactions
+                .filter { it.accountId == account.id && it.status == TransactionStatus.POSTED }
+                .sortedByDescending { it.occurredAtMillis }
+                .firstOrNull { tx ->
+                    if (tx.availableBalance != null && tx.availableBalance > 0.0) {
+                        val proof = BalanceProofVerifier.verifyBalance(
+                            sender = tx.sourceSender,
+                            body = tx.smsBody ?: "",
+                            occurredAtMillis = tx.occurredAtMillis,
+                        )
+                        proof.isVerified
+                    } else false
+                }
+
+            if (txWithBalance != null) {
+                val proof = BalanceProofVerifier.verifyBalance(
+                    sender = txWithBalance.sourceSender,
+                    body = txWithBalance.smsBody ?: "",
+                    occurredAtMillis = txWithBalance.occurredAtMillis,
+                )
+                if (proof.isVerified && proof.balance != null) {
+                    accountDao.updateVerifiedBalance(
+                        accountId = account.id,
+                        balance = proof.balance,
+                        updatedAt = txWithBalance.occurredAtMillis,
+                        proofSnippet = proof.proofSnippet,
+                        proofSource = proof.proofSource,
+                        isVerified = true,
+                    )
+                }
+            } else if (account.isSystemGenerated && account.currentBalance != 0.0 && !account.isBalanceVerified) {
+                // Clear unverified legacy balance if no bank statement verifies it
+                if (account.balanceUpdatedAtMillis == null) {
+                    accountDao.updateVerifiedBalance(
+                        accountId = account.id,
+                        balance = 0.0,
+                        updatedAt = System.currentTimeMillis(),
+                        proofSnippet = null,
+                        proofSource = null,
+                        isVerified = false,
+                    )
+                }
+            }
+        }
+
+        return reconciledCount
     }
 
     private fun hashFingerprint(sender: String, body: String, receivedAtMillis: Long): String {

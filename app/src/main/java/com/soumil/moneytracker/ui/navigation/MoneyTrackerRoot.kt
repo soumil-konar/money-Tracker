@@ -68,6 +68,7 @@ import com.soumil.moneytracker.ui.MainViewModel
 import com.soumil.moneytracker.ui.components.AddSubscriptionDialog
 import com.soumil.moneytracker.ui.components.AccountEditorDialog
 import com.soumil.moneytracker.ui.components.AddTransactionDialog
+import com.soumil.moneytracker.ui.components.BalanceProofDialog
 import com.soumil.moneytracker.ui.components.BudgetDialog
 import com.soumil.moneytracker.ui.components.DeleteAccountDialog
 import com.soumil.moneytracker.ui.components.DeleteTransactionDialog
@@ -144,6 +145,7 @@ fun MoneyTrackerRoot(
     var editingAccount by remember { mutableStateOf<AccountEntity?>(null) }
     var accountDialogDraft by remember { mutableStateOf<AccountDraft?>(null) }
     var accountDialogKey by remember { mutableStateOf(0) }
+    var viewingBalanceProofAccount by remember { mutableStateOf<AccountEntity?>(null) }
     var smsPermissionGranted by remember { mutableStateOf(context.hasSmsPermissions()) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -195,6 +197,7 @@ fun MoneyTrackerRoot(
                     onRefreshAiInsights = { viewModel.refreshAiSpendingInsights() },
                     onOpenAssistant = { showAiChatSheet = true },
                     onAccountsClick = { navController.navigate(AppDestination.More.route) },
+                    onAccountClick = { viewingBalanceProofAccount = it },
                 )
             }
             composable(AppDestination.BudgetHistory.route) {
@@ -282,6 +285,7 @@ fun MoneyTrackerRoot(
                     onAcceptSuggestion = viewModel::acceptSuggestedSubscription,
                     onDismissSuggestion = viewModel::dismissSuggestedSubscription,
                     onExportCsv = { exportTransactionsToCsv(context, transactions) },
+                    onAccountClick = { viewingBalanceProofAccount = it },
                 )
             }
             composable(AppDestination.Settings.route) {
@@ -317,8 +321,17 @@ fun MoneyTrackerRoot(
                     notificationLastCapturedPackage = notificationLastCapturedPackage,
                     notificationCapturedCount = notificationCapturedCount,
                     onOpenNotificationSettings = {
-                        val intent = viewModel.buildNotificationSettingsIntent(context)
-                        context.startActivity(intent)
+                        try {
+                            val intent = viewModel.buildNotificationSettingsIntent(context)
+                            context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        } catch (e: Exception) {
+                            runCatching {
+                                context.startActivity(
+                                    Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                                )
+                            }
+                        }
                     },
                     onToggleNotificationListener = viewModel::setNotificationListenerEnabled,
                     onToggleGmailMonitoring = viewModel::setGmailMonitoringEnabled,
@@ -518,6 +531,22 @@ fun MoneyTrackerRoot(
             onSaveBank = viewModel::configurePrimaryBank,
             onAddCard = viewModel::addAccount,
             onFinish = viewModel::markInitialSetupComplete,
+        )
+    }
+
+    viewingBalanceProofAccount?.let { account ->
+        BalanceProofDialog(
+            account = account,
+            onDismiss = { viewingBalanceProofAccount = null },
+            onEditBalance = {
+                val targetAccount = viewingBalanceProofAccount
+                viewingBalanceProofAccount = null
+                if (targetAccount != null) {
+                    editingAccount = targetAccount
+                    accountDialogDraft = targetAccount.toDraft()
+                    accountDialogKey += 1
+                }
+            },
         )
     }
 }

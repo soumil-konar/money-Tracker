@@ -43,6 +43,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.soumil.moneytracker.data.db.AccountEntity
 import com.soumil.moneytracker.data.model.CategorySlice
 import com.soumil.moneytracker.data.model.DashboardState
 import com.soumil.moneytracker.ui.asCurrency
@@ -71,6 +72,7 @@ fun HomeScreen(
     onRefreshAiInsights: () -> Unit = {},
     onOpenAssistant: (() -> Unit)? = null,
     onAccountsClick: () -> Unit = {},
+    onAccountClick: (AccountEntity) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val haptics = LocalAppHaptics.current
@@ -249,7 +251,7 @@ fun HomeScreen(
                                     account = account,
                                     onClick = {
                                         haptics.click()
-                                        onAccountsClick()
+                                        onAccountClick(account)
                                     },
                                 )
                             }

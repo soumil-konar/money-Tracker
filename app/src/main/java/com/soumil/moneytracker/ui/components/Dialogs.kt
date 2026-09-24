@@ -59,7 +59,17 @@ import com.soumil.moneytracker.data.model.SubscriptionDraft
 import com.soumil.moneytracker.data.model.TransactionCategory
 import com.soumil.moneytracker.data.model.TransactionDirection
 import com.soumil.moneytracker.data.model.TransactionDraft
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AccountBalance
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material3.Icon
+import androidx.compose.ui.graphics.Color
 import com.soumil.moneytracker.ui.asCurrency
+import com.soumil.moneytracker.ui.asDateTime
 import com.soumil.moneytracker.ui.asFullDate
 import com.soumil.moneytracker.ui.haptics.LocalAppHaptics
 import java.time.LocalDate
@@ -706,9 +716,22 @@ private fun Double.toInputAmount(): String {
 
 private const val OtherBankOption = "Other Bank"
 private val SupportedBankOptions = listOf(
-    "Axis Bank",
     "State Bank of India",
     "HDFC Bank",
+    "ICICI Bank",
+    "Axis Bank",
+    "Kotak Bank",
+    "Punjab National Bank",
+    "Bank of Baroda",
+    "Canara Bank",
+    "Union Bank of India",
+    "IndusInd Bank",
+    "IDFC FIRST Bank",
+    "Yes Bank",
+    "Federal Bank",
+    "Indian Bank",
+    "Bank of India",
+    "Central Bank of India",
     OtherBankOption,
 )
 
@@ -1282,4 +1305,250 @@ fun AddExclusionKeywordDialog(
         },
     )
 }
+
+@Composable
+fun BalanceProofDialog(
+    account: AccountEntity,
+    onDismiss: () -> Unit,
+    onEditBalance: () -> Unit,
+) {
+    val haptics = LocalAppHaptics.current
+    val isVerified = account.isBalanceVerified && !account.balanceProofSnippet.isNullOrBlank()
+
+    TrackerDialogScaffold(
+        eyebrow = if (isVerified) "Audited Proof" else "Balance Audit",
+        title = "Available Balance Proof",
+        subtitle = "Verification evidence and audit trail for this account's stated balance.",
+        onDismiss = onDismiss,
+    ) {
+        Surface(
+            shape = RoundedCornerShape(22.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = account.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        account.lastFourDigits?.let {
+                            Text(
+                                text = if (account.kind == AccountKind.CARD) "Card ending in $it" else "Account ending in $it",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    if (isVerified) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFF10B981).copy(alpha = 0.18f),
+                            border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.35f)),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.CheckCircle,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(13.dp),
+                                    tint = Color(0xFF10B981),
+                                )
+                                Text(
+                                    text = "VERIFIED",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFF10B981),
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        }
+                    } else {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.error.copy(alpha = 0.12f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.3f)),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Info,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(13.dp),
+                                    tint = MaterialTheme.colorScheme.error,
+                                )
+                                Text(
+                                    text = "UNVERIFIED",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = if (account.kind == AccountKind.CARD) "Card Balance / Outflow" else "Available Balance",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = account.currentBalance.asCurrency(),
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+
+                account.balanceUpdatedAtMillis?.let {
+                    Text(
+                        text = "Last updated: ${it.asDateTime()}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
+        if (isVerified) {
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = Color(0xFF10B981).copy(alpha = 0.08f),
+                border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.25f)),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.CheckCircle,
+                            contentDescription = null,
+                            tint = Color(0xFF10B981),
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Text(
+                            text = "Official Statement Proof",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF10B981),
+                        )
+                    }
+
+                    account.balanceProofSource?.let { source ->
+                        Text(
+                            text = "Proof Source: $source",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                    ) {
+                        Text(
+                            text = account.balanceProofSnippet.orEmpty(),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(12.dp),
+                        )
+                    }
+
+                    Text(
+                        text = "This available balance was extracted directly from an official bank alert. Context verification confirmed this is an authentic balance statement and excluded credit limits, dues, minimum balances, or loan figures.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        } else {
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.error.copy(alpha = 0.08f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.25f)),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Info,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Text(
+                            text = "No Official Proof Captured Yet",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    Text(
+                        text = "This balance does not yet have a matching official bank statement alert. The number shown was either manually set or estimated. Once your bank sends an SMS or email containing your available balance, the app will automatically verify and lock it with substantial proof.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            OutlinedButton(
+                onClick = {
+                    haptics.click()
+                    onDismiss()
+                },
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Close")
+            }
+            Button(
+                onClick = {
+                    haptics.click()
+                    onDismiss()
+                    onEditBalance()
+                },
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Edit balance")
+            }
+        }
+    }
+}
+
 

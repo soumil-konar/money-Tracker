@@ -749,6 +749,7 @@ fun AccountItem(
     account: AccountEntity,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
+    onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val accent = if (account.kind == AccountKind.CARD) {
@@ -776,6 +777,7 @@ fun AccountItem(
     Card(
         modifier = modifier
             .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .trackerAnimateContent(),
         shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)),
@@ -829,6 +831,20 @@ fun AccountItem(
                         color = if (account.currentBalance >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                         fontWeight = FontWeight.Bold,
                     )
+                    if (account.isBalanceVerified) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = Color(0xFF10B981).copy(alpha = 0.16f),
+                        ) {
+                            Text(
+                                text = "Verified",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFF10B981),
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                            )
+                        }
+                    }
                     account.balanceUpdatedAtMillis?.let {
                         Text(
                             text = "• ${it.asDayMonth()}",
@@ -898,13 +914,43 @@ fun AccountBalanceCard(
                         tint = accent,
                     )
                 }
-                account.lastFourDigits?.let {
-                    Text(
-                        text = "•••• $it",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.Medium,
-                    )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    account.lastFourDigits?.let {
+                        Text(
+                            text = "•••• $it",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                    if (account.isBalanceVerified) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFF10B981).copy(alpha = 0.18f),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.CheckCircle,
+                                    contentDescription = "Verified balance",
+                                    modifier = Modifier.size(10.dp),
+                                    tint = Color(0xFF10B981),
+                                )
+                                Text(
+                                    text = "Verified",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFF10B981),
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        }
+                    }
                 }
             }
             Spacer(modifier = Modifier.height(2.dp))
@@ -921,11 +967,23 @@ fun AccountBalanceCard(
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,
             )
-            Text(
-                text = if (isCard) "Card Balance" else "Available Balance",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = if (isCard) "Card Balance" else "Available Balance",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                )
+                Text(
+                    text = if (account.isBalanceVerified) "Proof ›" else "Audit ›",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (account.isBalanceVerified) Color(0xFF10B981) else MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
         }
     }
 }

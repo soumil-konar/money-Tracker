@@ -13,6 +13,8 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.min
+import com.soumil.moneytracker.bank.BalanceProofVerifier
+import com.soumil.moneytracker.bank.BankDetector
 
 class SmsParser {
 
@@ -228,9 +230,21 @@ class SmsParser {
         Regex("(?i)\\bbal(?:ance)?\\s*[:=]\\s*(?:rs\\.?|inr)?\\s*([0-9,]+(?:\\.\\d{1,2})?)"),
     )
 
-    private fun extractAvailableBalance(body: String): Double? {
+    private fun extractAvailableBalance(body: String, sender: String = ""): Double? {
+        val verified = BalanceProofVerifier.verifyBalance(sender, body).balance
+        if (verified != null) return verified
+
         return balanceRegexes.firstNotNullOfOrNull { regex ->
-            regex.find(body)?.groupValues?.getOrNull(1)?.replace(",", "")?.toDoubleOrNull()
+            val match = regex.find(body) ?: return@firstNotNullOfOrNull null
+            val raw = match.groupValues.getOrNull(1)?.replace(",", "") ?: return@firstNotNullOfOrNull null
+            val start = (match.range.first - 40).coerceAtLeast(0)
+            val end = (match.range.last + 40).coerceAtMost(body.length)
+            val ctx = body.substring(start, end).lowercase(Locale.ENGLISH)
+            if (listOf("limit", "due", "points", "maintain", "reward", "loan").any { ctx.contains(it) }) {
+                null
+            } else {
+                raw.toDoubleOrNull()
+            }
         }
     }
 
@@ -369,7 +383,7 @@ class SmsParser {
         if (occurredAtMillis != null) confidence += 0.05
         if (isCardBillPayment) confidence += 0.08
 
-        val availableBalance = extractAvailableBalance(body)
+        val availableBalance = extractAvailableBalance(body, sender)
 
         return ParsedSmsMessage(
             transaction = ParsedSmsTransaction(
@@ -849,16 +863,8 @@ class SmsParser {
     }
 
     private fun inferInstitutionName(sender: String, body: String): String? {
-        val source = "${sender.lowercase(Locale.ENGLISH)} ${body.lowercase(Locale.ENGLISH)}"
-        return when {
-            source.contains("axis") -> "Axis Bank"
-            source.contains("state bank of india") || source.contains("sbi") -> "State Bank of India"
-            source.contains("hdfc") -> "HDFC Bank"
-            source.contains("icici") -> "ICICI Bank"
-            source.contains("kotak") -> "Kotak Bank"
-            source.contains("paytm") -> "Paytm"
-            else -> null
-        }
+        return BankDetector.resolveBankInstitution(sender, body)
+            ?: BankDetector.normalizeToCanonicalBank(sender)
     }
 
     private fun fallbackScheduledMerchant(

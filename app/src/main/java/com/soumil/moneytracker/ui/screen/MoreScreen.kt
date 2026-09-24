@@ -45,6 +45,7 @@ fun MoreScreen(
     onAcceptSuggestion: (Long) -> Unit,
     onDismissSuggestion: (Long) -> Unit,
     onExportCsv: () -> Unit = {},
+    onAccountClick: ((AccountEntity) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val haptics = LocalAppHaptics.current
@@ -210,6 +211,10 @@ fun MoreScreen(
                                             haptics.warning()
                                             onDeleteAccount(account)
                                         },
+                                        onClick = {
+                                            haptics.click()
+                                            onAccountClick?.invoke(account)
+                                        },
                                     )
                                 }
                             }
@@ -251,6 +256,10 @@ fun MoreScreen(
                                         onDelete = {
                                             haptics.warning()
                                             onDeleteAccount(account)
+                                        },
+                                        onClick = {
+                                            haptics.click()
+                                            onAccountClick?.invoke(account)
                                         },
                                     )
                                 }
