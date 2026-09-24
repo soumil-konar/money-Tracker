@@ -31,7 +31,32 @@ interface AccountDao {
     @Update
     suspend fun update(account: AccountEntity)
 
-    @Query("UPDATE accounts SET currentBalance = :balance, balanceUpdatedAtMillis = :updatedAt WHERE id = :accountId")
+    @Query("""
+        UPDATE accounts 
+        SET currentBalance = :balance, 
+            balanceUpdatedAtMillis = :updatedAt,
+            balanceProofSnippet = :proofSnippet,
+            balanceProofSource = :proofSource,
+            isBalanceVerified = :isVerified
+        WHERE id = :accountId 
+          AND (:updatedAt >= balanceUpdatedAtMillis OR balanceUpdatedAtMillis IS NULL)
+    """)
+    suspend fun updateVerifiedBalance(
+        accountId: Long,
+        balance: Double,
+        updatedAt: Long,
+        proofSnippet: String?,
+        proofSource: String?,
+        isVerified: Boolean = true,
+    ): Int
+
+    @Query("""
+        UPDATE accounts 
+        SET currentBalance = :balance, 
+            balanceUpdatedAtMillis = :updatedAt 
+        WHERE id = :accountId 
+          AND (:updatedAt >= balanceUpdatedAtMillis OR balanceUpdatedAtMillis IS NULL)
+    """)
     suspend fun updateBalance(accountId: Long, balance: Double, updatedAt: Long = System.currentTimeMillis())
 
     @Query("UPDATE accounts SET currentBalance = currentBalance + :delta WHERE id = :accountId")
