@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
@@ -32,6 +33,8 @@ import androidx.compose.material.icons.outlined.MoneyOff
 import androidx.compose.material.icons.outlined.Savings
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -255,16 +258,17 @@ fun TransactionsScreen(
                 }
                 itemsIndexed(monthTransactions, key = { _, transaction -> transaction.id }) { index, transaction ->
                     MotionReveal(index = (index + 5).coerceAtMost(8)) {
-                        SectionCard(
-                            title = transaction.merchant,
-                            subtitle = listOfNotNull(
-                                transaction.category.label,
-                                transaction.accountName,
-                                transaction.sourceSender,
-                            ).joinToString(" | "),
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(22.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            ),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
                         ) {
-                            TransactionItem(transaction = transaction)
-                            Spacer(modifier = Modifier.height(14.dp))
+                            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                                TransactionItem(transaction = transaction)
+                                Spacer(modifier = Modifier.height(10.dp))
                             if (transaction.status == TransactionStatus.REVIEW) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -323,6 +327,7 @@ fun TransactionsScreen(
             }
         }
     }
+}
 }
 
 @Composable

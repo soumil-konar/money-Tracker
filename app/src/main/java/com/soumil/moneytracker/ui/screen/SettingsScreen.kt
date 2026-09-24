@@ -35,6 +35,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -82,6 +83,8 @@ fun SettingsScreen(
     emailLastSyncTimestamp: Long = 0L,
     emailLastSyncStatus: String? = null,
     isEmailSyncing: Boolean = false,
+    emailTestStatus: String? = null,
+    onTestEmailConnection: (String, String) -> Unit = { _, _ -> },
     onUpdateApiKey: (String) -> Unit = {},
     onToggleAiEnabled: (Boolean) -> Unit = {},
     onSelectModel: (String) -> Unit = {},
@@ -457,6 +460,7 @@ fun SettingsScreen(
                             ) {
                                 Button(
                                     onClick = {
+                                        haptics.click()
                                         onUpdateEmailCredentials(emailInput.trim(), passwordInput.trim())
                                     },
                                     enabled = emailInput.isNotBlank() && passwordInput.isNotBlank(),
@@ -465,22 +469,63 @@ fun SettingsScreen(
                                     Text("Save Credentials")
                                 }
 
+                                OutlinedButton(
+                                    onClick = {
+                                        haptics.click()
+                                        onTestEmailConnection(emailInput.trim(), passwordInput.trim())
+                                    },
+                                    enabled = emailInput.isNotBlank() && passwordInput.isNotBlank(),
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    Text("Test Connection")
+                                }
+
                                 if (emailAddress.isNotBlank()) {
-                                    OutlinedButton(
+                                    IconButton(
                                         onClick = {
+                                            haptics.warning()
                                             emailInput = ""
                                             passwordInput = ""
                                             onClearEmailCredentials()
                                         },
-                                        modifier = Modifier.weight(1f),
                                     ) {
                                         Icon(
                                             imageVector = Icons.Outlined.DeleteOutline,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp),
+                                            contentDescription = "Clear credentials",
+                                            tint = MaterialTheme.colorScheme.error,
                                         )
-                                        Spacer(modifier = Modifier.size(6.dp))
-                                        Text("Clear")
+                                    }
+                                }
+                            }
+
+                            if (!emailTestStatus.isNullOrBlank()) {
+                                val isSuccess = emailTestStatus.startsWith("Success", ignoreCase = true) ||
+                                    emailTestStatus.startsWith("Connected", ignoreCase = true)
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isSuccess) {
+                                        MaterialTheme.colorScheme.tertiary.copy(alpha = 0.15f)
+                                    } else {
+                                        MaterialTheme.colorScheme.error.copy(alpha = 0.15f)
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isSuccess) Icons.Outlined.CheckCircle else Icons.Outlined.ErrorOutline,
+                                            contentDescription = null,
+                                            tint = if (isSuccess) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.error,
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                        Text(
+                                            text = emailTestStatus,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = if (isSuccess) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.error,
+                                        )
                                     }
                                 }
                             }

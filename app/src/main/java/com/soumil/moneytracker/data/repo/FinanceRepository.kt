@@ -695,6 +695,7 @@ class FinanceRepository(
                 SmsIngestionOutcome.DUPLICATE -> Unit
             }
         }
+        deduplicateTransactions()
         return ImportReport(
             scanned = messages.size,
             imported = imported,
@@ -725,6 +726,7 @@ class FinanceRepository(
                         importedCount++
                     }
                 }
+                deduplicateTransactions()
                 emailPreferences.updateSyncResult(
                     timestampMillis = System.currentTimeMillis(),
                     status = "Synced ${messages.size} alerts ($importedCount new)",
@@ -1089,6 +1091,23 @@ class FinanceRepository(
             return SmsIngestionOutcome.DUPLICATE
         }
 
+        val resolvedOccurredAt = parsed?.occurredAtMillis ?: receivedAtMillis
+        val resolvedMerchant = merchant ?: fallbackMerchant(sender, direction)
+
+        val existingSimilar = transactionDao.findSimilarTransaction(
+            amount = amount,
+            direction = direction,
+            occurredAtMillis = resolvedOccurredAt,
+            timeToleranceMillis = 300_000L,
+        )
+        if (existingSimilar != null) {
+            val merchantMatch = existingSimilar.merchant.equals(resolvedMerchant, ignoreCase = true)
+            val senderMatch = existingSimilar.sourceSender.equals(sender, ignoreCase = true)
+            if (merchantMatch || senderMatch) {
+                return SmsIngestionOutcome.DUPLICATE
+            }
+        }
+
         val accountId = resolveParsedAccount(
             accountLabel = parsed?.accountLabel,
             accountKind = accountKind,
@@ -1109,8 +1128,8 @@ class FinanceRepository(
             TransactionEntity(
                 amount = amount,
                 direction = direction,
-                occurredAtMillis = parsed?.occurredAtMillis ?: receivedAtMillis,
-                merchant = merchant ?: fallbackMerchant(sender, direction),
+                occurredAtMillis = resolvedOccurredAt,
+                merchant = resolvedMerchant,
                 category = category,
                 accountId = accountId,
                 sourceSender = sender,
@@ -1454,8 +1473,38 @@ class FinanceRepository(
         return "Scheduled via ${sender.uppercase()}"
     }
 
+    suspend fun deduplicateTransactions(): Int {
+        val all = transactionDao.getAllTransactions()
+        val duplicatesToDelete = mutableListOf<Long>()
+        val seen = mutableListOf<TransactionEntity>()
+
+        for (tx in all) {
+            val isDuplicate = seen.any { existing ->
+                existing.amount == tx.amount &&
+                    existing.direction == tx.direction &&
+                    kotlin.math.abs(existing.occurredAtMillis - tx.occurredAtMillis) <= 300_000L &&
+                    (existing.merchant.equals(tx.merchant, ignoreCase = true) ||
+                        (existing.accountId != null && existing.accountId == tx.accountId) ||
+                        existing.sourceSender.equals(tx.sourceSender, ignoreCase = true))
+            }
+            if (isDuplicate) {
+                duplicatesToDelete.add(tx.id)
+            } else {
+                seen.add(tx)
+            }
+        }
+
+        duplicatesToDelete.forEach { id ->
+            transactionDao.deleteById(id)
+        }
+        return duplicatesToDelete.size
+    }
+
     private fun hashFingerprint(sender: String, body: String, receivedAtMillis: Long): String {
-        return hashCompositeFingerprint(sender, body, receivedAtMillis)
+        val normalizedSender = sender.trim().uppercase()
+        val normalizedBody = body.trim().replace(Regex("\\s+"), " ")
+        val minuteBucket = if (receivedAtMillis > 0L) receivedAtMillis / 60_000L else 0L
+        return hashCompositeFingerprint(normalizedSender, normalizedBody, minuteBucket)
     }
 
     private fun hashScheduledFingerprint(

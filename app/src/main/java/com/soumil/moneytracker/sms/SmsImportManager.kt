@@ -17,6 +17,7 @@ class SmsImportManager(
             Telephony.Sms.ADDRESS,
             Telephony.Sms.BODY,
             Telephony.Sms.DATE,
+            Telephony.Sms.DATE_SENT,
         )
 
         val messages = mutableListOf<SmsImportMessage>()
@@ -30,11 +31,15 @@ class SmsImportManager(
             val addressIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)
             val bodyIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.BODY)
             val dateIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.DATE)
+            val dateSentIndex = cursor.getColumnIndex(Telephony.Sms.DATE_SENT)
             while (cursor.moveToNext() && messages.size < limit) {
+                val dateSent = if (dateSentIndex >= 0) cursor.getLong(dateSentIndex) else 0L
+                val date = cursor.getLong(dateIndex)
+                val bestTimestamp = if (dateSent > 0L) dateSent else date
                 messages += SmsImportMessage(
                     sender = cursor.getString(addressIndex).orEmpty(),
                     body = cursor.getString(bodyIndex).orEmpty(),
-                    timestampMillis = cursor.getLong(dateIndex),
+                    timestampMillis = bestTimestamp,
                 )
             }
         }

@@ -6,7 +6,7 @@
     <group
         android:pivotX="54"
         android:pivotY="54">
-        <!-- Indian Rupee Symbol (₹) -->
+        <!-- Indian Rupee Symbol (₹) in Platinum White -->
         <!-- Top bar -->
         <path
             android:fillColor="#00000000"
@@ -37,16 +37,16 @@
             android:strokeLineCap="round"
             android:pathData="M45,56 L66,74" />
 
-        <!-- Upward Financial Growth Arrow -->
+        <!-- Upward Financial Growth Arrow in Emerald Green (#00D09C) -->
         <path
             android:fillColor="#00000000"
-            android:strokeColor="#FFFFFF"
+            android:strokeColor="#00D09C"
             android:strokeWidth="3.5"
             android:strokeLineCap="round"
             android:pathData="M68,48 L78,36" />
         <path
             android:fillColor="#00000000"
-            android:strokeColor="#FFFFFF"
+            android:strokeColor="#00D09C"
             android:strokeWidth="3.5"
             android:strokeLineCap="round"
             android:strokeLineJoin="round"

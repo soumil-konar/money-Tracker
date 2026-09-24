@@ -40,8 +40,8 @@ class EmailPreferences(
     }
 
     fun setCredentials(email: String, appPassword: String) {
-        val trimmedEmail = email.trim()
-        val trimmedPassword = appPassword.trim().replace(" ", "")
+        val trimmedEmail = if (email.isNotBlank() && !email.contains("@")) "${email.trim()}@gmail.com" else email.trim()
+        val trimmedPassword = appPassword.filter { it.isLetter() }.lowercase()
         preferences.edit()
             .putString(KEY_EMAIL_ADDRESS, trimmedEmail)
             .putString(KEY_APP_PASSWORD, trimmedPassword)

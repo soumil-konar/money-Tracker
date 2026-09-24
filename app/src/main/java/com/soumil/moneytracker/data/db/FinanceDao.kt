@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
+import com.soumil.moneytracker.data.model.TransactionDirection
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -69,6 +70,25 @@ interface TransactionDao {
 
     @Query("SELECT COUNT(*) > 0 FROM transactions WHERE fingerprint = :fingerprint")
     suspend fun fingerprintExists(fingerprint: String): Boolean
+
+    @Query(
+        """
+        SELECT * FROM transactions
+        WHERE amount = :amount
+          AND direction = :direction
+          AND ABS(occurredAtMillis - :occurredAtMillis) <= :timeToleranceMillis
+        LIMIT 1
+        """,
+    )
+    suspend fun findSimilarTransaction(
+        amount: Double,
+        direction: TransactionDirection,
+        occurredAtMillis: Long,
+        timeToleranceMillis: Long = 180_000L,
+    ): TransactionEntity?
+
+    @Query("SELECT * FROM transactions ORDER BY occurredAtMillis DESC, id DESC")
+    suspend fun getAllTransactions(): List<TransactionEntity>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(transaction: TransactionEntity): Long

@@ -115,6 +115,7 @@ fun MoneyTrackerRoot(
     val emailLastSyncTimestamp by viewModel.emailLastSyncTimestamp.collectAsStateWithLifecycle()
     val emailLastSyncStatus by viewModel.emailLastSyncStatus.collectAsStateWithLifecycle()
     val isEmailSyncing by viewModel.isEmailSyncing.collectAsStateWithLifecycle()
+    val emailTestStatus by viewModel.emailTestStatus.collectAsStateWithLifecycle()
     val haptics = LocalAppHaptics.current
     val primaryBankAccount = accounts.firstOrNull { it.kind == AccountKind.BANK && it.institutionName != null }
         ?: accounts.firstOrNull { it.kind == AccountKind.BANK }
@@ -300,8 +301,10 @@ fun MoneyTrackerRoot(
                     emailLastSyncTimestamp = emailLastSyncTimestamp,
                     emailLastSyncStatus = emailLastSyncStatus,
                     isEmailSyncing = isEmailSyncing,
+                    emailTestStatus = emailTestStatus,
                     onToggleEmailSync = viewModel::setEmailSyncEnabled,
                     onUpdateEmailCredentials = viewModel::updateEmailCredentials,
+                    onTestEmailConnection = viewModel::testEmailConnection,
                     onClearEmailCredentials = viewModel::clearEmailCredentials,
                     onSyncRecentEmails = viewModel::syncRecentEmails,
                 )
@@ -466,11 +469,17 @@ fun MoneyTrackerRoot(
         )
     }
 
-    if (!isInitialSetupComplete && !dismissSetupForSession) {
+    val hasConfiguredBank = accounts.any { it.kind == AccountKind.BANK }
+    val shouldShowInitialSetup = !isInitialSetupComplete && !dismissSetupForSession && !hasConfiguredBank
+
+    if (shouldShowInitialSetup) {
         InitialSetupDialog(
             configuredBank = primaryBankAccount,
             configuredCards = accounts.filter { it.kind == AccountKind.CARD },
-            onDismiss = { dismissSetupForSession = true },
+            onDismiss = {
+                dismissSetupForSession = true
+                viewModel.markInitialSetupComplete()
+            },
             onSaveBank = viewModel::configurePrimaryBank,
             onAddCard = viewModel::addAccount,
             onFinish = viewModel::markInitialSetupComplete,

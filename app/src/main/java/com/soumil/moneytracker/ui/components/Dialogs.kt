@@ -1121,7 +1121,7 @@ fun InitialSetupDialog(
                     },
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("Later")
+                    Text("Skip")
                 }
                 Button(
                     onClick = {

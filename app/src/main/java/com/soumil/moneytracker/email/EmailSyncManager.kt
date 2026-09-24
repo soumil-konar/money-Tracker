@@ -4,6 +4,7 @@ import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
+import java.net.InetSocketAddress
 import java.text.SimpleDateFormat
 import java.util.Locale
 import javax.net.ssl.SSLSocket
@@ -47,12 +48,48 @@ class EmailSyncManager {
         )
     }
 
-    suspend fun testCredentials(email: String, appPassword: String): Result<Boolean> = withContext(Dispatchers.IO) {
-        val cleanEmail = email.trim()
-        val cleanPassword = appPassword.replace(" ", "").trim()
+    fun sanitizeEmail(email: String): String {
+        val trimmed = email.trim()
+        return if (trimmed.isNotBlank() && !trimmed.contains("@")) {
+            "$trimmed@gmail.com"
+        } else {
+            trimmed
+        }
+    }
 
-        if (cleanEmail.isBlank() || cleanPassword.isBlank()) {
-            return@withContext Result.failure(IllegalArgumentException("Email and app password cannot be blank."))
+    fun sanitizeAppPassword(password: String): String {
+        return password.filter { it.isLetter() }.lowercase()
+    }
+
+    fun parseImapError(rawResponse: String): String {
+        val lower = rawResponse.lowercase()
+        return when {
+            "authenticationfailed" in lower || "invalid credentials" in lower -> {
+                "Authentication failed. Ensure you are using a 16-character Google App Password (not your standard Gmail password) and that IMAP is enabled in your Gmail settings (Settings > Forwarding and POP/IMAP > Enable IMAP)."
+            }
+            "application-specific password required" in lower || "app password" in lower -> {
+                "Google requires an App Password. Go to Google Account > Security > 2-Step Verification > App Passwords, create an App Password for 'Mail', and paste the 16 characters here."
+            }
+            "unknown command" in lower -> {
+                "Gmail rejected the command. Please check your network and re-authenticate."
+            }
+            else -> {
+                "Gmail authentication failed: ${rawResponse.removePrefix("A01 NO").removePrefix("T01 NO").trim()}"
+            }
+        }
+    }
+
+    suspend fun testCredentials(email: String, appPassword: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        val cleanEmail = sanitizeEmail(email)
+        val cleanPassword = sanitizeAppPassword(appPassword)
+
+        if (cleanEmail.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("Gmail address cannot be blank."))
+        }
+        if (cleanPassword.length != 16) {
+            return@withContext Result.failure(
+                IllegalArgumentException("Google App Password must be exactly 16 letters (found ${cleanPassword.length}). Please generate an App Password in your Google Account settings."),
+            )
         }
 
         try {
@@ -73,7 +110,7 @@ class EmailSyncManager {
                     readUntilTag(reader, "T02")
                     Result.success(true)
                 } else {
-                    Result.failure(IllegalStateException("Gmail authentication failed: $response"))
+                    Result.failure(IllegalStateException(parseImapError(response)))
                 }
             } finally {
                 runCatching { socket.close() }
@@ -88,11 +125,16 @@ class EmailSyncManager {
         appPassword: String,
         maxMessages: Int = 30,
     ): Result<List<EmailTransactionMessage>> = withContext(Dispatchers.IO) {
-        val cleanEmail = email.trim()
-        val cleanPassword = appPassword.replace(" ", "").trim()
+        val cleanEmail = sanitizeEmail(email)
+        val cleanPassword = sanitizeAppPassword(appPassword)
 
-        if (cleanEmail.isBlank() || cleanPassword.isBlank()) {
-            return@withContext Result.failure(IllegalArgumentException("Email and app password are not configured."))
+        if (cleanEmail.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("Gmail address is not configured."))
+        }
+        if (cleanPassword.length != 16) {
+            return@withContext Result.failure(
+                IllegalArgumentException("Google App Password must be exactly 16 letters (found ${cleanPassword.length})."),
+            )
         }
 
         val messages = mutableListOf<EmailTransactionMessage>()
@@ -110,9 +152,7 @@ class EmailSyncManager {
                 sendCommand(writer, "A01", "LOGIN \"$cleanEmail\" \"$cleanPassword\"")
                 val loginResponse = readUntilTag(reader, "A01")
                 if (!loginResponse.startsWith("A01 OK", ignoreCase = true)) {
-                    return@withContext Result.failure(
-                        IllegalStateException("Authentication failed. Please verify your 16-character Google App Password: $loginResponse"),
-                    )
+                    return@withContext Result.failure(IllegalStateException(parseImapError(loginResponse)))
                 }
 
                 // 3. Select Inbox and read message count
@@ -142,19 +182,21 @@ class EmailSyncManager {
                 // Fallback: If X-GM-RAW returned no IDs, inspect the latest 50 message headers from the inbox sequence
                 if (messageIds.isEmpty() && totalMessages > 0) {
                     val startSeq = maxOf(1, totalMessages - 49)
-                    val candidateIds = mutableSetOf<Int>()
-                    var currentMsgSeq = 0
+                    if (startSeq <= totalMessages) {
+                        val candidateIds = mutableSetOf<Int>()
+                        var currentMsgSeq = 0
 
-                    sendCommand(writer, "A04", "FETCH $startSeq:$totalMessages (BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])")
-                    readUntilTag(reader, "A04") { line ->
-                        val fetchMatch = Regex("""\* (\d+) FETCH""").find(line)
-                        if (fetchMatch != null) {
-                            currentMsgSeq = fetchMatch.groupValues[1].toIntOrNull() ?: 0
-                        } else if (currentMsgSeq > 0 && isBankRelatedHeader(line)) {
-                            candidateIds.add(currentMsgSeq)
+                        sendCommand(writer, "A04", "FETCH $startSeq:$totalMessages (BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])")
+                        readUntilTag(reader, "A04") { line ->
+                            val fetchMatch = Regex("""\* (\d+) FETCH""").find(line)
+                            if (fetchMatch != null) {
+                                currentMsgSeq = fetchMatch.groupValues[1].toIntOrNull() ?: 0
+                            } else if (currentMsgSeq > 0 && isBankRelatedHeader(line)) {
+                                candidateIds.add(currentMsgSeq)
+                            }
                         }
+                        messageIds.addAll(candidateIds)
                     }
-                    messageIds.addAll(candidateIds)
                 }
 
                 // 5. Fetch message details for the newest IDs
@@ -220,7 +262,8 @@ class EmailSyncManager {
 
     private fun createTlsSocket(): SSLSocket {
         val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
-        val socket = factory.createSocket(IMAP_HOST, IMAP_PORT) as SSLSocket
+        val socket = factory.createSocket() as SSLSocket
+        socket.connect(InetSocketAddress(IMAP_HOST, IMAP_PORT), 15000)
         socket.soTimeout = SOCKET_TIMEOUT_MS
         socket.startHandshake()
         return socket
@@ -240,7 +283,7 @@ class EmailSyncManager {
         while (true) {
             val line = reader.readLine() ?: break
             onLine(line)
-            if (line.startsWith(tagPrefix)) {
+            if (line.startsWith(tagPrefix, ignoreCase = true)) {
                 return line
             }
         }

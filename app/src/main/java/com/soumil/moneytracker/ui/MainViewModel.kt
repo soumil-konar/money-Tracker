@@ -51,6 +51,8 @@ class MainViewModel(
     val searchQuery: StateFlow<String> = currentSearchQuery
     val isAiAnalyzing: StateFlow<Boolean> = _isAiAnalyzing
     val aiTestStatus: StateFlow<String?> = _aiTestStatus
+    private val _emailTestStatus = MutableStateFlow<String?>(null)
+    val emailTestStatus: StateFlow<String?> = _emailTestStatus
 
     private val _assistantMessages = MutableStateFlow<List<AssistantMessage>>(
         listOf(
@@ -188,6 +190,12 @@ class MainViewModel(
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = emptyList(),
         )
+
+    init {
+        viewModelScope.launch {
+            repository.deduplicateTransactions()
+        }
+    }
 
     fun setFilter(filter: TransactionFilter) {
         selectedFilter.value = filter
@@ -514,6 +522,21 @@ class MainViewModel(
 
     fun updateEmailCredentials(email: String, appPassword: String) {
         repository.emailPreferences.setCredentials(email, appPassword)
+    }
+
+    fun testEmailConnection(email: String, appPassword: String) {
+        viewModelScope.launch {
+            _emailTestStatus.value = "Testing Gmail connection..."
+            repository.testEmailCredentials(email, appPassword)
+                .onSuccess {
+                    _emailTestStatus.value = "Success: Connected and authenticated with Gmail IMAP."
+                    emitMessage("Gmail IMAP connected successfully!")
+                }
+                .onFailure { error ->
+                    _emailTestStatus.value = error.message ?: "Authentication failed"
+                    emitMessage("Gmail connection test failed.")
+                }
+        }
     }
 
     fun clearEmailCredentials() {
