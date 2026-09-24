@@ -41,13 +41,18 @@ class EmailPreferences(
 
     fun setCredentials(email: String, appPassword: String) {
         val trimmedEmail = if (email.isNotBlank() && !email.contains("@")) "${email.trim()}@gmail.com" else email.trim()
-        val trimmedPassword = appPassword.filter { it.isLetter() }.lowercase()
+        val trimmed = appPassword.trim()
+        val cleanedPassword = if (trimmed.matches(Regex("""[a-zA-Z]{4}[\s\-]+[a-zA-Z]{4}[\s\-]+[a-zA-Z]{4}[\s\-]+[a-zA-Z]{4}"""))) {
+            trimmed.replace(Regex("""[\s\-]+"""), "").lowercase()
+        } else {
+            trimmed
+        }
         preferences.edit()
             .putString(KEY_EMAIL_ADDRESS, trimmedEmail)
-            .putString(KEY_APP_PASSWORD, trimmedPassword)
+            .putString(KEY_APP_PASSWORD, cleanedPassword)
             .apply()
         _emailAddress.value = trimmedEmail
-        _appPassword.value = trimmedPassword
+        _appPassword.value = cleanedPassword
     }
 
     fun updateSyncResult(timestampMillis: Long, status: String) {

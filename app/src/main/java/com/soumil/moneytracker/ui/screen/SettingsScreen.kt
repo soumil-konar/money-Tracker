@@ -19,16 +19,21 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.Memory
+import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material.icons.outlined.Security
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.Vibration
 import androidx.compose.material3.Button
@@ -42,6 +47,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,6 +61,7 @@ import com.soumil.moneytracker.data.local.AiEngineMode
 import com.soumil.moneytracker.data.local.AiPreferences
 import com.soumil.moneytracker.data.local.HapticIntensity
 import com.soumil.moneytracker.ui.asDateTime
+import com.soumil.moneytracker.ui.components.AddExclusionKeywordDialog
 import com.soumil.moneytracker.ui.components.MotionReveal
 import com.soumil.moneytracker.ui.components.PermissionBanner
 import com.soumil.moneytracker.ui.components.SectionCard
@@ -77,6 +84,25 @@ fun SettingsScreen(
     hapticIntensity: HapticIntensity = HapticIntensity.BALANCED,
     isBiometricEnabled: Boolean = false,
     isBiometricAvailable: Boolean = true,
+    isNotificationListenerEnabled: Boolean = true,
+    isNotificationPermissionGranted: Boolean = false,
+    isGmailMonitoringEnabled: Boolean = true,
+    isPaymentAppsMonitoringEnabled: Boolean = true,
+    isBankAppsMonitoringEnabled: Boolean = true,
+    notificationLastCapturedTimestamp: Long = 0L,
+    notificationLastCapturedPackage: String? = null,
+    notificationCapturedCount: Int = 0,
+    onOpenNotificationSettings: () -> Unit = {},
+    onToggleNotificationListener: (Boolean) -> Unit = {},
+    onToggleGmailMonitoring: (Boolean) -> Unit = {},
+    onTogglePaymentAppsMonitoring: (Boolean) -> Unit = {},
+    onToggleBankAppsMonitoring: (Boolean) -> Unit = {},
+    isExclusionFilterEnabled: Boolean = true,
+    excludedKeywords: Set<String> = emptySet(),
+    onToggleExclusionFilter: (Boolean) -> Unit = {},
+    onAddExclusionKeyword: (String) -> Unit = {},
+    onRemoveExclusionKeyword: (String) -> Unit = {},
+    onResetExclusionKeywords: () -> Unit = {},
     isEmailSyncEnabled: Boolean = false,
     emailAddress: String = "",
     emailAppPassword: String = "",
@@ -103,6 +129,17 @@ fun SettingsScreen(
     var keyInput by rememberSaveable(aiApiKey) { mutableStateOf(aiApiKey) }
     var emailInput by rememberSaveable(emailAddress) { mutableStateOf(emailAddress) }
     var passwordInput by rememberSaveable(emailAppPassword) { mutableStateOf(emailAppPassword) }
+    var showAddKeywordDialog by rememberSaveable { mutableStateOf(false) }
+
+    if (showAddKeywordDialog) {
+        AddExclusionKeywordDialog(
+            onDismiss = { showAddKeywordDialog = false },
+            onConfirm = { keyword ->
+                onAddExclusionKeyword(keyword)
+                showAddKeywordDialog = false
+            },
+        )
+    }
 
     val statusBarInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -368,6 +405,282 @@ fun SettingsScreen(
         }
 
         item {
+            MotionReveal(index = 2) {
+                SectionCard(
+                    title = "Real-Time Notification Listener",
+                    subtitle = "Instant alert ingestion from Gmail, GPay, PhonePe, Paytm & bank apps",
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Enable Notification Ingestion",
+                                    style = MaterialTheme.typography.titleMedium,
+                                )
+                                Text(
+                                    text = "Catches push notifications the instant they appear in your status bar. 0% battery drain & no Google passwords required.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Switch(
+                                checked = isNotificationListenerEnabled,
+                                onCheckedChange = {
+                                    haptics.toggle(it)
+                                    onToggleNotificationListener(it)
+                                },
+                            )
+                        }
+
+                        if (isNotificationListenerEnabled) {
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = if (isNotificationPermissionGranted) {
+                                    MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f)
+                                } else {
+                                    MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
+                                },
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = if (isNotificationPermissionGranted) Icons.Outlined.CheckCircle else Icons.Outlined.ErrorOutline,
+                                        contentDescription = null,
+                                        tint = if (isNotificationPermissionGranted) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = if (isNotificationPermissionGranted) "Android System Access Active" else "Notification Access Required",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            color = MaterialTheme.colorScheme.onBackground,
+                                        )
+                                        Text(
+                                            text = if (isNotificationPermissionGranted) {
+                                                "Listening for financial push alerts securely on-device with zero network latency."
+                                            } else {
+                                                "Tap below to grant Money Tracker permission to read notifications in Android Settings."
+                                            },
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (!isNotificationPermissionGranted) {
+                                Button(
+                                    onClick = {
+                                        haptics.click()
+                                        onOpenNotificationSettings()
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Icon(Icons.Outlined.Settings, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.size(8.dp))
+                                    Text("Grant System Notification Access")
+                                }
+                            }
+
+                            Text(
+                                text = "Targeted Alert Sources",
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                FilterChip(
+                                    selected = isGmailMonitoringEnabled,
+                                    onClick = {
+                                        haptics.tick()
+                                        onToggleGmailMonitoring(!isGmailMonitoringEnabled)
+                                    },
+                                    label = { Text("Gmail Alerts") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Outlined.MailOutline,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                    },
+                                )
+                                FilterChip(
+                                    selected = isPaymentAppsMonitoringEnabled,
+                                    onClick = {
+                                        haptics.tick()
+                                        onTogglePaymentAppsMonitoring(!isPaymentAppsMonitoringEnabled)
+                                    },
+                                    label = { Text("UPI (GPay, PhonePe, Paytm, CRED)") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Bolt,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                    },
+                                )
+                                FilterChip(
+                                    selected = isBankAppsMonitoringEnabled,
+                                    onClick = {
+                                        haptics.tick()
+                                        onToggleBankAppsMonitoring(!isBankAppsMonitoringEnabled)
+                                    },
+                                    label = { Text("Bank Mobile Apps") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Security,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                    },
+                                )
+                            }
+
+                            if (notificationCapturedCount > 0) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.NotificationsActive,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                        Text(
+                                            text = "$notificationCapturedCount alerts recorded in real-time" +
+                                                (notificationLastCapturedPackage?.let { " • Last from ${it.substringAfterLast('.')} at ${notificationLastCapturedTimestamp.asDateTime()}" } ?: ""),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            MotionReveal(index = 2) {
+                SectionCard(
+                    title = "Transaction Exclusion Filters",
+                    subtitle = "Custom keywords & merchants to automatically skip (No hardcoding)",
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Enable Keyword Filtering",
+                                    style = MaterialTheme.typography.titleMedium,
+                                )
+                                Text(
+                                    text = "Skip recording alerts matching keywords below (e.g., Steam purchases, Epic Games, refunds, OTPs).",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Switch(
+                                checked = isExclusionFilterEnabled,
+                                onCheckedChange = {
+                                    haptics.toggle(it)
+                                    onToggleExclusionFilter(it)
+                                },
+                            )
+                        }
+
+                        if (isExclusionFilterEnabled) {
+                            Text(
+                                text = "Active Exclusion Rules (${excludedKeywords.size})",
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+
+                            if (excludedKeywords.isEmpty()) {
+                                Text(
+                                    text = "No exclusion keywords configured. All incoming alerts will be processed.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            } else {
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    excludedKeywords.sorted().forEach { keyword ->
+                                        FilterChip(
+                                            selected = true,
+                                            onClick = {
+                                                haptics.tick()
+                                                onRemoveExclusionKeyword(keyword)
+                                            },
+                                            label = { Text(keyword) },
+                                            trailingIcon = {
+                                                Icon(
+                                                    imageVector = Icons.Outlined.Close,
+                                                    contentDescription = "Remove $keyword",
+                                                    modifier = Modifier.size(14.dp),
+                                                )
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        haptics.click()
+                                        showAddKeywordDialog = true
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.size(6.dp))
+                                    Text("Add Keyword")
+                                }
+
+                                TextButton(
+                                    onClick = {
+                                        haptics.click()
+                                        onResetExclusionKeywords()
+                                    },
+                                ) {
+                                    Text("Reset Defaults")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
             MotionReveal(index = 3) {
                 SectionCard(
                     title = "Google Email Alerts (100% On-Device)",
@@ -444,8 +757,8 @@ fun SettingsScreen(
                             OutlinedTextField(
                                 value = passwordInput,
                                 onValueChange = { passwordInput = it },
-                                label = { Text("Google App Password (16 chars)") },
-                                placeholder = { Text("abcd efgh ijkl mnop") },
+                                label = { Text("Gmail Password / App Password") },
+                                placeholder = { Text("Enter your password") },
                                 visualTransformation = PasswordVisualTransformation(),
                                 leadingIcon = {
                                     Icon(Icons.Outlined.Lock, contentDescription = null)

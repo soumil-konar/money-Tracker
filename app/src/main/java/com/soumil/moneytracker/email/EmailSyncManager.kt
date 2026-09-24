@@ -58,17 +58,23 @@ class EmailSyncManager {
     }
 
     fun sanitizeAppPassword(password: String): String {
-        return password.filter { it.isLetter() }.lowercase()
+        val trimmed = password.trim()
+        // If it's a 16-letter space-delimited Google App Password like "abcd efgh ijkl mnop" or "abcd-efgh-ijkl-mnop", clean delimiters
+        return if (trimmed.matches(Regex("""[a-zA-Z]{4}[\s\-]+[a-zA-Z]{4}[\s\-]+[a-zA-Z]{4}[\s\-]+[a-zA-Z]{4}"""))) {
+            trimmed.replace(Regex("""[\s\-]+"""), "").lowercase()
+        } else {
+            trimmed
+        }
     }
 
     fun parseImapError(rawResponse: String): String {
         val lower = rawResponse.lowercase()
         return when {
             "authenticationfailed" in lower || "invalid credentials" in lower -> {
-                "Authentication failed. Ensure you are using a 16-character Google App Password (not your standard Gmail password) and that IMAP is enabled in your Gmail settings (Settings > Forwarding and POP/IMAP > Enable IMAP)."
+                "Authentication failed. Check your password. If using a Google Account with 2-Step Verification, ensure you use a Google App Password and that IMAP is enabled in your Gmail settings (Settings > Forwarding and POP/IMAP > Enable IMAP)."
             }
             "application-specific password required" in lower || "app password" in lower -> {
-                "Google requires an App Password. Go to Google Account > Security > 2-Step Verification > App Passwords, create an App Password for 'Mail', and paste the 16 characters here."
+                "Google requires an App Password. Go to Google Account > Security > 2-Step Verification > App Passwords, create an App Password for 'Mail', and enter it here."
             }
             "unknown command" in lower -> {
                 "Gmail rejected the command. Please check your network and re-authenticate."
@@ -86,10 +92,8 @@ class EmailSyncManager {
         if (cleanEmail.isBlank()) {
             return@withContext Result.failure(IllegalArgumentException("Gmail address cannot be blank."))
         }
-        if (cleanPassword.length != 16) {
-            return@withContext Result.failure(
-                IllegalArgumentException("Google App Password must be exactly 16 letters (found ${cleanPassword.length}). Please generate an App Password in your Google Account settings."),
-            )
+        if (cleanPassword.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("Password cannot be blank."))
         }
 
         try {
@@ -131,10 +135,8 @@ class EmailSyncManager {
         if (cleanEmail.isBlank()) {
             return@withContext Result.failure(IllegalArgumentException("Gmail address is not configured."))
         }
-        if (cleanPassword.length != 16) {
-            return@withContext Result.failure(
-                IllegalArgumentException("Google App Password must be exactly 16 letters (found ${cleanPassword.length})."),
-            )
+        if (cleanPassword.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("Password cannot be blank."))
         }
 
         val messages = mutableListOf<EmailTransactionMessage>()

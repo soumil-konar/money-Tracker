@@ -83,6 +83,17 @@ class MainViewModel(
     private val _isEmailSyncing = MutableStateFlow(false)
     val isEmailSyncing: StateFlow<Boolean> = _isEmailSyncing
 
+    val isNotificationListenerEnabled: StateFlow<Boolean> = repository.notificationPreferences.isNotificationListenerEnabled
+    val isGmailMonitoringEnabled: StateFlow<Boolean> = repository.notificationPreferences.isGmailMonitoringEnabled
+    val isPaymentAppsMonitoringEnabled: StateFlow<Boolean> = repository.notificationPreferences.isPaymentAppsMonitoringEnabled
+    val isBankAppsMonitoringEnabled: StateFlow<Boolean> = repository.notificationPreferences.isBankAppsMonitoringEnabled
+    val notificationLastCapturedTimestamp: StateFlow<Long> = repository.notificationPreferences.lastCapturedTimestamp
+    val notificationLastCapturedPackage: StateFlow<String?> = repository.notificationPreferences.lastCapturedPackage
+    val notificationCapturedCount: StateFlow<Int> = repository.notificationPreferences.capturedCount
+
+    val isExclusionFilterEnabled: StateFlow<Boolean> = repository.exclusionPreferences.isExclusionFilterEnabled
+    val excludedKeywords: StateFlow<Set<String>> = repository.exclusionPreferences.excludedKeywords
+
     val dashboard: StateFlow<DashboardState> = repository.dashboard.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
@@ -558,6 +569,59 @@ class MainViewModel(
                 _isEmailSyncing.value = false
             }
         }
+    }
+
+    fun isNotificationPermissionGranted(context: Context): Boolean {
+        return repository.notificationPreferences.isSystemPermissionGranted(context)
+    }
+
+    fun buildNotificationSettingsIntent(context: Context) =
+        repository.notificationPreferences.buildSystemSettingsIntent(context)
+
+    fun setNotificationListenerEnabled(enabled: Boolean) {
+        repository.notificationPreferences.setNotificationListenerEnabled(enabled)
+        emitMessage(if (enabled) "Notification listener active." else "Notification listener paused.")
+    }
+
+    fun setGmailMonitoringEnabled(enabled: Boolean) {
+        repository.notificationPreferences.setGmailMonitoringEnabled(enabled)
+    }
+
+    fun setPaymentAppsMonitoringEnabled(enabled: Boolean) {
+        repository.notificationPreferences.setPaymentAppsMonitoringEnabled(enabled)
+    }
+
+    fun setBankAppsMonitoringEnabled(enabled: Boolean) {
+        repository.notificationPreferences.setBankAppsMonitoringEnabled(enabled)
+    }
+
+    fun setExclusionFilterEnabled(enabled: Boolean) {
+        repository.exclusionPreferences.setExclusionFilterEnabled(enabled)
+        emitMessage(if (enabled) "Exclusion keyword filter enabled." else "Exclusion filter disabled.")
+    }
+
+    fun addExclusionKeyword(keyword: String) {
+        val trimmed = keyword.trim()
+        if (trimmed.isBlank()) {
+            emitMessage("Exclusion keyword cannot be blank.")
+            return
+        }
+        val added = repository.exclusionPreferences.addKeyword(trimmed)
+        if (added) {
+            emitMessage("Added exclusion rule for '$trimmed'.")
+        } else {
+            emitMessage("'$trimmed' is already in your exclusion list.")
+        }
+    }
+
+    fun removeExclusionKeyword(keyword: String) {
+        repository.exclusionPreferences.removeKeyword(keyword)
+        emitMessage("Removed '$keyword' from exclusion rules.")
+    }
+
+    fun resetExclusionKeywords() {
+        repository.exclusionPreferences.resetToDefaults()
+        emitMessage("Reset exclusion rules to default recommendations.")
     }
 
     private fun emitMessage(message: String) {

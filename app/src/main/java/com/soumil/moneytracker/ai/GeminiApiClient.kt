@@ -29,6 +29,7 @@ data class AiParsedTransaction(
     val isUpi: Boolean,
     val isCardBillPayment: Boolean,
     val placeDetail: String?,
+    val detailedDescription: String? = placeDetail,
     val confidence: Double = 0.95,
     val countsTowardBudget: Boolean = !isCardBillPayment && category != TransactionCategory.TRANSFER,
     val availableBalance: Double? = null,
@@ -381,8 +382,12 @@ class GeminiApiClient {
                     put("type", "STRING")
                     put("description", "Specific detail of where or what the spend was done e.g. 'Indiranagar Bangalore branch', 'Swiggy Food order', 'Metro Card recharge', or specific UPI VPA context.")
                 })
+                put("detailedDescription", JSONObject().apply {
+                    put("type", "STRING")
+                    put("description", "A rich, descriptive explanation of what took place (e.g., 'Dinner order on Swiggy via HDFC Credit Card', 'Monthly Netflix subscription auto-debit', 'Flight booking on MakeMyTrip', 'Metro SmartCard recharge via PhonePe UPI', 'Chai & snacks at Indiranagar branch'). Synthesize what was purchased, the platform, and payment instrument context.")
+                })
             })
-            put("required", JSONArray(listOf("isTransaction", "direction", "merchant", "category", "accountKind", "placeDetail")))
+            put("required", JSONArray(listOf("isTransaction", "direction", "merchant", "category", "accountKind", "placeDetail", "detailedDescription")))
         }
 
         val requestPayload = JSONObject().apply {
@@ -446,6 +451,7 @@ class GeminiApiClient {
         val isUpi = resultObj.optBoolean("isUpi", false)
         val isCardBillPayment = resultObj.optBoolean("isCardBillPayment", false)
         val placeDetail = resultObj.optString("placeDetail").takeIf { it.isNotBlank() }
+        val detailedDescription = resultObj.optString("detailedDescription").takeIf { it.isNotBlank() } ?: placeDetail
 
         return AiParsedTransaction(
             isTransaction = isTransaction,
@@ -460,6 +466,7 @@ class GeminiApiClient {
             isUpi = isUpi,
             isCardBillPayment = isCardBillPayment,
             placeDetail = placeDetail,
+            detailedDescription = detailedDescription,
             confidence = 0.95,
         )
     }

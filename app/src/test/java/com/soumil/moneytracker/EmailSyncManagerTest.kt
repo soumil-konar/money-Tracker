@@ -19,11 +19,14 @@ class EmailSyncManagerTest {
     }
 
     @Test
-    fun `sanitizeAppPassword removes spaces hyphens tabs and converts to lowercase`() {
+    fun `sanitizeAppPassword cleans 16-char grouped app passwords and preserves arbitrary passwords`() {
         assertEquals("abcdefghijklmnop", emailSyncManager.sanitizeAppPassword("abcd efgh ijkl mnop"))
         assertEquals("abcdefghijklmnop", emailSyncManager.sanitizeAppPassword("ABCD EFGH IJKL MNOP"))
         assertEquals("abcdefghijklmnop", emailSyncManager.sanitizeAppPassword("abcd-efgh-ijkl-mnop"))
-        assertEquals("abcdefghijklmnop", emailSyncManager.sanitizeAppPassword(" abcd\tefgh\nijkl\u00a0mnop "))
+        // Passwords of any length with numbers and symbols are preserved
+        assertEquals("MySecret123!", emailSyncManager.sanitizeAppPassword("  MySecret123!  "))
+        assertEquals("Simple8c", emailSyncManager.sanitizeAppPassword("Simple8c"))
+        assertEquals("AnyLengthPasswordCanBeUsed#2026", emailSyncManager.sanitizeAppPassword("AnyLengthPasswordCanBeUsed#2026"))
     }
 
     @Test
@@ -42,12 +45,13 @@ class EmailSyncManagerTest {
     }
 
     @Test
-    fun `testCredentials rejects non-16 character passwords immediately`() = runBlocking {
-        val resultShort = emailSyncManager.testCredentials("user@gmail.com", "tooshort")
-        assertTrue("Short password must fail immediately", resultShort.isFailure)
-        assertTrue(resultShort.exceptionOrNull()?.message?.contains("16 letters") == true)
+    fun `testCredentials rejects blank inputs and allows passwords of any length`() = runBlocking {
+        val resultBlankPassword = emailSyncManager.testCredentials("user@gmail.com", "   ")
+        assertTrue("Blank password must fail immediately", resultBlankPassword.isFailure)
+        assertTrue(resultBlankPassword.exceptionOrNull()?.message?.contains("Password cannot be blank") == true)
 
-        val resultBlank = emailSyncManager.testCredentials("", "abcdefghijklmnop")
-        assertTrue("Blank email must fail immediately", resultBlank.isFailure)
+        val resultBlankEmail = emailSyncManager.testCredentials("", "myPassword123")
+        assertTrue("Blank email must fail immediately", resultBlankEmail.isFailure)
+        assertTrue(resultBlankEmail.exceptionOrNull()?.message?.contains("address cannot be blank") == true)
     }
 }

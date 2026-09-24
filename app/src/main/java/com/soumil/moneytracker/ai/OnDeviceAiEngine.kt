@@ -67,7 +67,7 @@ class OnDeviceAiEngine(
         }
 
         // 2. Amount extraction
-        val amountRegex = Regex("""(?:inr|rs\.?|re\.?|inr\s*)\s*([0-9,]+(?:\.[0-9]{1,2})?)""", RegexOption.IGNORE_CASE)
+        val amountRegex = Regex("""(?:inr|rs\.?|re\.?|₹)\s*([0-9,]+(?:\.[0-9]{1,2})?)""", RegexOption.IGNORE_CASE)
         val amountMatch = amountRegex.find(smsBody)
         val amount = amountMatch?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
         if (amount == null || amount <= 0.0) {
@@ -142,6 +142,17 @@ class OnDeviceAiEngine(
         val balRegex = Regex("""(?:avl(?:[\.\s]+)?bal(?:ance)?|available\s+balance|avail(?:[\.\s]+)?bal(?:ance)?|total\s+balance|bal(?:ance)?\s*[:=])\s*(?:is|:|-)?\s*(?:rs\.?|inr)?\s*([0-9,]+(?:\.[0-9]{1,2})?)""", RegexOption.IGNORE_CASE)
         val availableBalance = balRegex.find(smsBody)?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
 
+        val detailedDescription = generateDetailedDescription(
+            merchant = merchant,
+            direction = direction,
+            category = category,
+            isUpi = isUpi,
+            isCard = isCard,
+            institution = institution,
+            placeDetail = placeDetail,
+            isCreditCardPayment = isCreditCardPayment,
+        ) ?: placeDetail
+
         val parsed = AiParsedTransaction(
             isTransaction = true,
             amount = amount,
@@ -155,12 +166,41 @@ class OnDeviceAiEngine(
             isUpi = isUpi,
             isCardBillPayment = isCreditCardPayment,
             placeDetail = placeDetail,
+            detailedDescription = detailedDescription,
             confidence = 0.96,
             countsTowardBudget = countsTowardBudget,
             availableBalance = availableBalance,
         )
 
         return Result.success(parsed)
+    }
+
+    private fun generateDetailedDescription(
+        merchant: String?,
+        direction: TransactionDirection,
+        category: TransactionCategory,
+        isUpi: Boolean,
+        isCard: Boolean,
+        institution: String?,
+        placeDetail: String?,
+        isCreditCardPayment: Boolean,
+    ): String? {
+        val target = merchant ?: return null
+        val instrument = institution?.let { " via $it" } ?: ""
+
+        return when {
+            isCreditCardPayment -> "Credit card bill payment$instrument"
+            !placeDetail.isNullOrBlank() && !placeDetail.equals(target, ignoreCase = true) -> "$target ($placeDetail)$instrument"
+            category == TransactionCategory.FOOD -> "Dining / Food order at $target$instrument"
+            category == TransactionCategory.TRAVEL -> "Travel / Cab spend with $target$instrument"
+            category == TransactionCategory.BILLS -> "Utility bill payment to $target$instrument"
+            category == TransactionCategory.SUBSCRIPTION -> "Subscription payment to $target$instrument"
+            category == TransactionCategory.SHOPPING -> "Shopping order at $target$instrument"
+            direction == TransactionDirection.CREDIT -> "Payment received from $target$instrument"
+            isUpi -> "UPI transfer to $target$instrument"
+            isCard -> "Card purchase at $target$instrument"
+            else -> "Payment to $target$instrument"
+        }
     }
 
     fun queryAssistantOnDevice(

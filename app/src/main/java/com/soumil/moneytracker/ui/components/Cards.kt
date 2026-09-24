@@ -25,6 +25,7 @@ import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.CreditCard
+import androidx.compose.material.icons.automirrored.outlined.Notes
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.NotificationsNone
@@ -570,10 +571,17 @@ fun TransactionItem(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
+                    val isLocation = listOf("branch", "road", "street", "layout", "nagar", "indiranagar", "koramangala", "mall", "outlet", "airport")
+                        .any { transaction.note.contains(it, ignoreCase = true) }
+                    val noteIcon = when {
+                        isLocation -> Icons.Outlined.Place
+                        transaction.confidence >= 0.90 -> Icons.Outlined.AutoAwesome
+                        else -> Icons.AutoMirrored.Outlined.Notes
+                    }
                     Icon(
-                        imageVector = Icons.Outlined.Place,
+                        imageVector = noteIcon,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
                         modifier = Modifier.size(12.dp),
                     )
                     Text(

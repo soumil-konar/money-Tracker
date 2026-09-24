@@ -116,6 +116,18 @@ fun MoneyTrackerRoot(
     val emailLastSyncStatus by viewModel.emailLastSyncStatus.collectAsStateWithLifecycle()
     val isEmailSyncing by viewModel.isEmailSyncing.collectAsStateWithLifecycle()
     val emailTestStatus by viewModel.emailTestStatus.collectAsStateWithLifecycle()
+
+    val isNotificationListenerEnabled by viewModel.isNotificationListenerEnabled.collectAsStateWithLifecycle()
+    val isGmailMonitoringEnabled by viewModel.isGmailMonitoringEnabled.collectAsStateWithLifecycle()
+    val isPaymentAppsMonitoringEnabled by viewModel.isPaymentAppsMonitoringEnabled.collectAsStateWithLifecycle()
+    val isBankAppsMonitoringEnabled by viewModel.isBankAppsMonitoringEnabled.collectAsStateWithLifecycle()
+    val notificationLastCapturedTimestamp by viewModel.notificationLastCapturedTimestamp.collectAsStateWithLifecycle()
+    val notificationLastCapturedPackage by viewModel.notificationLastCapturedPackage.collectAsStateWithLifecycle()
+    val notificationCapturedCount by viewModel.notificationCapturedCount.collectAsStateWithLifecycle()
+    val isExclusionFilterEnabled by viewModel.isExclusionFilterEnabled.collectAsStateWithLifecycle()
+    val excludedKeywords by viewModel.excludedKeywords.collectAsStateWithLifecycle()
+    var notificationPermissionGranted by remember { mutableStateOf(viewModel.isNotificationPermissionGranted(context)) }
+
     val haptics = LocalAppHaptics.current
     val primaryBankAccount = accounts.firstOrNull { it.kind == AccountKind.BANK && it.institutionName != null }
         ?: accounts.firstOrNull { it.kind == AccountKind.BANK }
@@ -142,6 +154,7 @@ fun MoneyTrackerRoot(
 
     LifecycleResumeEffect(Unit) {
         smsPermissionGranted = context.hasSmsPermissions()
+        notificationPermissionGranted = viewModel.isNotificationPermissionGranted(context)
         onPauseOrDispose {}
     }
 
@@ -295,6 +308,28 @@ fun MoneyTrackerRoot(
                     isBiometricEnabled = isBiometricEnabled,
                     isBiometricAvailable = viewModel.isBiometricHardwareAvailable(context),
                     onToggleBiometricEnabled = viewModel::setBiometricEnabled,
+                    isNotificationListenerEnabled = isNotificationListenerEnabled,
+                    isNotificationPermissionGranted = notificationPermissionGranted,
+                    isGmailMonitoringEnabled = isGmailMonitoringEnabled,
+                    isPaymentAppsMonitoringEnabled = isPaymentAppsMonitoringEnabled,
+                    isBankAppsMonitoringEnabled = isBankAppsMonitoringEnabled,
+                    notificationLastCapturedTimestamp = notificationLastCapturedTimestamp,
+                    notificationLastCapturedPackage = notificationLastCapturedPackage,
+                    notificationCapturedCount = notificationCapturedCount,
+                    onOpenNotificationSettings = {
+                        val intent = viewModel.buildNotificationSettingsIntent(context)
+                        context.startActivity(intent)
+                    },
+                    onToggleNotificationListener = viewModel::setNotificationListenerEnabled,
+                    onToggleGmailMonitoring = viewModel::setGmailMonitoringEnabled,
+                    onTogglePaymentAppsMonitoring = viewModel::setPaymentAppsMonitoringEnabled,
+                    onToggleBankAppsMonitoring = viewModel::setBankAppsMonitoringEnabled,
+                    isExclusionFilterEnabled = isExclusionFilterEnabled,
+                    excludedKeywords = excludedKeywords,
+                    onToggleExclusionFilter = viewModel::setExclusionFilterEnabled,
+                    onAddExclusionKeyword = viewModel::addExclusionKeyword,
+                    onRemoveExclusionKeyword = viewModel::removeExclusionKeyword,
+                    onResetExclusionKeywords = viewModel::resetExclusionKeywords,
                     isEmailSyncEnabled = isEmailSyncEnabled,
                     emailAddress = emailAddress,
                     emailAppPassword = emailAppPassword,

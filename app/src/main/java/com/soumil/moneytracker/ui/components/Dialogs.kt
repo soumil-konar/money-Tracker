@@ -1231,3 +1231,55 @@ private fun buildDefaultCardName(
 ): String {
     return "$institutionName ${cardType.label} ending $lastFourDigits"
 }
+
+@Composable
+fun AddExclusionKeywordDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    val haptics = LocalAppHaptics.current
+    var keyword by rememberSaveable { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add Exclusion Rule") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Transactions matching this keyword in merchant, subject, or message text will be automatically excluded.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = keyword,
+                    onValueChange = { keyword = it },
+                    singleLine = true,
+                    label = { Text("Keyword or Merchant name") },
+                    placeholder = { Text("e.g. Steam, Epic Games, PlayStation") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (keyword.isNotBlank()) {
+                        haptics.success()
+                        onConfirm(keyword.trim())
+                    }
+                },
+                enabled = keyword.isNotBlank(),
+            ) {
+                Text("Add Rule")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = {
+                haptics.click()
+                onDismiss()
+            }) {
+                Text("Cancel")
+            }
+        },
+    )
+}
+

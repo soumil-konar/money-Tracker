@@ -53,7 +53,9 @@ import com.soumil.moneytracker.data.db.TransactionEmbeddingEntity
 import com.soumil.moneytracker.data.local.AiEngineMode
 import com.soumil.moneytracker.data.local.AiPreferences
 import com.soumil.moneytracker.data.local.EmailPreferences
+import com.soumil.moneytracker.data.local.ExclusionPreferences
 import com.soumil.moneytracker.data.local.HapticPreferences
+import com.soumil.moneytracker.data.local.NotificationPreferences
 import com.soumil.moneytracker.data.local.SecurityPreferences
 import com.soumil.moneytracker.email.EmailSyncManager
 import com.soumil.moneytracker.data.model.AssistantMessage
@@ -73,6 +75,8 @@ class FinanceRepository(
     val hapticPreferences: HapticPreferences,
     val securityPreferences: SecurityPreferences,
     val emailPreferences: EmailPreferences,
+    val exclusionPreferences: ExclusionPreferences,
+    val notificationPreferences: NotificationPreferences,
     val emailSyncManager: EmailSyncManager,
     val geminiApiClient: GeminiApiClient,
     val onDeviceAiEngine: OnDeviceAiEngine,
@@ -386,7 +390,7 @@ class FinanceRepository(
                 Triple(
                     parsed.merchant?.takeIf { it.isNotBlank() } ?: existing.merchant,
                     parsed.category,
-                    parsed.placeDetail ?: existing.note,
+                    parsed.detailedDescription ?: parsed.placeDetail ?: existing.note,
                 )
             }
             AiEngineMode.AUTO_PIXEL_FIRST -> {
@@ -404,7 +408,7 @@ class FinanceRepository(
                     Triple(
                         parsed.merchant?.takeIf { it.isNotBlank() } ?: existing.merchant,
                         parsed.category,
-                        parsed.placeDetail ?: existing.note,
+                        parsed.detailedDescription ?: parsed.placeDetail ?: existing.note,
                     )
                 } else {
                     val parsed = onDeviceAiEngine.parseSmsOnDevice(body, existing.sourceSender)
@@ -412,7 +416,7 @@ class FinanceRepository(
                     Triple(
                         parsed.merchant?.takeIf { it.isNotBlank() } ?: existing.merchant,
                         parsed.category,
-                        parsed.placeDetail ?: existing.note,
+                        parsed.detailedDescription ?: parsed.placeDetail ?: existing.note,
                     )
                 }
             }
@@ -429,7 +433,7 @@ class FinanceRepository(
                 Triple(
                     parsed.merchant?.takeIf { it.isNotBlank() } ?: existing.merchant,
                     parsed.category,
-                    parsed.placeDetail ?: existing.note,
+                    parsed.detailedDescription ?: parsed.placeDetail ?: existing.note,
                 )
             }
         }
@@ -668,6 +672,92 @@ class FinanceRepository(
             SmsIngestionOutcome.DUPLICATE,
             SmsIngestionOutcome.IGNORED -> false
         }
+    }
+
+    suspend fun processIncomingNotification(
+        packageName: String,
+        title: String,
+        text: String,
+        subText: String,
+        postTimeMillis: Long,
+    ): Boolean {
+        if (!notificationPreferences.isNotificationListenerEnabled.value) {
+            return false
+        }
+
+        // Check user-configured dynamic exclusion filter immediately
+        val matchedExclusion = exclusionPreferences.findMatchedKeyword(title, text, subText)
+        if (matchedExclusion != null) {
+            android.util.Log.i("FinanceRepository", "Notification from $packageName skipped: matched exclusion keyword '$matchedExclusion'")
+            return false
+        }
+
+        val isGmail = packageName == NotificationPreferences.PACKAGE_GMAIL
+        val isPaymentApp = NotificationPreferences.PAYMENT_APP_PACKAGES.contains(packageName)
+        val isBankApp = NotificationPreferences.BANK_APP_PACKAGES.contains(packageName)
+
+        if (isGmail && !notificationPreferences.isGmailMonitoringEnabled.value) {
+            return false
+        }
+        if (isPaymentApp && !notificationPreferences.isPaymentAppsMonitoringEnabled.value) {
+            return false
+        }
+        if (isBankApp && !notificationPreferences.isBankAppsMonitoringEnabled.value) {
+            return false
+        }
+
+        val combinedBody = when {
+            title.isNotBlank() && text.isNotBlank() && !text.startsWith(title, ignoreCase = true) -> "$title: $text"
+            text.isNotBlank() -> text
+            else -> title
+        }
+        val lower = combinedBody.lowercase(java.util.Locale.getDefault())
+
+        val hasMoneyIndicator = listOf("₹", "rs.", "inr", "rs ").any { it in lower }
+        val hasTransactionVerb = listOf(
+            "debited", "credited", "spent", "paid", "withdrawn", "received", "deducted",
+            "sent", "transfer", "successful", "purchase", "bill payment", "alert", "vpa",
+        ).any { it in lower }
+
+        if (isGmail) {
+            if (!hasMoneyIndicator || !hasTransactionVerb) {
+                return false
+            }
+        } else if (!isPaymentApp && !isBankApp) {
+            if (!hasMoneyIndicator || !hasTransactionVerb) {
+                return false
+            }
+        }
+
+        val resolvedSender = when {
+            isGmail -> title.takeIf { it.isNotBlank() } ?: "Gmail"
+            packageName == NotificationPreferences.PACKAGE_GPAY -> "Google Pay"
+            packageName == NotificationPreferences.PACKAGE_PHONEPE -> "PhonePe"
+            packageName == NotificationPreferences.PACKAGE_PAYTM -> "Paytm"
+            packageName == NotificationPreferences.PACKAGE_CRED -> "CRED"
+            packageName == NotificationPreferences.PACKAGE_BHIM -> "BHIM"
+            isBankApp -> title.takeIf { it.isNotBlank() } ?: "Bank Alert"
+            else -> title.takeIf { it.isNotBlank() } ?: packageName
+        }
+
+        val outcome = ingestMessage(
+            sender = resolvedSender,
+            body = combinedBody,
+            receivedAtMillis = postTimeMillis,
+        )
+
+        val succeeded = when (outcome) {
+            SmsIngestionOutcome.IMPORTED,
+            SmsIngestionOutcome.REVIEW,
+            SmsIngestionOutcome.SCHEDULED -> true
+            SmsIngestionOutcome.DUPLICATE,
+            SmsIngestionOutcome.IGNORED -> false
+        }
+
+        if (succeeded) {
+            notificationPreferences.recordCapturedNotification(packageName, postTimeMillis)
+        }
+        return succeeded
     }
 
     suspend fun importRecentSms(
@@ -986,6 +1076,12 @@ class FinanceRepository(
         body: String,
         receivedAtMillis: Long,
     ): SmsIngestionOutcome {
+        val earlyExclusion = exclusionPreferences.findMatchedKeyword(sender, body)
+        if (earlyExclusion != null) {
+            android.util.Log.i("FinanceRepository", "Ingestion skipped for sender '$sender': matched exclusion keyword '$earlyExclusion'")
+            return SmsIngestionOutcome.IGNORED
+        }
+
         val parsedMessage = parser.parseMessage(sender = sender, body = body)
         if (parsedMessage.shouldIgnore && !aiPreferences.isAiEnabled.value) {
             return SmsIngestionOutcome.IGNORED
@@ -1076,7 +1172,7 @@ class FinanceRepository(
                     if (result.availableBalance != null) {
                         availableBalance = result.availableBalance
                     }
-                    note = result.placeDetail
+                    note = result.detailedDescription?.takeIf { it.isNotBlank() } ?: result.placeDetail
                     confidence = result.confidence
                 }
             }
@@ -1086,13 +1182,26 @@ class FinanceRepository(
             return SmsIngestionOutcome.IGNORED
         }
 
+        val resolvedMerchant = merchant ?: fallbackMerchant(sender, direction)
+        val merchantExclusion = exclusionPreferences.findMatchedKeyword(resolvedMerchant)
+        if (merchantExclusion != null) {
+            android.util.Log.i("FinanceRepository", "Ingestion skipped: merchant '$resolvedMerchant' matched exclusion keyword '$merchantExclusion'")
+            return SmsIngestionOutcome.IGNORED
+        }
+
+        if (note.isNullOrBlank()) {
+            note = when (direction) {
+                TransactionDirection.CREDIT -> "Payment from $resolvedMerchant"
+                TransactionDirection.DEBIT -> "Payment to $resolvedMerchant"
+            }
+        }
+
         val fingerprint = hashFingerprint(sender, body, receivedAtMillis)
         if (transactionDao.fingerprintExists(fingerprint)) {
             return SmsIngestionOutcome.DUPLICATE
         }
 
         val resolvedOccurredAt = parsed?.occurredAtMillis ?: receivedAtMillis
-        val resolvedMerchant = merchant ?: fallbackMerchant(sender, direction)
 
         val existingSimilar = transactionDao.findSimilarTransaction(
             amount = amount,
