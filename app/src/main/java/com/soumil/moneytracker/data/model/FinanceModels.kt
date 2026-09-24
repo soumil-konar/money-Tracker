@@ -162,6 +162,9 @@ data class AccountDraft(
     val lastFourDigits: String? = null,
     val isRupayCreditCard: Boolean = false,
     val currentBalance: Double = 0.0,
+    val balanceProofSnippet: String? = null,
+    val balanceProofSource: String? = null,
+    val isBalanceVerified: Boolean = false,
 )
 
 data class SubscriptionDraft(

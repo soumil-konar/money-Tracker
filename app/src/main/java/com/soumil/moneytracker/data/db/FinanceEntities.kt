@@ -26,6 +26,9 @@ data class AccountEntity(
     val isSystemGenerated: Boolean = false,
     val currentBalance: Double = 0.0,
     val balanceUpdatedAtMillis: Long? = null,
+    val balanceProofSnippet: String? = null,
+    val balanceProofSource: String? = null,
+    val isBalanceVerified: Boolean = false,
 )
 
 @Entity(
