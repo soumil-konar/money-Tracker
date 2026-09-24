@@ -83,4 +83,25 @@ class AiDescriptionEnrichmentTest {
                 result.detailedDescription!!.contains("Infosys", ignoreCase = true),
         )
     }
+
+    @Test
+    fun `promotional marketing emails and discounts are strictly rejected as non-transactions`() {
+        // Marketing email with ICICI credit card
+        val promoEmail1 = "Up to ₹30,000 off on electronics with ICICI Bank Credit card. Save up to ₹30,000 using your card."
+        val result1 = engine.parseSmsOnDevice(promoEmail1, "ICICI Bank").getOrNull()
+        assertNotNull(result1)
+        org.junit.Assert.assertFalse("Promotional offer must NOT be treated as a transaction", result1!!.isTransaction)
+
+        // EMI marketing email
+        val promoEmail2 = "up to ₹30,000 on EMI purchases. Convert your purchases into easy EMIs today."
+        val result2 = engine.parseSmsOnDevice(promoEmail2, "ICICI Bank").getOrNull()
+        assertNotNull(result2)
+        org.junit.Assert.assertFalse("EMI promotion must NOT be treated as a transaction", result2!!.isTransaction)
+
+        // Informational mandate announcement
+        val noticeEmail = "Dear Investor, your mandate of ₹10 will be recorded by AMC on 25-Sep."
+        val result3 = engine.parseSmsOnDevice(noticeEmail, "HDFC Bank").getOrNull()
+        assertNotNull(result3)
+        org.junit.Assert.assertFalse("Mandate notice must NOT be treated as a transaction", result3!!.isTransaction)
+    }
 }

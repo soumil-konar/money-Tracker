@@ -70,4 +70,18 @@ class EmailSyncManagerTest {
         assertTrue("Blank email must fail immediately", resultBlankEmail.isFailure)
         assertTrue(resultBlankEmail.exceptionOrNull()?.message?.contains("address cannot be blank") == true)
     }
+
+    @Test
+    fun `isPromotionalOrNonTransactionSubject correctly identifies marketing blasts`() {
+        assertTrue(emailSyncManager.isPromotionalOrNonTransactionSubject("Up to ₹30,000 off on electronics with ICICI Bank Credit card"))
+        assertTrue(emailSyncManager.isPromotionalOrNonTransactionSubject("Save up to ₹30,000 on your next flight"))
+        assertTrue(emailSyncManager.isPromotionalOrNonTransactionSubject("up to ₹30,000 on EMI purchases"))
+        assertTrue(emailSyncManager.isPromotionalOrNonTransactionSubject("Pre-approved personal loan of ₹5,00,000 for you"))
+        assertTrue(emailSyncManager.isPromotionalOrNonTransactionSubject("Get 10% cashback using code DIWALI"))
+
+        // Real transaction subjects should NOT be marked promotional
+        org.junit.Assert.assertFalse(emailSyncManager.isPromotionalOrNonTransactionSubject("Transaction alert for your ICICI Bank Credit Card"))
+        org.junit.Assert.assertFalse(emailSyncManager.isPromotionalOrNonTransactionSubject("Alert: Update on your HDFC Bank account"))
+        org.junit.Assert.assertFalse(emailSyncManager.isPromotionalOrNonTransactionSubject("Payment of ₹4,864 successful on CRED"))
+    }
 }

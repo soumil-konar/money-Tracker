@@ -59,10 +59,32 @@ class OnDeviceAiEngine(
             return Result.failure(IllegalArgumentException("SMS body is blank"))
         }
 
-        // 1. Transaction check
+        // 1. Transaction & Security check
         val lower = smsBody.lowercase(Locale.getDefault())
         val isOtp = listOf("otp", "one time password", "verification code", "secret code", "do not share").any { it in lower }
         if (isOtp) {
+            return Result.success(createNonTransaction())
+        }
+
+        // Promotional marketing offers, discount banners, pre-approved loans, and EMI ads are NOT transactions
+        val isPromotionalOrMarketing = listOf(
+            "up to ₹", "upto ₹", "up to rs", "upto rs", "up to inr", "upto inr",
+            "save up to", "save upto", "off on", "discount on", "cashback up to",
+            "flat ₹", "flat rs", "flat inr", "flat discount",
+            "use code", "coupon code", "promo code", "voucher code",
+            "pre-approved", "pre approved", "instant loan", "personal loan of",
+            "credit limit enhanced", "credit limit increased", "upgrade your card", "apply now",
+            "congratulations", "special offer", "exclusive offer", "deal of the day", "festive offer",
+            "on emi purchases", "convert to emi", "no-cost emi",
+            "will be recorded by", "to be recorded by", "recorded by amc", "mandate registration",
+            "reward points", "earn points", "win cash", "lottery",
+        ).any { it in lower }
+
+        val hasStrongPastTenseDebitConfirmation = listOf(
+            "has been debited", "is debited", "was debited", "debited with", "debited by", "debited for", "a/c debited", "account debited",
+        ).any { it in lower }
+
+        if (isPromotionalOrMarketing && !hasStrongPastTenseDebitConfirmation) {
             return Result.success(createNonTransaction())
         }
 
@@ -108,18 +130,72 @@ class OnDeviceAiEngine(
             "via billdesk",
             "through billdesk",
         ).any { it in lower }
-        val isDebit = listOf("debited", "spent", "paid", "withdrawn", "sent", "deducted", "purchase").any { it in lower } || isCreditCardPayment
-        val isCredit = listOf("credited", "received", "refund", "deposited").any { it in lower } && !isCreditCardPayment
+        val isDebit = listOf(
+            "debited",
+            "spent",
+            "paid to",
+            "paid rs",
+            "paid inr",
+            "paid ₹",
+            "withdrawn",
+            "sent rs",
+            "sent inr",
+            "sent ₹",
+            "deducted",
+            "purchase of",
+            "purchase at",
+            "card purchase of",
+            "card purchase at",
+            "txn of rs",
+            "txn of inr",
+            "txn of ₹",
+            "transaction of rs",
+            "transaction of inr",
+            "transaction of ₹",
+        ).any { it in lower } || isCreditCardPayment
+        val isCredit = listOf(
+            "credited",
+            "received from",
+            "received rs",
+            "received inr",
+            "received ₹",
+            "refund of",
+            "refund received",
+            "deposited",
+            "salary credited",
+        ).any { it in lower } && !isCreditCardPayment
+
+        if (!isDebit && !isCredit) {
+            return Result.success(createNonTransaction())
+        }
 
         val direction = when {
             isCreditCardPayment -> TransactionDirection.DEBIT
             isDebit -> TransactionDirection.DEBIT
             isCredit -> TransactionDirection.CREDIT
-            else -> TransactionDirection.DEBIT
+            else -> return Result.success(createNonTransaction())
         }
 
-        // 4. Merchant & Beneficiary
-        val merchant = extractMerchant(smsBody, lower)
+        // 4. Institution & Merchant
+        val institution = extractInstitution(sender, smsBody)
+        val extracted = extractMerchant(smsBody, lower)
+        val merchant = when {
+            isCreditCardPayment -> if (institution.isNotBlank()) "$institution Credit Card" else "Credit Card Bill"
+            "salary" in lower && extracted == "Merchant" -> "Salary"
+            "refund" in lower && extracted == "Merchant" -> "Refund"
+            else -> extracted
+        }
+
+        val hasStrongPastTenseConfirmation = listOf(
+            "has been debited", "is debited", "was debited", "debited with", "debited by", "debited for", "a/c debited", "account debited",
+            "credited", "has been credited", "is credited", "was credited", "deposited", "refund received",
+        ).any { it in lower } || isCreditCardPayment
+
+        val isBogusMerchant = (merchant == "Merchant" || isGarbageMerchantName(merchant)) && !isCreditCardPayment
+
+        if (isBogusMerchant && !hasStrongPastTenseConfirmation) {
+            return Result.success(createNonTransaction())
+        }
 
         // 5. Place and location detail extraction
         val placeDetail = extractPlaceDetail(smsBody, lower, merchant)
@@ -129,10 +205,7 @@ class OnDeviceAiEngine(
         val category = if (isCreditCardPayment || isSelfTransfer) TransactionCategory.TRANSFER else inferCategory(merchant, lower, placeDetail)
         val countsTowardBudget = !isCreditCardPayment && !isSelfTransfer && category != TransactionCategory.TRANSFER
 
-        // 7. Institution
-        val institution = extractInstitution(sender, smsBody)
-
-        // 8. Account Last 4
+        // 7. Account Last 4
         val last4Regex = Regex("""(?:a/c|acct|card|ending|xx)\s*[:#\s]*([0-9]{4})""", RegexOption.IGNORE_CASE)
         val last4 = last4Regex.find(smsBody)?.groupValues?.get(1)
 
@@ -421,11 +494,36 @@ class OnDeviceAiEngine(
         return Result.success(normalized)
     }
 
+    private fun isGarbageMerchantName(name: String): Boolean {
+        val lower = name.lowercase(Locale.getDefault())
+        val garbagePhrases = listOf(
+            "be recorded",
+            "recorded by",
+            "by amc",
+            "amc",
+            "purchases",
+            "electronics",
+            "discount",
+            "discounts",
+            "offer",
+            "offers",
+            "merchant",
+            "your account",
+            "your card",
+            "credit card",
+            "debit card",
+            "bank account",
+            "savings account",
+        )
+        return garbagePhrases.any { lower.contains(it) }
+    }
+
     private fun extractMerchant(body: String, lower: String): String {
         val patterns = listOf(
-            Regex("""(?:to|at|info/|towards)\s+([A-Z0-9\s]{3,24})(?:\s+on|\s+ref|\s+avl|\.|\z)""", RegexOption.IGNORE_CASE),
+            Regex("""(?:paid to|via upi to)\s+([A-Z0-9\s]{3,24})(?:\s+on|\s+ref|\s+avl|\.|\z)""", RegexOption.IGNORE_CASE),
             Regex("""vpa\s+([a-zA-Z0-9_.-]+@[a-zA-Z0-9]+)""", RegexOption.IGNORE_CASE),
-            Regex("""(?:via upi to|paid to)\s+([A-Z0-9\s]{3,20})""", RegexOption.IGNORE_CASE),
+            Regex("""(?:at|towards)\s+([A-Z0-9\s]{3,24})(?:\s+on|\s+ref|\s+avl|\.|\z)""", RegexOption.IGNORE_CASE),
+            Regex("""(?:to)\s+([A-Z0-9\s]{3,24})(?:\s+on|\s+ref|\s+avl|\.|\z)""", RegexOption.IGNORE_CASE),
         )
 
         for (p in patterns) {
@@ -433,7 +531,7 @@ class OnDeviceAiEngine(
             if (match != null) {
                 val candidate = match.groupValues[1].trim()
                 val cleaned = cleanMerchantName(candidate)
-                if (cleaned.isNotBlank() && cleaned.length >= 2) return cleaned
+                if (cleaned.isNotBlank() && cleaned.length >= 2 && !isGarbageMerchantName(cleaned)) return cleaned
             }
         }
 

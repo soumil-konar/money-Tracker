@@ -36,6 +36,8 @@ import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.Vibration
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -56,6 +58,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.soumil.moneytracker.data.local.AiEngineMode
 import com.soumil.moneytracker.data.local.AiPreferences
@@ -129,6 +132,7 @@ fun SettingsScreen(
     var keyInput by rememberSaveable(aiApiKey) { mutableStateOf(aiApiKey) }
     var emailInput by rememberSaveable(emailAddress) { mutableStateOf(emailAddress) }
     var passwordInput by rememberSaveable(emailAppPassword) { mutableStateOf(emailAppPassword) }
+    var isPasswordVisible by rememberSaveable { mutableStateOf(false) }
     var showAddKeywordDialog by rememberSaveable { mutableStateOf(false) }
 
     if (showAddKeywordDialog) {
@@ -759,9 +763,22 @@ fun SettingsScreen(
                                 onValueChange = { passwordInput = it },
                                 label = { Text("Gmail Password / App Password") },
                                 placeholder = { Text("Enter your password") },
-                                visualTransformation = PasswordVisualTransformation(),
+                                visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                                 leadingIcon = {
                                     Icon(Icons.Outlined.Lock, contentDescription = null)
+                                },
+                                trailingIcon = {
+                                    IconButton(
+                                        onClick = {
+                                            haptics.tick()
+                                            isPasswordVisible = !isPasswordVisible
+                                        },
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isPasswordVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                                            contentDescription = if (isPasswordVisible) "Hide password" else "Show password",
+                                        )
+                                    }
                                 },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth(),

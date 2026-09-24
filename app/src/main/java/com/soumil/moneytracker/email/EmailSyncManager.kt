@@ -248,6 +248,10 @@ class EmailSyncManager {
                     val cleanedBody = cleanEmailBody(rawBodyText)
                     val parsedDate = dateHeader?.let { parseEmailDate(it) } ?: System.currentTimeMillis()
 
+                    if (isPromotionalOrNonTransactionSubject(subjectHeader)) {
+                        continue
+                    }
+
                     if (cleanedBody.isNotBlank() || subjectHeader.isNotBlank()) {
                         messages.add(
                             EmailTransactionMessage(
@@ -301,6 +305,42 @@ class EmailSyncManager {
             }
         }
         return ""
+    }
+
+    fun isPromotionalOrNonTransactionSubject(subject: String): Boolean {
+        val lower = subject.lowercase()
+        val promotionalKeywords = listOf(
+            "off on",
+            "save up to",
+            "save upto",
+            "up to ₹",
+            "upto ₹",
+            "up to rs",
+            "upto rs",
+            "up to inr",
+            "upto inr",
+            "cashback",
+            "discount",
+            "reward points",
+            "pre-approved",
+            "pre approved",
+            "instant loan",
+            "personal loan",
+            "emi purchases",
+            "convert to emi",
+            "exclusive offer",
+            "special offer",
+            "festive offer",
+            "deal of the day",
+            "use code",
+            "coupon",
+            "apply now",
+            "upgrade your card",
+            "win exciting",
+            "lucky winner",
+            "refer and earn",
+        )
+        return promotionalKeywords.any { lower.contains(it) }
     }
 
     private fun isBankRelatedHeader(line: String): Boolean {

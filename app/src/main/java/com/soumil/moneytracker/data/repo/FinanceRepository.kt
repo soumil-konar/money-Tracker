@@ -1082,6 +1082,21 @@ class FinanceRepository(
             return SmsIngestionOutcome.IGNORED
         }
 
+        // Strict promotional marketing check
+        val isExplicitPromotional = listOf(
+            "off on", "save up to", "save upto", "up to ₹", "upto ₹", "cashback up to",
+            "pre-approved", "loan approved", "reward points", "deal of the day", "use code", "coupon",
+            "on emi purchases", "convert to emi",
+        ).any { body.contains(it, ignoreCase = true) }
+        val hasStrongDebitSignal = listOf(
+            "has been debited", "is debited", "was debited", "debited with", "debited by", "debited for", "a/c debited", "account debited",
+        ).any { body.contains(it, ignoreCase = true) }
+
+        if (isExplicitPromotional && !hasStrongDebitSignal) {
+            android.util.Log.i("FinanceRepository", "Ingestion skipped for sender '$sender': detected promotional marketing offer.")
+            return SmsIngestionOutcome.IGNORED
+        }
+
         val parsedMessage = parser.parseMessage(sender = sender, body = body)
         if (parsedMessage.shouldIgnore && !aiPreferences.isAiEnabled.value) {
             return SmsIngestionOutcome.IGNORED
@@ -1588,6 +1603,16 @@ class FinanceRepository(
         val seen = mutableListOf<TransactionEntity>()
 
         for (tx in all) {
+            val merchantLower = tx.merchant.trim().lowercase()
+            val isBogus = merchantLower.startsWith("be recorded") ||
+                merchantLower.contains("recorded by amc") ||
+                (merchantLower == "merchant" && tx.note?.contains("Card purchase at Merchant", ignoreCase = true) == true)
+
+            if (isBogus) {
+                duplicatesToDelete.add(tx.id)
+                continue
+            }
+
             val isDuplicate = seen.any { existing ->
                 existing.amount == tx.amount &&
                     existing.direction == tx.direction &&

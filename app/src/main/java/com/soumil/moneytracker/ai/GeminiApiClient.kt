@@ -330,14 +330,47 @@ class GeminiApiClient {
         apiKey: String,
         model: String,
     ): AiParsedTransaction {
-        val prompt = "Analyze this financial SMS alert from sender '$sender':\n\"$smsBody\""
+        val prompt = """
+            You are a strict, highly accurate financial intelligence classifier and parser for Indian banking alerts (SMS, push notifications, and emails).
+            Your goal is to parse REAL financial debit, credit, or bill payment transactions and STRICTLY REJECT promotional marketing, offers, discounts, loan sales, and non-transactional notices.
+
+            SENDER: "$sender"
+            MESSAGE:
+            "$smsBody"
+
+            --- CRITICAL CLASSIFICATION INSTRUCTIONS ---
+            1. isTransaction MUST BE TRUE ONLY IF this message confirms money was ACTUALLY debited, credited, or a bill paid.
+               Real transaction examples:
+               - "Your A/C 1234 is debited by Rs. 2,450 at Swiggy on 24-Sep-26" -> isTransaction = true
+               - "Paid ₹280 to Chai Point via UPI" -> isTransaction = true
+               - "A/C credited with INR 50,000 via NEFT" -> isTransaction = true
+               - "Payment of Rs 15,000 received towards your ICICI Credit card" -> isTransaction = true
+
+            2. isTransaction MUST BE FALSE for:
+               - MARKETING OFFERS & DISCOUNTS: e.g. "Up to ₹30,000 off on electronics with ICICI Bank Credit card", "Save up to ₹30,000", "Get flat ₹500 cashback", "10% off on your next purchase", "Use code DIWALI".
+               - LOANS & CREDIT OFFERS: e.g. "Pre-approved personal loan of ₹5,00,000", "Credit limit enhanced to ₹3,00,000", "Apply now for Lifetime Free card".
+               - EMI PROMOTIONS: e.g. "Up to ₹30,000 on EMI purchases", "Convert purchases to EMI".
+               - INFORMATIONAL / REGISTRATION NOTICES: e.g. "Mandate will be recorded by AMC", "Mutual fund application received", "Statement generated", "Total amount due".
+               - OTPs & SECURITY: e.g. "OTP for login is 123456", "Do not share OTP".
+               - PAYMENT REQUESTS: e.g. "XYZ has requested ₹500 from you".
+
+            3. If isTransaction is false:
+               - amount MUST be null
+               - direction MUST be null
+               - merchant MUST be null
+               - detailedDescription MUST be null
+
+            4. When isTransaction is true:
+               - merchant: Extract the clean business/merchant/person name (e.g. "Swiggy", "Zomato", "Amazon", "Starbucks", "Croma", "D-Mart"). NEVER output generic placeholders like "Merchant", "Bank", "Transaction", or sentence fragments like "be recorded by AMC".
+               - detailedDescription: Provide a clean, natural single-sentence description of the transaction (e.g., "Dinner order on Swiggy via HDFC Credit Card", "Chai & snacks at Chai Point via GPay UPI").
+        """.trimIndent()
 
         val schema = JSONObject().apply {
             put("type", "OBJECT")
             put("properties", JSONObject().apply {
                 put("isTransaction", JSONObject().apply {
                     put("type", "BOOLEAN")
-                    put("description", "True if this SMS represents an actual debit, credit, or bill payment transaction. False for OTPs, marketing, loans, or pending collect requests.")
+                    put("description", "True ONLY if this message confirms an actual past or present debit, credit, or bill payment. Strictly FALSE for promotional offers (e.g. 'Up to ₹30,000 off'), discount deals, EMI promotions, pre-approved loans, credit limit upgrades, AMC mandate notices, or OTPs.")
                 })
                 put("amount", JSONObject().apply {
                     put("type", "NUMBER")
@@ -349,7 +382,7 @@ class GeminiApiClient {
                 })
                 put("merchant", JSONObject().apply {
                     put("type", "STRING")
-                    put("description", "Clean merchant or beneficiary name (e.g. Swiggy, Starbucks, Amazon, or person name) without VPA handles, bank noise, or reference numbers.")
+                    put("description", "Clean merchant or beneficiary business name (e.g. Swiggy, Amazon, Uber, Croma, Starbucks) without VPA handles, bank noise, or generic terms like 'Merchant' or 'be recorded by AMC'.")
                 })
                 put("category", JSONObject().apply {
                     put("type", "STRING")
@@ -422,7 +455,7 @@ class GeminiApiClient {
         val jsonText = parts.getJSONObject(0).getString("text")
 
         val resultObj = JSONObject(jsonText)
-        val isTransaction = resultObj.optBoolean("isTransaction", false)
+        val rawIsTransaction = resultObj.optBoolean("isTransaction", false)
         val amount = resultObj.optDouble("amount").takeIf { !it.isNaN() && it > 0.0 }
         val directionStr = resultObj.optString("direction")
         val direction = when (directionStr.uppercase()) {
@@ -430,7 +463,13 @@ class GeminiApiClient {
             "DEBIT" -> TransactionDirection.DEBIT
             else -> null
         }
-        val merchant = resultObj.optString("merchant").takeIf { it.isNotBlank() }
+        val rawMerchant = resultObj.optString("merchant").takeIf { it.isNotBlank() }
+        val isBogusMerchant = rawMerchant == null || rawMerchant.equals("Merchant", ignoreCase = true) ||
+            rawMerchant.startsWith("be recorded", ignoreCase = true) || rawMerchant.contains("recorded by amc", ignoreCase = true)
+
+        val isTransaction = rawIsTransaction && amount != null && direction != null && !isBogusMerchant
+        val merchant = if (isTransaction) rawMerchant else null
+
         val categoryStr = resultObj.optString("category")
         val category = runCatching { TransactionCategory.valueOf(categoryStr) }
             .getOrDefault(TransactionCategory.OTHER)
