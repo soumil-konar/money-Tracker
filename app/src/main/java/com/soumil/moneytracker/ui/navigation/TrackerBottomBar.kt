@@ -150,16 +150,16 @@ fun TrackerBottomBar(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
         // 1. Ambient caustic light glow beneath liquid glass dock
         Box(
             modifier = Modifier
-                .width(if (isDark) 180.dp else 200.dp)
-                .height(if (isDark) 30.dp else 32.dp)
-                .offset(y = 8.dp)
-                .blur(28.dp)
+                .width(if (isDark) 220.dp else 240.dp)
+                .height(if (isDark) 36.dp else 38.dp)
+                .offset(y = 10.dp)
+                .blur(32.dp)
                 .background(
                     brush = Brush.radialGradient(
                         colors = if (isDark) {
@@ -182,8 +182,8 @@ fun TrackerBottomBar(
         // 2. Liquid Glass Dock Pill
         BoxWithConstraints(
             modifier = Modifier
-                .widthIn(max = 308.dp)
-                .fillMaxWidth(0.80f)
+                .widthIn(max = 370.dp)
+                .fillMaxWidth()
                 .shadow(
                     elevation = if (isDark) 16.dp else 12.dp,
                     shape = pillShape,
@@ -204,7 +204,7 @@ fun TrackerBottomBar(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(24.dp)
+                    .height(26.dp)
                     .align(Alignment.TopCenter)
                     .clip(pillShape)
                     .background(topGlossBrush),
@@ -266,7 +266,7 @@ fun TrackerBottomBar(
                 modifier = Modifier
                     .offset(x = tabWidth * animatedIndex)
                     .width(tabWidth)
-                    .height(48.dp)
+                    .height(52.dp)
                     .clip(indicatorShape)
                     .background(indicatorBgColor)
                     .background(indicatorGlossBrush)
@@ -350,7 +350,7 @@ private fun DockTabItem(
 
     Box(
         modifier = modifier
-            .height(48.dp)
+            .height(52.dp)
             .graphicsLayer {
                 scaleX = pressScale
                 scaleY = pressScale
@@ -374,7 +374,7 @@ private fun DockTabItem(
                 contentDescription = destination.label,
                 tint = contentColor,
                 modifier = Modifier
-                    .size(19.dp)
+                    .size(20.dp)
                     .graphicsLayer {
                         scaleX = iconScale
                         scaleY = iconScale
@@ -385,9 +385,9 @@ private fun DockTabItem(
                 text = destination.label,
                 color = contentColor,
                 style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 10.5.sp,
+                    fontSize = 11.sp,
                     fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                    letterSpacing = 0.sp,
+                    letterSpacing = 0.1.sp,
                 ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
