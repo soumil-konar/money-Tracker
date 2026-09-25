@@ -32,6 +32,8 @@ import com.soumil.moneytracker.data.model.TransactionStatus
 import com.soumil.moneytracker.data.model.TrendPoint
 import com.soumil.moneytracker.bank.BalanceProofVerifier
 import com.soumil.moneytracker.bank.BankDetector
+import com.soumil.moneytracker.backup.BackupManager
+import com.soumil.moneytracker.backup.BackupRestoreResult
 import com.soumil.moneytracker.parser.SmsParser
 import com.soumil.moneytracker.sms.SmsImportManager
 import java.security.MessageDigest
@@ -264,6 +266,31 @@ class FinanceRepository(
     suspend fun deleteAccount(accountId: Long) {
         accountDao.findById(accountId) ?: return
         accountDao.deleteById(accountId)
+    }
+
+    suspend fun exportEncryptedBackup(passphrase: String): ByteArray {
+        return BackupManager.createEncryptedBackup(
+            accountDao = accountDao,
+            transactionDao = transactionDao,
+            budgetDao = budgetDao,
+            subscriptionDao = subscriptionDao,
+            passphrase = passphrase,
+        )
+    }
+
+    suspend fun restoreEncryptedBackup(backupBytes: ByteArray, passphrase: String): BackupRestoreResult {
+        val result = BackupManager.restoreEncryptedBackup(
+            backupBytes = backupBytes,
+            passphrase = passphrase,
+            accountDao = accountDao,
+            transactionDao = transactionDao,
+            budgetDao = budgetDao,
+            subscriptionDao = subscriptionDao,
+        )
+        if (result is BackupRestoreResult.Success) {
+            reconcileAccountsAndBalances()
+        }
+        return result
     }
 
     suspend fun setMonthlyBudget(amount: Double) {

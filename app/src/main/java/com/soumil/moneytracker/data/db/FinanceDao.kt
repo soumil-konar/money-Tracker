@@ -215,6 +215,9 @@ interface BudgetDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(budget: BudgetEntity)
+
+    @Query("SELECT * FROM budgets")
+    suspend fun getAll(): List<BudgetEntity>
 }
 
 @Dao
@@ -264,4 +267,7 @@ interface ScheduledTransactionDao {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(transaction: ScheduledTransactionEntity): Long
+
+    @Query("SELECT * FROM scheduled_transactions")
+    suspend fun getAll(): List<ScheduledTransactionEntity>
 }

@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import com.soumil.moneytracker.ui.asFullDate
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -72,7 +73,9 @@ import com.soumil.moneytracker.ui.components.BalanceProofDialog
 import com.soumil.moneytracker.ui.components.BudgetDialog
 import com.soumil.moneytracker.ui.components.DeleteAccountDialog
 import com.soumil.moneytracker.ui.components.DeleteTransactionDialog
+import com.soumil.moneytracker.ui.components.ExportBackupPassphraseDialog
 import com.soumil.moneytracker.ui.components.InitialSetupDialog
+import com.soumil.moneytracker.ui.components.RestoreBackupPassphraseDialog
 import com.soumil.moneytracker.ui.components.TrueUpBalanceDialog
 import com.soumil.moneytracker.ui.screen.BudgetHistoryScreen
 import com.soumil.moneytracker.ui.screen.HomeScreen
@@ -150,7 +153,29 @@ fun MoneyTrackerRoot(
     var accountDialogKey by remember { mutableStateOf(0) }
     var viewingBalanceProofAccount by remember { mutableStateOf<AccountEntity?>(null) }
     var viewingTrueUpAccount by remember { mutableStateOf<AccountEntity?>(null) }
+    var showExportPassphraseDialog by remember { mutableStateOf(false) }
+    var pendingExportPassphrase by remember { mutableStateOf<String?>(null) }
+    var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
     var smsPermissionGranted by remember { mutableStateOf(context.hasSmsPermissions()) }
+
+    val createBackupLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/octet-stream"),
+    ) { uri ->
+        uri?.let { destination ->
+            pendingExportPassphrase?.let { pass ->
+                viewModel.exportBackup(context, destination, pass)
+                pendingExportPassphrase = null
+            }
+        }
+    }
+
+    val openBackupLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            pendingRestoreUri = uri
+        }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -363,6 +388,8 @@ fun MoneyTrackerRoot(
                     themeAccent = themeAccent,
                     onSelectThemeMode = viewModel::setThemeMode,
                     onSelectThemeAccent = viewModel::setThemeAccent,
+                    onRequestExportBackup = { showExportPassphraseDialog = true },
+                    onRequestRestoreBackup = { openBackupLauncher.launch(arrayOf("*/*")) },
                 )
             }
         }
@@ -571,6 +598,27 @@ fun MoneyTrackerRoot(
             onDismiss = { viewingTrueUpAccount = null },
             onConfirm = { newBalance, reason ->
                 viewModel.trueUpAccountBalance(account.id, newBalance, reason)
+            },
+        )
+    }
+
+    if (showExportPassphraseDialog) {
+        ExportBackupPassphraseDialog(
+            onDismiss = { showExportPassphraseDialog = false },
+            onConfirm = { pass ->
+                showExportPassphraseDialog = false
+                pendingExportPassphrase = pass
+                createBackupLauncher.launch("money_tracker_backup_${System.currentTimeMillis() / 1000L}.mtbackup")
+            },
+        )
+    }
+
+    pendingRestoreUri?.let { uri ->
+        RestoreBackupPassphraseDialog(
+            onDismiss = { pendingRestoreUri = null },
+            onConfirm = { pass ->
+                pendingRestoreUri = null
+                viewModel.restoreBackup(context, uri, pass)
             },
         )
     }

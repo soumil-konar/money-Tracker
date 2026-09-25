@@ -18,6 +18,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
@@ -1701,6 +1707,212 @@ fun TrueUpBalanceDialog(
                 modifier = Modifier.weight(1.3f),
             ) {
                 Text("Confirm True-Up")
+            }
+        }
+    }
+}
+
+@Composable
+fun ExportBackupPassphraseDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (passphrase: String) -> Unit,
+) {
+    val haptics = LocalAppHaptics.current
+    var passphrase by rememberSaveable { mutableStateOf("") }
+    var confirmPassphrase by rememberSaveable { mutableStateOf("") }
+    var isPassphraseVisible by rememberSaveable { mutableStateOf(false) }
+
+    val isLengthValid = passphrase.length >= 6
+    val isMatch = passphrase == confirmPassphrase
+    val canExport = isLengthValid && isMatch
+
+    TrackerDialogScaffold(
+        eyebrow = "Security & Encryption",
+        title = "Export Encrypted Backup",
+        subtitle = "Create a password-protected AES-256-GCM encrypted snapshot of your financial ledger.",
+        onDismiss = onDismiss,
+    ) {
+        OutlinedTextField(
+            value = passphrase,
+            onValueChange = { passphrase = it },
+            label = { Text("Backup Passphrase (min 6 characters)") },
+            placeholder = { Text("Enter a secure passphrase") },
+            visualTransformation = if (isPassphraseVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            leadingIcon = {
+                Icon(Icons.Outlined.Lock, contentDescription = null)
+            },
+            trailingIcon = {
+                IconButton(onClick = { isPassphraseVisible = !isPassphraseVisible }) {
+                    Icon(
+                        imageVector = if (isPassphraseVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                        contentDescription = null,
+                    )
+                }
+            },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        OutlinedTextField(
+            value = confirmPassphrase,
+            onValueChange = { confirmPassphrase = it },
+            label = { Text("Confirm Passphrase") },
+            placeholder = { Text("Re-enter passphrase") },
+            visualTransformation = if (isPassphraseVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            leadingIcon = {
+                Icon(Icons.Outlined.Lock, contentDescription = null)
+            },
+            isError = confirmPassphrase.isNotEmpty() && !isMatch,
+            supportingText = {
+                if (confirmPassphrase.isNotEmpty() && !isMatch) {
+                    Text("Passphrases do not match", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Lock,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.tertiary,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    text = "Your data is encrypted locally using AES-256-GCM with PBKDF2 key derivation. Without this passphrase, the backup file cannot be decrypted by anyone.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            OutlinedButton(
+                onClick = {
+                    haptics.click()
+                    onDismiss()
+                },
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Cancel")
+            }
+            Button(
+                onClick = {
+                    if (canExport) {
+                        haptics.success()
+                        onConfirm(passphrase)
+                        onDismiss()
+                    }
+                },
+                enabled = canExport,
+                modifier = Modifier.weight(1.3f),
+            ) {
+                Text("Export Backup")
+            }
+        }
+    }
+}
+
+@Composable
+fun RestoreBackupPassphraseDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (passphrase: String) -> Unit,
+) {
+    val haptics = LocalAppHaptics.current
+    var passphrase by rememberSaveable { mutableStateOf("") }
+    var isPassphraseVisible by rememberSaveable { mutableStateOf(false) }
+
+    TrackerDialogScaffold(
+        eyebrow = "Encrypted Restore",
+        title = "Decrypt & Restore",
+        subtitle = "Enter the passphrase used when creating this backup file.",
+        onDismiss = onDismiss,
+    ) {
+        OutlinedTextField(
+            value = passphrase,
+            onValueChange = { passphrase = it },
+            label = { Text("Backup Passphrase") },
+            placeholder = { Text("Enter decryption passphrase") },
+            visualTransformation = if (isPassphraseVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            leadingIcon = {
+                Icon(Icons.Outlined.Lock, contentDescription = null)
+            },
+            trailingIcon = {
+                IconButton(onClick = { isPassphraseVisible = !isPassphraseVisible }) {
+                    Icon(
+                        imageVector = if (isPassphraseVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                        contentDescription = null,
+                    )
+                }
+            },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Info,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    text = "Restoring imports accounts, transactions, and budgets while preserving existing unique records. Ledger balances are automatically audited upon completion.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            OutlinedButton(
+                onClick = {
+                    haptics.click()
+                    onDismiss()
+                },
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Cancel")
+            }
+            Button(
+                onClick = {
+                    if (passphrase.isNotBlank()) {
+                        haptics.success()
+                        onConfirm(passphrase)
+                        onDismiss()
+                    }
+                },
+                enabled = passphrase.isNotBlank(),
+                modifier = Modifier.weight(1.3f),
+            ) {
+                Text("Decrypt & Restore")
             }
         }
     }

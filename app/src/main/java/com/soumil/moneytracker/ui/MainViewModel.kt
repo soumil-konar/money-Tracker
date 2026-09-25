@@ -2,6 +2,8 @@ package com.soumil.moneytracker.ui
 
 import android.content.ContentResolver
 import android.content.Context
+import android.net.Uri
+import com.soumil.moneytracker.backup.BackupRestoreResult
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -445,6 +447,44 @@ class MainViewModel(
                 emitMessage("Account balance adjusted and reconciled.")
             }.onFailure {
                 emitMessage("Could not adjust account balance.")
+            }
+        }
+    }
+
+    fun exportBackup(context: Context, destinationUri: Uri, passphrase: String) {
+        viewModelScope.launch {
+            runCatching {
+                val backupBytes = repository.exportEncryptedBackup(passphrase)
+                context.contentResolver.openOutputStream(destinationUri)?.use { stream ->
+                    stream.write(backupBytes)
+                    stream.flush()
+                } ?: error("Unable to open output stream.")
+            }.onSuccess {
+                emitMessage("Encrypted backup exported successfully.")
+            }.onFailure { e ->
+                emitMessage("Export failed: ${e.message ?: "Unknown error"}")
+            }
+        }
+    }
+
+    fun restoreBackup(context: Context, sourceUri: Uri, passphrase: String) {
+        viewModelScope.launch {
+            runCatching {
+                val bytes = context.contentResolver.openInputStream(sourceUri)?.use { stream ->
+                    stream.readBytes()
+                } ?: error("Unable to open backup file.")
+                repository.restoreEncryptedBackup(bytes, passphrase)
+            }.onSuccess { result ->
+                when (result) {
+                    is BackupRestoreResult.Success -> {
+                        emitMessage("Restored ${result.accountsCount} accounts and ${result.transactionsCount} transactions.")
+                    }
+                    is BackupRestoreResult.Error -> {
+                        emitMessage(result.message)
+                    }
+                }
+            }.onFailure { e ->
+                emitMessage("Restore failed: ${e.message ?: "Decryption error"}")
             }
         }
     }
