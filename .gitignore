@@ -13,3 +13,6 @@ app/build/
 key.txt
 *.key
 secrets.properties
+*.apk
+*.aab
+*.mtbackup
