@@ -79,7 +79,13 @@ class MainActivity : FragmentActivity() {
                 }
             }
 
-            MoneyTrackerTheme {
+            val themeMode by container.themePreferences.themeMode.collectAsStateWithLifecycle()
+            val themeAccent by container.themePreferences.themeAccent.collectAsStateWithLifecycle()
+
+            MoneyTrackerTheme(
+                themeMode = themeMode,
+                themeAccent = themeAccent,
+            ) {
                 CompositionLocalProvider(LocalAppHaptics provides container.hapticManager) {
                     if (isAppLocked) {
                         AppLockScreen(onUnlockClick = { triggerUnlock() })

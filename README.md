@@ -118,8 +118,16 @@ An enterprise-grade, privacy-first automated personal finance management platfor
 - **Device-Calibrated Actuator Feedback:** Custom vibration effects scaled to your device's linear resonant actuator (`HapticFeedbackManager`).
 - **Configurable Intensities:** Choose between `SUBTLE`, `BALANCED`, and `STRONG` vibration profiles, with tactile clicks on buttons, tabs, ledger approvals, and dialog actions.
 
-### 10. Modern Fintech UI & Adaptive App Icon
-- **Expressive Fintech Theme:** Dark obsidian surface (`#0C0C12`) with glowing Ember Flame (`#FF5E2B`), Emerald Mint (`#10B981`), Electric Blue (`#38BDF8`), and Champagne Gold accents.
+### 10. Material 3 Expressive Theming & Curated Accent System
+- **Full Material 3 Expressive Implementation:** Native dynamic theming with high-chroma tonal scales, springy shape curvature, vibrant container surfaces, and tailored tokens in both **Light** and **Dark** modes.
+- **Theme Mode Selector:** Seamless runtime toggle between `System Default`, `Dark Mode`, and `Light Mode`.
+- **Prebuilt Accent Section:** Instant selection between 5 handcrafted bespoke accent palettes:
+  - **Black & White (Monochrome):** Minimalist grayscale, deep onyx, and stark zinc white styling.
+  - **Crimson:** Bold ruby crimson and rosewood tones.
+  - **Ocean:** Deep sapphire azure and marine cyan accents.
+  - **Sage:** Calming organic eucalyptus and botanical moss.
+  - **Amber:** Warm honey gold and radiant sunset topaz.
+- **Expressive Override Guard:** Selecting any prebuilt accent palette automatically switches off Material 3 Expressive and activates clean tailored color tokens and standard geometry.
 - **Password Visibility Toggle:** Show / hide password eye icon button in Gmail connectivity settings for seamless credential verification.
 - **Adaptive Launcher Icon:** 3D metallic Rupee symbol (**₹**) with financial growth arc and ambient glow across all mipmap densities (`mdpi` through `xxxhdpi`), with circular launcher masks and Android 13+ Material You themed monochrome icon support.
 

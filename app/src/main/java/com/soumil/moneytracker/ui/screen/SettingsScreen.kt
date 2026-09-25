@@ -16,6 +16,21 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.outlined.BrightnessAuto
+import androidx.compose.material.icons.outlined.DarkMode
+import androidx.compose.material.icons.outlined.LightMode
+import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import com.soumil.moneytracker.data.local.ThemeAccent
+import com.soumil.moneytracker.data.local.ThemeMode
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -126,6 +141,10 @@ fun SettingsScreen(
     onUpdateEmailCredentials: (String, String) -> Unit = { _, _ -> },
     onClearEmailCredentials: () -> Unit = {},
     onSyncRecentEmails: () -> Unit = {},
+    themeMode: ThemeMode = ThemeMode.SYSTEM,
+    themeAccent: ThemeAccent = ThemeAccent.EXPRESSIVE,
+    onSelectThemeMode: (ThemeMode) -> Unit = {},
+    onSelectThemeAccent: (ThemeAccent) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val haptics = LocalAppHaptics.current
@@ -168,10 +187,240 @@ fun SettingsScreen(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "AI intelligence, permissions, privacy, and models",
+                        text = "AI intelligence, theme styling, permissions, and security",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                }
+            }
+        }
+
+        item {
+            MotionReveal(index = 1) {
+                SectionCard(
+                    title = "App Appearance & Accents",
+                    subtitle = "Material 3 Expressive theming & prebuilt curated color accents",
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        // 1. Theme Mode (System, Dark, Light)
+                        Text(
+                            text = "Theme Mode",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            ThemeMode.entries.forEach { mode ->
+                                val isSelected = themeMode == mode
+                                val icon = when (mode) {
+                                    ThemeMode.SYSTEM -> Icons.Outlined.BrightnessAuto
+                                    ThemeMode.DARK -> Icons.Outlined.DarkMode
+                                    ThemeMode.LIGHT -> Icons.Outlined.LightMode
+                                }
+                                Surface(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable {
+                                            haptics.click()
+                                            onSelectThemeMode(mode)
+                                        },
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    border = BorderStroke(
+                                        width = if (isSelected) 1.5.dp else 1.dp,
+                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                                    ),
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(vertical = 12.dp, horizontal = 6.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                                    ) {
+                                        Icon(
+                                            imageVector = icon,
+                                            contentDescription = mode.label,
+                                            modifier = Modifier.size(20.dp),
+                                            tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                        Text(
+                                            text = when (mode) {
+                                                ThemeMode.SYSTEM -> "System"
+                                                ThemeMode.DARK -> "Dark"
+                                                ThemeMode.LIGHT -> "Light"
+                                            },
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // 2. Material 3 Expressive Status Banner
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (themeAccent.isExpressive) {
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            },
+                            border = BorderStroke(
+                                1.dp,
+                                if (themeAccent.isExpressive) MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+                                else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                            ),
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = if (themeAccent.isExpressive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f),
+                                    modifier = Modifier.size(36.dp),
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = if (themeAccent.isExpressive) Icons.Outlined.AutoAwesome else Icons.Outlined.Palette,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(20.dp),
+                                            tint = if (themeAccent.isExpressive) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        Text(
+                                            text = if (themeAccent.isExpressive) "Material 3 Expressive Active" else "Curated Accent Active",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                        )
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = if (themeAccent.isExpressive) Color(0xFF10B981).copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant,
+                                        ) {
+                                            Text(
+                                                text = if (themeAccent.isExpressive) "M3 Expressive" else "M3 Expressive Disabled",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = if (themeAccent.isExpressive) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = if (themeAccent.isExpressive) {
+                                            "Expressive springy shape scales, high-chroma tonal dynamics, and vibrant container surfaces enabled."
+                                        } else {
+                                            "Selecting prebuilt accents (${themeAccent.label}) disables Material 3 Expressive and activates tailored color tokens."
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+
+                        // 3. Accent Palette Selector Grid
+                        Text(
+                            text = "Color Accents & Theming",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            ThemeAccent.entries.chunked(2).forEach { rowAccents ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                ) {
+                                    rowAccents.forEach { accent ->
+                                        val isSelected = themeAccent == accent
+                                        val previewColors = getAccentPreviewColors(accent)
+
+                                        Surface(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable {
+                                                    haptics.click()
+                                                    onSelectThemeAccent(accent)
+                                                },
+                                            shape = RoundedCornerShape(16.dp),
+                                            color = if (isSelected) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f)
+                                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                                            border = BorderStroke(
+                                                width = if (isSelected) 2.dp else 1.dp,
+                                                color = if (isSelected) previewColors.first() else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                                            ),
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(12.dp),
+                                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                ) {
+                                                    Row(horizontalArrangement = Arrangement.spacedBy((-6).dp)) {
+                                                        previewColors.forEach { color ->
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .size(20.dp)
+                                                                    .clip(CircleShape)
+                                                                    .background(color)
+                                                                    .border(1.dp, MaterialTheme.colorScheme.surface, CircleShape),
+                                                            )
+                                                        }
+                                                    }
+
+                                                    if (isSelected) {
+                                                        Icon(
+                                                            imageVector = Icons.Outlined.CheckCircle,
+                                                            contentDescription = "Selected",
+                                                            modifier = Modifier.size(16.dp),
+                                                            tint = previewColors.first(),
+                                                        )
+                                                    }
+                                                }
+
+                                                Column {
+                                                    Text(
+                                                        text = accent.label,
+                                                        style = MaterialTheme.typography.titleSmall,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = MaterialTheme.colorScheme.onSurface,
+                                                    )
+                                                    Text(
+                                                        text = if (accent.isExpressive) "Expressive" else "Disables M3",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = if (accent.isExpressive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (rowAccents.size == 1) {
+                                        Spacer(modifier = Modifier.weight(1f))
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1118,3 +1367,15 @@ fun SettingsScreen(
         }
     }
 }
+
+private fun getAccentPreviewColors(accent: ThemeAccent): List<Color> {
+    return when (accent) {
+        ThemeAccent.EXPRESSIVE -> listOf(Color(0xFF8B5CF6), Color(0xFF38BDF8), Color(0xFF34D399))
+        ThemeAccent.MONOCHROME -> listOf(Color(0xFF18181B), Color(0xFF71717A), Color(0xFFFAFAFA))
+        ThemeAccent.CRIMSON -> listOf(Color(0xFFBE123C), Color(0xFFFB7185), Color(0xFFFFE4E6))
+        ThemeAccent.OCEAN -> listOf(Color(0xFF0284C7), Color(0xFF38BDF8), Color(0xFFE0F2FE))
+        ThemeAccent.SAGE -> listOf(Color(0xFF15803D), Color(0xFF86EFAC), Color(0xFFDCFCE7))
+        ThemeAccent.AMBER -> listOf(Color(0xFFD97706), Color(0xFFFBBF24), Color(0xFFFEF3C7))
+    }
+}
+

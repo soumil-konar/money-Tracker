@@ -247,6 +247,22 @@ class MainViewModel(
         repository.hapticPreferences.setHapticIntensity(intensity)
     }
 
+    val themeMode: StateFlow<com.soumil.moneytracker.data.local.ThemeMode> = repository.themePreferences.themeMode
+    val themeAccent: StateFlow<com.soumil.moneytracker.data.local.ThemeAccent> = repository.themePreferences.themeAccent
+
+    fun setThemeMode(mode: com.soumil.moneytracker.data.local.ThemeMode) {
+        repository.themePreferences.setThemeMode(mode)
+    }
+
+    fun setThemeAccent(accent: com.soumil.moneytracker.data.local.ThemeAccent) {
+        repository.themePreferences.setThemeAccent(accent)
+        if (accent.isExpressive) {
+            emitMessage("Material 3 Expressive theming activated.")
+        } else {
+            emitMessage("${accent.label} accent applied (Material 3 Expressive disabled).")
+        }
+    }
+
     val isBiometricEnabled: StateFlow<Boolean> = repository.securityPreferences.isBiometricEnabled
 
     fun setBiometricEnabled(enabled: Boolean) {

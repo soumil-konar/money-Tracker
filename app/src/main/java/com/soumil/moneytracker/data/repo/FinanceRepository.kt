@@ -59,6 +59,7 @@ import com.soumil.moneytracker.data.local.ExclusionPreferences
 import com.soumil.moneytracker.data.local.HapticPreferences
 import com.soumil.moneytracker.data.local.NotificationPreferences
 import com.soumil.moneytracker.data.local.SecurityPreferences
+import com.soumil.moneytracker.data.local.ThemePreferences
 import com.soumil.moneytracker.email.EmailSyncManager
 import com.soumil.moneytracker.data.model.AssistantMessage
 import com.soumil.moneytracker.data.model.AssistantSender
@@ -79,6 +80,7 @@ class FinanceRepository(
     val emailPreferences: EmailPreferences,
     val exclusionPreferences: ExclusionPreferences,
     val notificationPreferences: NotificationPreferences,
+    val themePreferences: ThemePreferences,
     val emailSyncManager: EmailSyncManager,
     val geminiApiClient: GeminiApiClient,
     val onDeviceAiEngine: OnDeviceAiEngine,

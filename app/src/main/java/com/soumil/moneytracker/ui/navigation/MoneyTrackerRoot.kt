@@ -127,6 +127,8 @@ fun MoneyTrackerRoot(
     val notificationCapturedCount by viewModel.notificationCapturedCount.collectAsStateWithLifecycle()
     val isExclusionFilterEnabled by viewModel.isExclusionFilterEnabled.collectAsStateWithLifecycle()
     val excludedKeywords by viewModel.excludedKeywords.collectAsStateWithLifecycle()
+    val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
+    val themeAccent by viewModel.themeAccent.collectAsStateWithLifecycle()
     var notificationPermissionGranted by remember { mutableStateOf(viewModel.isNotificationPermissionGranted(context)) }
 
     val haptics = LocalAppHaptics.current
@@ -355,6 +357,10 @@ fun MoneyTrackerRoot(
                     onTestEmailConnection = viewModel::testEmailConnection,
                     onClearEmailCredentials = viewModel::clearEmailCredentials,
                     onSyncRecentEmails = viewModel::syncRecentEmails,
+                    themeMode = themeMode,
+                    themeAccent = themeAccent,
+                    onSelectThemeMode = viewModel::setThemeMode,
+                    onSelectThemeAccent = viewModel::setThemeAccent,
                 )
             }
         }
