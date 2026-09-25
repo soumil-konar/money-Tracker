@@ -1,7 +1,7 @@
 package com.soumil.moneytracker.ui.components
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
@@ -22,7 +22,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -46,16 +47,20 @@ fun BudgetGauge(
     spent: Double,
     budget: Double?,
     modifier: Modifier = Modifier,
+    reloadKey: Int = 0,
 ) {
     val progress = when {
         budget == null || budget <= 0.0 -> 0f
         else -> (spent / budget).coerceIn(0.0, 1.2).toFloat()
     }
-    val animatedProgress by animateFloatAsState(
-        targetValue = progress,
-        animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing),
-        label = "budget_progress",
-    )
+    val animatedProgress = remember { Animatable(0f) }
+    LaunchedEffect(progress, reloadKey) {
+        animatedProgress.snapTo(0f)
+        animatedProgress.animateTo(
+            targetValue = progress,
+            animationSpec = tween(durationMillis = 850, easing = FastOutSlowInEasing),
+        )
+    }
 
     val trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
     val progressBrush = when {
@@ -92,11 +97,12 @@ fun BudgetGauge(
             )
 
             // Progress Arc
-            if (animatedProgress > 0f) {
+            val currentProgress = animatedProgress.value
+            if (currentProgress > 0f) {
                 drawArc(
                     brush = progressBrush,
                     startAngle = 180f,
-                    sweepAngle = (180f * animatedProgress.coerceAtMost(1f)),
+                    sweepAngle = (180f * currentProgress.coerceAtMost(1f)),
                     useCenter = false,
                     topLeft = Offset(arcRect.left, arcRect.top),
                     size = Size(arcRect.width, arcRect.height),
@@ -178,22 +184,35 @@ fun BudgetGauge(
 fun SpendingPieChart(
     slices: List<CategorySlice>,
     modifier: Modifier = Modifier,
+    reloadKey: Int = 0,
 ) {
     val surfaceColor = MaterialTheme.colorScheme.surface
-    val colors = listOf(
-        MaterialTheme.colorScheme.primary,
-        MaterialTheme.colorScheme.tertiary,
-        MaterialTheme.colorScheme.secondary,
-        Color(0xFF38BDF8),
-        Color(0xFFA78BFA),
-        Color(0xFFF472B6),
-    )
-    val total = slices.sumOf { it.amount }
-    val revealProgress = rememberRevealProgress(
-        targetValue = if (total > 0.0) 1f else 0f,
-        delayMillis = 110,
-        durationMillis = 900,
-    )
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val tertiaryColor = MaterialTheme.colorScheme.tertiary
+    val secondaryColor = MaterialTheme.colorScheme.secondary
+    val colors = remember(primaryColor, tertiaryColor, secondaryColor) {
+        listOf(
+            primaryColor,
+            tertiaryColor,
+            secondaryColor,
+            Color(0xFF38BDF8),
+            Color(0xFFA78BFA),
+            Color(0xFFF472B6),
+        )
+    }
+    val total = remember(slices) { slices.sumOf { it.amount } }
+    val animatedProgress = remember { Animatable(0f) }
+    LaunchedEffect(total, reloadKey) {
+        if (total > 0.0) {
+            animatedProgress.snapTo(0f)
+            animatedProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(durationMillis = 850, delayMillis = 40, easing = FastOutSlowInEasing),
+            )
+        } else {
+            animatedProgress.snapTo(0f)
+        }
+    }
 
     Canvas(
         modifier = modifier
@@ -201,11 +220,12 @@ fun SpendingPieChart(
             .height(190.dp),
     ) {
         if (total <= 0.0) return@Canvas
+        val progress = animatedProgress.value
         var startAngle = -90f
         val diameter = size.minDimension * 0.75f
         val topLeft = Offset((size.width - diameter) / 2, (size.height - diameter) / 2)
         slices.forEachIndexed { index, slice ->
-            val sweep = ((slice.amount / total) * 360f * revealProgress).toFloat()
+            val sweep = ((slice.amount / total) * 360f * progress).toFloat()
             drawArc(
                 color = colors[index % colors.size],
                 startAngle = startAngle,
@@ -228,20 +248,28 @@ fun SpendingPieChart(
 fun CashflowTrendChart(
     points: List<TrendPoint>,
     modifier: Modifier = Modifier,
+    reloadKey: Int = 0,
 ) {
     val outlineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
     val incomeColor = MaterialTheme.colorScheme.tertiary
     val expenseColor = MaterialTheme.colorScheme.primary
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
-    val maxValue = max(
-        points.maxOfOrNull { it.income } ?: 0.0,
-        points.maxOfOrNull { it.expense } ?: 0.0,
-    ).coerceAtLeast(1.0)
-    val revealProgress = rememberRevealProgress(
-        targetValue = 1f,
-        delayMillis = 90,
-        durationMillis = 950,
-    )
+    val maxValue = remember(points) {
+        max(
+            points.maxOfOrNull { it.income } ?: 0.0,
+            points.maxOfOrNull { it.expense } ?: 0.0,
+        ).coerceAtLeast(1.0)
+    }
+    val animatedProgress = remember { Animatable(0f) }
+    LaunchedEffect(points, reloadKey) {
+        if (points.isNotEmpty()) {
+            animatedProgress.snapTo(0f)
+            animatedProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(durationMillis = 850, delayMillis = 40, easing = FastOutSlowInEasing),
+            )
+        }
+    }
 
     Canvas(
         modifier = modifier
@@ -256,21 +284,16 @@ fun CashflowTrendChart(
         val chartWidth = size.width - leftPadding
         val chartHeight = size.height - topPadding - bottomPadding
         val stepX = if (points.size > 1) chartWidth / (points.size - 1) else chartWidth
+        val progress = animatedProgress.value
 
         fun valueToY(value: Double): Float {
-            val ratio = (value / maxValue).toFloat() * revealProgress
+            val ratio = (value / maxValue).toFloat() * progress
             return topPadding + chartHeight - (chartHeight * ratio)
         }
 
-        val incomeOffsets = points.mapIndexed { index, point ->
-            Offset(leftPadding + stepX * index, valueToY(point.income))
-        }
-        val expenseOffsets = points.mapIndexed { index, point ->
-            Offset(leftPadding + stepX * index, valueToY(point.expense))
-        }
-
-        repeat(4) { index ->
-            val y = topPadding + chartHeight / 3f * index
+        // Draw grid lines
+        for (i in 0..3) {
+            val y = topPadding + (chartHeight / 3f) * i
             drawLine(
                 color = outlineColor,
                 start = Offset(leftPadding, y),
@@ -279,30 +302,36 @@ fun CashflowTrendChart(
             )
         }
 
-        incomeOffsets.zipWithNext().forEach { (start, end) ->
+        // Direct index-based rendering without allocating intermediate lists or pairs
+        for (i in 0 until points.size - 1) {
+            val x1 = leftPadding + stepX * i
+            val x2 = leftPadding + stepX * (i + 1)
+
+            val yIncome1 = valueToY(points[i].income)
+            val yIncome2 = valueToY(points[i + 1].income)
             drawLine(
                 color = incomeColor,
-                start = start,
-                end = end,
+                start = Offset(x1, yIncome1),
+                end = Offset(x2, yIncome2),
                 strokeWidth = 5f,
                 cap = StrokeCap.Round,
             )
-        }
-        expenseOffsets.zipWithNext().forEach { (start, end) ->
+
+            val yExpense1 = valueToY(points[i].expense)
+            val yExpense2 = valueToY(points[i + 1].expense)
             drawLine(
                 color = expenseColor,
-                start = start,
-                end = end,
+                start = Offset(x1, yExpense1),
+                end = Offset(x2, yExpense2),
                 strokeWidth = 5f,
                 cap = StrokeCap.Round,
             )
         }
 
-        incomeOffsets.forEach {
-            drawCircle(incomeColor, radius = 6f, center = it)
-        }
-        expenseOffsets.forEach {
-            drawCircle(expenseColor, radius = 6f, center = it)
+        for (i in points.indices) {
+            val x = leftPadding + stepX * i
+            drawCircle(incomeColor, radius = 6f, center = Offset(x, valueToY(points[i].income)))
+            drawCircle(expenseColor, radius = 6f, center = Offset(x, valueToY(points[i].expense)))
         }
     }
 

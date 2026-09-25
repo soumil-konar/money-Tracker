@@ -62,6 +62,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.soumil.moneytracker.data.db.AccountEntity
@@ -91,7 +95,7 @@ fun TransactionsScreen(
     onApproveReview: (Long) -> Unit,
     onAnalyzeWithAi: ((Long) -> Unit)? = null,
     isAiAnalyzing: Boolean = false,
-    onEditTransaction: (TransactionRecord) -> Unit,
+    onEditTransaction: (TransactionRecord, Rect?) -> Unit,
     onDeleteTransaction: (TransactionRecord) -> Unit,
     onToggleBudgetInclusion: (TransactionRecord) -> Unit,
     onTransferToCashWallet: ((Long) -> Unit)? = null,
@@ -486,7 +490,7 @@ fun TransactionsScreen(
                                     }
                                     TransactionCardActions(
                                         transaction = transaction,
-                                        onEdit = { onEditTransaction(transaction) },
+                                        onEdit = { bounds -> onEditTransaction(transaction, bounds) },
                                         onDelete = { onDeleteTransaction(transaction) },
                                         onToggleBudgetInclusion = { onToggleBudgetInclusion(transaction) },
                                     )
@@ -498,7 +502,7 @@ fun TransactionsScreen(
                                 ) {
                                     TransactionCardActions(
                                         transaction = transaction,
-                                        onEdit = { onEditTransaction(transaction) },
+                                        onEdit = { bounds -> onEditTransaction(transaction, bounds) },
                                         onDelete = { onDeleteTransaction(transaction) },
                                         onToggleBudgetInclusion = { onToggleBudgetInclusion(transaction) },
                                     )
@@ -563,13 +567,14 @@ private fun List<TransactionRecord>.signedTotal(): Double = sumOf { record ->
 @Composable
 private fun TransactionCardActions(
     transaction: TransactionRecord,
-    onEdit: () -> Unit,
+    onEdit: (Rect?) -> Unit,
     onDelete: () -> Unit,
     onToggleBudgetInclusion: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val haptics = LocalAppHaptics.current
     val countsTowardBudget = transaction.countsTowardBudget
+    var editButtonCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -601,9 +606,13 @@ private fun TransactionCardActions(
             contentDescription = "Edit transaction",
             tint = MaterialTheme.colorScheme.onBackground,
             containerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.22f),
+            modifier = Modifier.onGloballyPositioned { coords ->
+                editButtonCoordinates = coords
+            },
             onClick = {
                 haptics.click()
-                onEdit()
+                val bounds = editButtonCoordinates?.takeIf { it.isAttached }?.boundsInRoot()
+                onEdit(bounds)
             },
         )
         TransactionActionButton(
@@ -626,11 +635,13 @@ private fun TransactionActionButton(
     tint: androidx.compose.ui.graphics.Color,
     containerColor: androidx.compose.ui.graphics.Color,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Surface(
         shape = CircleShape,
         color = containerColor,
         border = BorderStroke(1.dp, tint.copy(alpha = 0.16f)),
+        modifier = modifier,
     ) {
         Box(
             modifier = Modifier

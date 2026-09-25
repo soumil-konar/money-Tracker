@@ -149,6 +149,7 @@ fun ExpressiveHeroCard(
     onSetBudgetClick: () -> Unit,
     onBudgetClick: () -> Unit,
     modifier: Modifier = Modifier,
+    reloadKey: Int = 0,
 ) {
     Card(
         modifier = modifier
@@ -217,6 +218,7 @@ fun ExpressiveHeroCard(
             BudgetGauge(
                 spent = monthSpent,
                 budget = budget,
+                reloadKey = reloadKey,
             )
 
             if (budget != null && budget > 0.0) {

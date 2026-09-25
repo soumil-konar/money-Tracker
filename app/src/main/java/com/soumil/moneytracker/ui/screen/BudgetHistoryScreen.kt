@@ -31,11 +31,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.soumil.moneytracker.data.db.TransactionRecord
@@ -50,7 +55,7 @@ fun BudgetHistoryScreen(
     history: List<MonthBudgetSummary>,
     initiallyExpandedKey: String?,
     onBack: () -> Unit,
-    onEditTransaction: (TransactionRecord) -> Unit,
+    onEditTransaction: (TransactionRecord, Rect?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val haptics = LocalAppHaptics.current
@@ -146,7 +151,7 @@ private fun MonthBudgetCard(
     summary: MonthBudgetSummary,
     expanded: Boolean,
     onToggle: () -> Unit,
-    onEditTransaction: (TransactionRecord) -> Unit,
+    onEditTransaction: (TransactionRecord, Rect?) -> Unit,
 ) {
     val budget = summary.budgetLimit
     val spent = summary.spent
@@ -249,7 +254,7 @@ private fun MonthBudgetCard(
 private fun BudgetTransactionSection(
     label: String,
     transactions: List<TransactionRecord>,
-    onEditTransaction: (TransactionRecord) -> Unit,
+    onEditTransaction: (TransactionRecord, Rect?) -> Unit,
 ) {
     if (transactions.isEmpty()) return
     val haptics = LocalAppHaptics.current
@@ -270,13 +275,16 @@ private fun BudgetTransactionSection(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             transactions.forEach { transaction ->
+                var itemCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
                 TransactionItem(
                     transaction = transaction,
                     modifier = Modifier
                         .fillMaxWidth()
+                        .onGloballyPositioned { itemCoords = it }
                         .clickable {
                             haptics.click()
-                            onEditTransaction(transaction)
+                            val bounds = itemCoords?.takeIf { it.isAttached }?.boundsInRoot()
+                            onEditTransaction(transaction, bounds)
                         },
                 )
                 Box(
