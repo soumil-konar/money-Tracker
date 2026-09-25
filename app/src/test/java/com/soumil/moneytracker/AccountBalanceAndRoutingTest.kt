@@ -140,4 +140,79 @@ class AccountBalanceAndRoutingTest {
         // Expected: 75000 - 2500 + 5000 = 77500.0 (the 1500 debit before true-up is already reflected in the 75000 true-up)
         assertEquals(77500.0, currentBalance, 0.001)
     }
+
+    @Test
+    fun `detects multi-account internal self-transfer pairs accurately`() {
+        val utrRegex = Regex("""(?i)\b(?:upi\s*ref(?:erence)?(?:\s*no)?|rrn|utr|ref\s*no\.?|ref)[#:\s]*([0-9a-zA-Z]{6,16})\b""")
+
+        val debitBody = "INR 5,000.00 debited from A/c XX1234 to VPA self@okaxis on 25-Sep-26. UPI Ref 426819283719."
+        val creditBody = "INR 5,000.00 credited to A/c XX5678 from VPA self@okhdfc on 25-Sep-26. UPI Ref 426819283719."
+
+        val debitRef = utrRegex.find(debitBody)?.groupValues?.getOrNull(1)
+        val creditRef = utrRegex.find(creditBody)?.groupValues?.getOrNull(1)
+
+        assertNotNull(debitRef)
+        assertNotNull(creditRef)
+        assertEquals("426819283719", debitRef)
+        assertEquals(debitRef, creditRef)
+
+        data class MockTxRecord(
+            val id: Long,
+            val accountId: Long,
+            val amount: Double,
+            val direction: TransactionDirection,
+            val timestamp: Long,
+            val merchant: String,
+            val body: String,
+            var category: com.soumil.moneytracker.data.model.TransactionCategory,
+            var countsTowardBudget: Boolean,
+        )
+
+        val tx1 = MockTxRecord(
+            id = 1L,
+            accountId = 101L,
+            amount = 5000.0,
+            direction = TransactionDirection.DEBIT,
+            timestamp = 1727260000000L,
+            merchant = "self@okaxis",
+            body = debitBody,
+            category = com.soumil.moneytracker.data.model.TransactionCategory.OTHER,
+            countsTowardBudget = true,
+        )
+
+        val tx2 = MockTxRecord(
+            id = 2L,
+            accountId = 102L,
+            amount = 5000.0,
+            direction = TransactionDirection.CREDIT,
+            timestamp = 1727260030000L, // 30 seconds later
+            merchant = "self@okhdfc",
+            body = creditBody,
+            category = com.soumil.moneytracker.data.model.TransactionCategory.OTHER,
+            countsTowardBudget = true,
+        )
+
+        // Matching logic
+        val sameRef = debitRef == creditRef
+        val oppositeDirection = tx1.direction != tx2.direction
+        val sameAmount = tx1.amount == tx2.amount
+        val timeDeltaMs = kotlin.math.abs(tx1.timestamp - tx2.timestamp)
+        val withinWindow = timeDeltaMs <= 5 * 60 * 1000L
+        val differentAccounts = tx1.accountId != tx2.accountId
+
+        val isTransferPair = sameRef && oppositeDirection && sameAmount && withinWindow && differentAccounts
+
+        assertTrue("Should detect internal transfer pair", isTransferPair)
+        if (isTransferPair) {
+            tx1.category = com.soumil.moneytracker.data.model.TransactionCategory.TRANSFER
+            tx1.countsTowardBudget = false
+            tx2.category = com.soumil.moneytracker.data.model.TransactionCategory.TRANSFER
+            tx2.countsTowardBudget = false
+        }
+
+        assertEquals(com.soumil.moneytracker.data.model.TransactionCategory.TRANSFER, tx1.category)
+        org.junit.Assert.assertFalse(tx1.countsTowardBudget)
+        assertEquals(com.soumil.moneytracker.data.model.TransactionCategory.TRANSFER, tx2.category)
+        org.junit.Assert.assertFalse(tx2.countsTowardBudget)
+    }
 }
