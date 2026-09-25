@@ -123,7 +123,7 @@ class MainViewModel(
     val isInitialSetupComplete: StateFlow<Boolean> = repository.isInitialSetupComplete.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
-        initialValue = false,
+        initialValue = true,
     )
 
     val subscriptions: StateFlow<List<SubscriptionRecord>> = repository.subscriptions.stateIn(

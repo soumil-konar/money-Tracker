@@ -9,7 +9,7 @@ class SetupPreferences(
 ) {
     private val preferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private val _isInitialSetupComplete = MutableStateFlow(
-        preferences.getBoolean(KEY_INITIAL_SETUP_COMPLETE, false),
+        preferences.getBoolean(KEY_INITIAL_SETUP_COMPLETE, true),
     )
 
     val isInitialSetupComplete: StateFlow<Boolean> = _isInitialSetupComplete

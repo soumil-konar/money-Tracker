@@ -1,6 +1,8 @@
 package com.soumil.moneytracker.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -132,6 +134,7 @@ fun AddTransactionDialog(
     accounts: List<AccountEntity>,
     onDismiss: () -> Unit,
     onConfirm: (TransactionDraft) -> Unit,
+    modifier: Modifier = Modifier,
     title: String = "Add transaction",
     confirmLabel: String = "Save",
     initialDraft: TransactionDraft? = null,
@@ -188,13 +191,17 @@ fun AddTransactionDialog(
     }
 
     Surface(
-        modifier = Modifier
-            .fillMaxWidth(0.92f)
+        modifier = modifier
+            .fillMaxWidth()
             .widthIn(max = 440.dp)
-            .fillMaxHeight(0.82f)
-            .heightIn(max = 640.dp)
-            .imePadding(),
-        shape = RoundedCornerShape(32.dp),
+            .fillMaxHeight(0.85f)
+            .heightIn(max = 620.dp)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {},
+            ),
+        shape = RoundedCornerShape(28.dp),
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 10.dp,
         shadowElevation = 16.dp,

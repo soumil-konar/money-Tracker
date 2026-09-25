@@ -42,9 +42,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -93,7 +95,6 @@ import com.soumil.moneytracker.ui.components.BudgetDialog
 import com.soumil.moneytracker.ui.components.DeleteAccountDialog
 import com.soumil.moneytracker.ui.components.DeleteTransactionDialog
 import com.soumil.moneytracker.ui.components.ExportBackupPassphraseDialog
-import com.soumil.moneytracker.ui.components.InitialSetupDialog
 import com.soumil.moneytracker.ui.components.RestoreBackupPassphraseDialog
 import com.soumil.moneytracker.ui.components.TrueUpBalanceDialog
 import com.soumil.moneytracker.ui.screen.BudgetHistoryScreen
@@ -134,7 +135,6 @@ fun MoneyTrackerRoot(
     val scheduledTransactions by viewModel.scheduledTransactions.collectAsStateWithLifecycle()
     val activeSubscriptions by viewModel.activeSubscriptions.collectAsStateWithLifecycle()
     val suggestedSubscriptions by viewModel.suggestedSubscriptions.collectAsStateWithLifecycle()
-    val isInitialSetupComplete by viewModel.isInitialSetupComplete.collectAsStateWithLifecycle()
     val isHapticEnabled by viewModel.isHapticEnabled.collectAsStateWithLifecycle()
     val hapticIntensity by viewModel.hapticIntensity.collectAsStateWithLifecycle()
     val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsStateWithLifecycle()
@@ -178,7 +178,6 @@ fun MoneyTrackerRoot(
     var pendingDeleteTransaction by remember { mutableStateOf<TransactionRecord?>(null) }
     var pendingDeleteAccount by remember { mutableStateOf<AccountEntity?>(null) }
     var transactionDialogKey by remember { mutableStateOf(0) }
-    var dismissSetupForSession by remember { mutableStateOf(false) }
     var editingAccount by remember { mutableStateOf<AccountEntity?>(null) }
     var accountDialogDraft by remember { mutableStateOf<AccountDraft?>(null) }
     var accountDialogKey by remember { mutableStateOf(0) }
@@ -533,47 +532,66 @@ fun MoneyTrackerRoot(
             visible = isAddTransactionOpen,
             enter = fadeIn(animationSpec = tween(durationMillis = 280, easing = LinearOutSlowInEasing)) +
                     slideInVertically(
-                        initialOffsetY = { fullHeight -> (fullHeight * 0.45f).toInt() },
-                        animationSpec = spring(dampingRatio = 0.78f, stiffness = Spring.StiffnessMediumLow),
+                        initialOffsetY = { fullHeight -> (fullHeight * 0.35f).toInt() },
+                        animationSpec = spring(dampingRatio = 0.80f, stiffness = Spring.StiffnessMediumLow),
                     ) +
                     scaleIn(
-                        initialScale = 0.65f,
-                        transformOrigin = TransformOrigin(0.5f, 0.95f),
-                        animationSpec = spring(dampingRatio = 0.78f, stiffness = Spring.StiffnessMediumLow),
+                        initialScale = 0.82f,
+                        transformOrigin = TransformOrigin(0.5f, 0.85f),
+                        animationSpec = spring(dampingRatio = 0.80f, stiffness = Spring.StiffnessMediumLow),
                     ),
             exit = fadeOut(animationSpec = tween(durationMillis = 200, easing = FastOutLinearInEasing)) +
                    slideOutVertically(
-                       targetOffsetY = { fullHeight -> (fullHeight * 0.35f).toInt() },
+                       targetOffsetY = { fullHeight -> (fullHeight * 0.25f).toInt() },
                        animationSpec = spring(dampingRatio = 0.88f, stiffness = Spring.StiffnessMedium),
                    ) +
                    scaleOut(
-                       targetScale = 0.72f,
-                       transformOrigin = TransformOrigin(0.5f, 0.95f),
+                       targetScale = 0.88f,
+                       transformOrigin = TransformOrigin(0.5f, 0.85f),
                        animationSpec = spring(dampingRatio = 0.88f, stiffness = Spring.StiffnessMedium),
                    ),
-            modifier = Modifier.align(Alignment.Center),
+            modifier = Modifier.fillMaxSize(),
         ) {
-            val transactionToEdit = editingTransaction
-            AddTransactionDialog(
-                accounts = accounts,
-                onDismiss = {
-                    showAddTransactionDialog = false
-                    editingTransaction = null
-                },
-                onConfirm = {
-                    if (transactionToEdit == null) {
-                        viewModel.addTransaction(it)
-                    } else {
-                        viewModel.updateTransaction(transactionToEdit.id, it)
-                    }
-                    showAddTransactionDialog = false
-                    editingTransaction = null
-                },
-                title = if (transactionToEdit == null) "Add transaction" else "Edit transaction",
-                confirmLabel = if (transactionToEdit == null) "Save" else "Save changes",
-                initialDraft = transactionToEdit?.toDraft(),
-                dialogKey = transactionDialogKey,
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .imePadding()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {
+                            haptics.click()
+                            showAddTransactionDialog = false
+                            editingTransaction = null
+                        },
+                    )
+                    .padding(horizontal = 20.dp, vertical = 24.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                val transactionToEdit = editingTransaction
+                AddTransactionDialog(
+                    accounts = accounts,
+                    onDismiss = {
+                        showAddTransactionDialog = false
+                        editingTransaction = null
+                    },
+                    onConfirm = {
+                        if (transactionToEdit == null) {
+                            viewModel.addTransaction(it)
+                        } else {
+                            viewModel.updateTransaction(transactionToEdit.id, it)
+                        }
+                        showAddTransactionDialog = false
+                        editingTransaction = null
+                    },
+                    title = if (transactionToEdit == null) "Add transaction" else "Edit transaction",
+                    confirmLabel = if (transactionToEdit == null) "Save" else "Save changes",
+                    initialDraft = transactionToEdit?.toDraft(),
+                    dialogKey = transactionDialogKey,
+                )
+            }
         }
         }
     }
@@ -665,22 +683,7 @@ fun MoneyTrackerRoot(
         )
     }
 
-    val hasConfiguredBank = accounts.any { it.kind == AccountKind.BANK }
-    val shouldShowInitialSetup = !isInitialSetupComplete && !dismissSetupForSession && !hasConfiguredBank
 
-    if (shouldShowInitialSetup) {
-        InitialSetupDialog(
-            configuredBank = primaryBankAccount,
-            configuredCards = accounts.filter { it.kind == AccountKind.CARD },
-            onDismiss = {
-                dismissSetupForSession = true
-                viewModel.markInitialSetupComplete()
-            },
-            onSaveBank = viewModel::configurePrimaryBank,
-            onAddCard = viewModel::addAccount,
-            onFinish = viewModel::markInitialSetupComplete,
-        )
-    }
 
     viewingBalanceProofAccount?.let { account ->
         BalanceProofDialog(
