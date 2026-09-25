@@ -203,6 +203,21 @@ data class TransactionRecord(
     val availableBalance: Double? = null,
 )
 
+val TransactionRecord.isAtmWithdrawal: Boolean
+    get() = direction == TransactionDirection.DEBIT &&
+        (merchant.contains("ATM", ignoreCase = true) ||
+            note?.contains("ATM", ignoreCase = true) == true ||
+            smsBody?.let { com.soumil.moneytracker.parser.SmsParser.isAtmWithdrawal(it, merchant) } == true)
+
+val TransactionRecord.isTransferredToCash: Boolean
+    get() = category == TransactionCategory.TRANSFER &&
+        (note?.contains("Cash in Hand", ignoreCase = true) == true ||
+            merchant.contains("Cash in Hand", ignoreCase = true))
+
+val TransactionRecord.canTransferToCash: Boolean
+    get() = isAtmWithdrawal && !isTransferredToCash && category != TransactionCategory.TRANSFER
+
+
 data class ScheduledTransactionRecord(
     val id: Long,
     val merchant: String,

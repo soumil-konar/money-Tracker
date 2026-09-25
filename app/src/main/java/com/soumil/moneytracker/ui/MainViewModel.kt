@@ -23,19 +23,23 @@ import com.soumil.moneytracker.data.model.TransactionDirection
 import com.soumil.moneytracker.data.model.AssistantMessage
 import com.soumil.moneytracker.data.model.AssistantSender
 import com.soumil.moneytracker.data.local.AiEngineMode
+import com.soumil.moneytracker.data.local.BiometricLockTimeout
 import com.soumil.moneytracker.data.local.HapticIntensity
 import com.soumil.moneytracker.data.model.TransactionDraft
 import com.soumil.moneytracker.data.model.TransactionFilter
 import com.soumil.moneytracker.data.model.TransactionStatus
 import com.soumil.moneytracker.data.repo.FinanceRepository
+import com.soumil.moneytracker.data.db.canTransferToCash
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class MainViewModel(
@@ -266,13 +270,53 @@ class MainViewModel(
     }
 
     val isBiometricEnabled: StateFlow<Boolean> = repository.securityPreferences.isBiometricEnabled
+    val biometricTimeout: StateFlow<BiometricLockTimeout> = repository.securityPreferences.biometricTimeout
 
     fun setBiometricEnabled(enabled: Boolean) {
         repository.securityPreferences.setBiometricEnabled(enabled)
     }
 
+    fun setBiometricTimeout(timeout: BiometricLockTimeout) {
+        repository.securityPreferences.setBiometricTimeout(timeout)
+    }
+
     fun isBiometricHardwareAvailable(context: Context): Boolean {
         return repository.securityPreferences.isBiometricHardwareAvailable(context)
+    }
+
+    private val _dismissedAtmPromptIds = MutableStateFlow<Set<Long>>(emptySet())
+    val dismissedAtmPromptIds: StateFlow<Set<Long>> = _dismissedAtmPromptIds.asStateFlow()
+
+    val untransferredAtmTransactions: StateFlow<List<TransactionRecord>> = combine(
+        repository.transactions,
+        _dismissedAtmPromptIds,
+    ) { txList: List<TransactionRecord>, dismissedIds: Set<Long> ->
+        val oneWeekAgo = System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000
+        txList.filter { tx ->
+            tx.canTransferToCash &&
+                tx.id !in dismissedIds &&
+                tx.occurredAtMillis >= oneWeekAgo
+        }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList(),
+    )
+
+    fun dismissAtmPrompt(transactionId: Long) {
+        _dismissedAtmPromptIds.update { it + transactionId }
+    }
+
+    fun transferToCashWallet(transactionId: Long) {
+        viewModelScope.launch {
+            repository.transferToCashWallet(transactionId)
+                .onSuccess {
+                    emitMessage("Transferred to Cash in Hand wallet")
+                }
+                .onFailure {
+                    emitMessage("Failed to transfer: ${it.message ?: "Unknown error"}")
+                }
+        }
     }
 
     fun testAiConnection() {

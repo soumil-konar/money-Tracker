@@ -87,6 +87,7 @@ data class ParsedSmsTransaction(
     val aiEnriched: Boolean = false,
     val countsTowardBudget: Boolean = true,
     val availableBalance: Double? = null,
+    val isAtmWithdrawal: Boolean = false,
 )
 
 data class ParsedScheduledTransaction(

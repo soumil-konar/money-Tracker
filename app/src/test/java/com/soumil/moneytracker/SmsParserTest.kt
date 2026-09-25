@@ -291,5 +291,28 @@ class SmsParserTest {
         assertTrue(result.isCardBillPayment)
         assertFalse(result.countsTowardBudget)
     }
+
+    @Test
+    fun `detects atm cash withdrawal correctly`() {
+        val result1 = parser.parse(
+            sender = "SBINB",
+            body = "Rs.5,000 debited from A/c XX1234 on 05-05-2026 at SBI ATM. Avl bal Rs.20,000",
+        )
+
+        assertFalse(result1.shouldIgnore)
+        assertEquals(5000.0, result1.amount ?: 0.0, 0.0)
+        assertEquals(TransactionDirection.DEBIT, result1.direction)
+        assertTrue(result1.isAtmWithdrawal)
+        assertTrue(result1.merchant?.contains("ATM", ignoreCase = true) == true)
+
+        val result2 = parser.parse(
+            sender = "HDFCBK",
+            body = "Your a/c no. XX1234 is debited for Rs.2,000.00 on 24-09-26 by cash withdrawal at ATM. Bal: Rs 15000",
+        )
+        assertFalse(result2.shouldIgnore)
+        assertEquals(2000.0, result2.amount ?: 0.0, 0.0)
+        assertEquals(TransactionDirection.DEBIT, result2.direction)
+        assertTrue(result2.isAtmWithdrawal)
+    }
 }
 

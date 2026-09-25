@@ -5,6 +5,18 @@ import androidx.biometric.BiometricManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
+enum class BiometricLockTimeout(val label: String, val seconds: Long) {
+    IMMEDIATELY("Immediately", 0L),
+    ONE_MINUTE("1 minute", 60L),
+    FIVE_MINUTES("5 minutes", 300L);
+
+    companion object {
+        fun fromName(name: String?): BiometricLockTimeout {
+            return entries.firstOrNull { it.name.equals(name, ignoreCase = true) } ?: IMMEDIATELY
+        }
+    }
+}
+
 class SecurityPreferences(
     context: Context,
 ) {
@@ -20,6 +32,16 @@ class SecurityPreferences(
         _isBiometricEnabled.value = enabled
     }
 
+    private val _biometricTimeout = MutableStateFlow(
+        BiometricLockTimeout.fromName(preferences.getString(KEY_BIOMETRIC_TIMEOUT, BiometricLockTimeout.IMMEDIATELY.name)),
+    )
+    val biometricTimeout: StateFlow<BiometricLockTimeout> = _biometricTimeout
+
+    fun setBiometricTimeout(timeout: BiometricLockTimeout) {
+        preferences.edit().putString(KEY_BIOMETRIC_TIMEOUT, timeout.name).apply()
+        _biometricTimeout.value = timeout
+    }
+
     fun isBiometricHardwareAvailable(context: Context): Boolean {
         val biometricManager = BiometricManager.from(context)
         val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or
@@ -30,5 +52,6 @@ class SecurityPreferences(
     companion object {
         internal const val PREFS_NAME = "security_preferences"
         internal const val KEY_BIOMETRIC_ENABLED = "biometric_app_lock_enabled"
+        internal const val KEY_BIOMETRIC_TIMEOUT = "biometric_lock_timeout"
     }
 }

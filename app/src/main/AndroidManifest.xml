@@ -74,6 +74,19 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/balance_widget_info" />
         </receiver>
+
+        <receiver
+            android:name=".widget.BudgetWidgetProvider"
+            android:exported="true"
+            android:label="@string/budget_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.soumil.moneytracker.action.REFRESH_BUDGET_WIDGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/budget_widget_info" />
+        </receiver>
     </application>
 
 </manifest>

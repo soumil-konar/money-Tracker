@@ -352,6 +352,20 @@ class SmsParser {
             else -> extractMerchant(body)
         }
         val isCardPayment = hasCardSignal && !isCardBillPayment
+        val isAtm = direction == TransactionDirection.DEBIT && isAtmWithdrawal(body = body, merchant = merchant)
+        val resolvedMerchant = when {
+            isCardBillPayment -> extractCardBillMerchant(
+                institutionName = institutionName,
+                body = body,
+                sender = sender,
+            )
+
+            isAtm && (merchant.isNullOrBlank() || merchant.equals("atm", ignoreCase = true) || merchant.contains("atm", ignoreCase = true)) -> {
+                if (!merchant.isNullOrBlank() && merchant.length > 3) merchant else listOfNotNull(institutionName, "ATM Cash Withdrawal").joinToString(" ")
+            }
+
+            else -> merchant
+        }
         val accountLabel = inferAccountLabel(
             institutionName = institutionName,
             bankAccountLastFourDigits = bankAccountLastFourDigits,
@@ -364,7 +378,7 @@ class SmsParser {
             isCardBillPayment -> TransactionCategory.TRANSFER
             isSelfTransfer -> TransactionCategory.TRANSFER
             else -> inferCategory(
-                merchant = merchant,
+                merchant = resolvedMerchant,
                 sender = sender,
                 body = normalized,
                 direction = direction,
@@ -375,9 +389,9 @@ class SmsParser {
         var confidence = 0.2
         confidence += 0.35
         confidence += 0.2
-        if (!merchant.isNullOrBlank()) confidence += 0.15
+        if (!resolvedMerchant.isNullOrBlank()) confidence += 0.15
         if (accountLabel != null) confidence += 0.1
-        if (isUpiPayment || isCardPayment || normalized.contains("a/c") || normalized.contains("payment")) {
+        if (isUpiPayment || isCardPayment || normalized.contains("a/c") || normalized.contains("payment") || isAtm) {
             confidence += 0.1
         }
         if (occurredAtMillis != null) confidence += 0.05
@@ -389,7 +403,7 @@ class SmsParser {
             transaction = ParsedSmsTransaction(
                 amount = amount,
                 direction = direction,
-                merchant = merchant,
+                merchant = resolvedMerchant,
                 inferredCategory = inferredCategory,
                 accountLabel = accountLabel,
                 accountKind = accountKind,
@@ -405,6 +419,7 @@ class SmsParser {
                 isCardBillPayment = isCardBillPayment,
                 countsTowardBudget = countsTowardBudget,
                 availableBalance = availableBalance,
+                isAtmWithdrawal = isAtm,
             ),
         )
     }
@@ -874,5 +889,17 @@ class SmsParser {
         institutionName: String?,
     ): String {
         return "${institutionName ?: sender.uppercase()} mandate"
+    }
+
+    companion object {
+        fun isAtmWithdrawal(body: String, merchant: String? = null): Boolean {
+            val norm = body.lowercase()
+            val merchantNorm = merchant?.lowercase().orEmpty()
+            val hasAtmWord = Regex("(?i)\\b(atm|cash wdl|cash withdrawal|atm wdl)\\b").containsMatchIn(norm) ||
+                Regex("(?i)\\b(atm|cash withdrawal)\\b").containsMatchIn(merchantNorm)
+            val hasWithdrawalSignal = listOf("withdrawn", "withdrawal", "debited", "paid", "spent", "cash", "txn").any { norm.contains(it) } ||
+                merchantNorm.contains("atm")
+            return hasAtmWord && hasWithdrawalSignal
+        }
     }
 }

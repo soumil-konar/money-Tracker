@@ -88,6 +88,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.soumil.moneytracker.data.local.AiEngineMode
 import com.soumil.moneytracker.data.local.AiPreferences
+import com.soumil.moneytracker.data.local.BiometricLockTimeout
 import com.soumil.moneytracker.data.local.HapticIntensity
 import com.soumil.moneytracker.data.local.ThemeAccent
 import com.soumil.moneytracker.data.local.ThemeMode
@@ -126,6 +127,8 @@ fun SettingsScreen(
     hapticIntensity: HapticIntensity = HapticIntensity.BALANCED,
     isBiometricEnabled: Boolean = false,
     isBiometricAvailable: Boolean = true,
+    biometricTimeout: BiometricLockTimeout = BiometricLockTimeout.IMMEDIATELY,
+    onSelectBiometricTimeout: (BiometricLockTimeout) -> Unit = {},
     isNotificationListenerEnabled: Boolean = true,
     isNotificationPermissionGranted: Boolean = false,
     isGmailMonitoringEnabled: Boolean = true,
@@ -1455,6 +1458,41 @@ fun SettingsScreen(
                                     haptics.toggle(enabled)
                                 },
                             )
+                        }
+
+                        if (isBiometricEnabled) {
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f),
+                                modifier = Modifier.padding(vertical = 4.dp),
+                            )
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(
+                                    text = "Lock timeout grace period",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = "Allow returning to the app without biometric authentication for a short duration (e.g. copying OTP).",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    BiometricLockTimeout.entries.forEach { timeoutOption ->
+                                        FilterChip(
+                                            selected = biometricTimeout == timeoutOption,
+                                            onClick = {
+                                                haptics.tick()
+                                                onSelectBiometricTimeout(timeoutOption)
+                                            },
+                                            label = { Text(timeoutOption.label) },
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }

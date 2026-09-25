@@ -90,7 +90,10 @@ class FinanceRepository(
 ) {
 
     private fun notifyWidgetUpdate() {
-        context?.let { com.soumil.moneytracker.widget.BalanceWidgetProvider.updateAllWidgets(it) }
+        context?.let {
+            com.soumil.moneytracker.widget.BalanceWidgetProvider.updateAllWidgets(it)
+            com.soumil.moneytracker.widget.BudgetWidgetProvider.updateAllWidgets(it)
+        }
     }
 
     val accounts: Flow<List<AccountEntity>> = accountDao.observeAccounts()
@@ -424,6 +427,58 @@ class FinanceRepository(
         val targetAccountId = existing?.accountId
         transactionDao.deleteById(transactionId)
         targetAccountId?.let { reconcileSingleAccount(it) }
+    }
+
+    suspend fun transferToCashWallet(transactionId: Long): Result<Unit> = runCatching {
+        val existing = transactionDao.getById(transactionId)
+            ?: error("Transaction $transactionId not found")
+
+        val accounts = accountDao.getAccounts()
+        val cashAccount = accounts.firstOrNull { it.kind == AccountKind.CASH }
+            ?: run {
+                val newCashId = accountDao.insert(
+                    AccountEntity(
+                        name = "Cash in Hand",
+                        kind = AccountKind.CASH,
+                        currentBalance = 0.0,
+                        balanceUpdatedAtMillis = System.currentTimeMillis(),
+                    ),
+                )
+                accountDao.findById(newCashId) ?: error("Failed to create Cash in Hand wallet")
+            }
+
+        val updatedNote = listOfNotNull(
+            existing.note?.takeIf { !it.contains("Cash in Hand", ignoreCase = true) },
+            "Transferred to Cash in Hand",
+        ).joinToString(" • ")
+
+        val updatedExisting = existing.copy(
+            category = TransactionCategory.TRANSFER,
+            countsTowardBudget = false,
+            note = updatedNote,
+        )
+        transactionDao.update(updatedExisting)
+
+        val sourceAccount = existing.accountId?.let { accountDao.findById(it) }
+        val creditTx = TransactionEntity(
+            amount = existing.amount,
+            direction = TransactionDirection.CREDIT,
+            occurredAtMillis = existing.occurredAtMillis,
+            merchant = "Cash in Hand",
+            category = TransactionCategory.TRANSFER,
+            accountId = cashAccount.id,
+            sourceSender = "INTERNAL_TRANSFER",
+            smsBody = null,
+            confidence = 1.0,
+            fingerprint = "cash_transfer_${existing.id}_${existing.occurredAtMillis}",
+            status = TransactionStatus.POSTED,
+            note = "ATM cash withdrawal from ${sourceAccount?.name ?: "Bank"}",
+            countsTowardBudget = false,
+        )
+        transactionDao.insert(creditTx)
+
+        accountDao.adjustBalance(cashAccount.id, existing.amount)
+        notifyWidgetUpdate()
     }
 
     suspend fun setTransactionBudgetInclusion(transactionId: Long, countsTowardBudget: Boolean) {

@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountBalance
+import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.AutoAwesome
@@ -40,9 +41,11 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -50,10 +53,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.soumil.moneytracker.data.db.AccountEntity
 import com.soumil.moneytracker.data.db.ScheduledTransactionRecord
 import com.soumil.moneytracker.data.db.SubscriptionRecord
 import com.soumil.moneytracker.data.db.TransactionRecord
+import com.soumil.moneytracker.data.db.canTransferToCash
+import com.soumil.moneytracker.data.db.isTransferredToCash
 import com.soumil.moneytracker.data.model.AccountKind
 import com.soumil.moneytracker.data.model.TransactionCategory
 import com.soumil.moneytracker.data.model.TransactionDirection
@@ -496,6 +502,7 @@ fun PermissionBanner(
 fun TransactionItem(
     transaction: TransactionRecord,
     modifier: Modifier = Modifier,
+    onTransferToCash: (() -> Unit)? = null,
 ) {
     val isTransfer = transaction.category == TransactionCategory.TRANSFER
     val accent = when {
@@ -508,6 +515,9 @@ fun TransactionItem(
         transaction.direction == TransactionDirection.CREDIT -> Icons.Outlined.ArrowDownward
         else -> Icons.Outlined.ArrowUpward
     }
+    val brandBadge = remember(transaction.merchant) {
+        BrandAvatarHelper.resolve(transaction.merchant)
+    }
 
     Row(
         modifier = modifier
@@ -515,18 +525,64 @@ fun TransactionItem(
             .animateContentSize(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(accent.copy(alpha = 0.12f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = accent,
-            )
+        Box(modifier = Modifier.size(44.dp)) {
+            if (brandBadge != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(13.dp))
+                        .background(brandBadge.containerColor),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = brandBadge.shortCode,
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = (-0.5).sp,
+                        ),
+                        color = brandBadge.contentColor,
+                    )
+                }
+                // Subtle mini direction indicator at bottom-right corner
+                Box(
+                    modifier = Modifier
+                        .size(15.dp)
+                        .align(Alignment.BottomEnd)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surface)
+                        .padding(1.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(CircleShape)
+                            .background(accent),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.surface,
+                            modifier = Modifier.size(8.dp),
+                        )
+                    }
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(CircleShape)
+                        .background(accent.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = accent,
+                    )
+                }
+            }
         }
         Spacer(modifier = Modifier.size(14.dp))
         Column(modifier = Modifier.weight(1f)) {
@@ -564,6 +620,50 @@ fun TransactionItem(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                 )
+            }
+            if (transaction.canTransferToCash && onTransferToCash != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Surface(
+                    onClick = onTransferToCash,
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.AccountBalanceWallet,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(12.dp),
+                        )
+                        Text(
+                            text = "Transfer to Cash Wallet",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                    }
+                }
+            } else if (transaction.isTransferredToCash) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.CheckCircle,
+                        contentDescription = null,
+                        tint = Color(0xFF10B981),
+                        modifier = Modifier.size(11.dp),
+                    )
+                    Text(
+                        text = "In Cash Wallet",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFF10B981),
+                    )
+                }
             }
             if (!transaction.note.isNullOrBlank()) {
                 Spacer(modifier = Modifier.height(2.dp))

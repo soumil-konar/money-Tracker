@@ -20,6 +20,7 @@ import com.soumil.moneytracker.ui.haptics.LocalAppHaptics
 import com.soumil.moneytracker.ui.navigation.MoneyTrackerRoot
 import com.soumil.moneytracker.ui.security.AppLockScreen
 import com.soumil.moneytracker.ui.security.BiometricAuthHelper
+import com.soumil.moneytracker.data.local.BiometricLockTimeout
 import com.soumil.moneytracker.ui.theme.MoneyTrackerTheme
 import com.soumil.moneytracker.widget.BalanceWidgetProvider
 
@@ -41,7 +42,9 @@ class MainActivity : FragmentActivity() {
                 factory = MainViewModel.provideFactory(container.repository),
             )
             val isBiometricEnabled by container.securityPreferences.isBiometricEnabled.collectAsStateWithLifecycle()
+            val biometricTimeout by container.securityPreferences.biometricTimeout.collectAsStateWithLifecycle()
             var isAppLocked by remember { mutableStateOf(container.securityPreferences.isBiometricEnabled.value) }
+            var lastStopTimestamp by remember { mutableStateOf(0L) }
 
             fun triggerUnlock() {
                 BiometricAuthHelper.authenticate(
@@ -49,6 +52,7 @@ class MainActivity : FragmentActivity() {
                     onSuccess = {
                         container.hapticManager.success()
                         isAppLocked = false
+                        lastStopTimestamp = 0L
                     },
                     onFailed = {
                         container.hapticManager.warning()
@@ -59,7 +63,7 @@ class MainActivity : FragmentActivity() {
                 )
             }
 
-            DisposableEffect(isBiometricEnabled) {
+            DisposableEffect(isBiometricEnabled, biometricTimeout) {
                 if (!isBiometricEnabled) {
                     isAppLocked = false
                     return@DisposableEffect onDispose {}
@@ -68,13 +72,25 @@ class MainActivity : FragmentActivity() {
                 val observer = LifecycleEventObserver { _, event ->
                     when (event) {
                         Lifecycle.Event.ON_RESUME -> {
-                            if (isBiometricEnabled && isAppLocked) {
-                                triggerUnlock()
+                            if (isBiometricEnabled) {
+                                val elapsed = if (lastStopTimestamp > 0L) {
+                                    System.currentTimeMillis() - lastStopTimestamp
+                                } else {
+                                    Long.MAX_VALUE
+                                }
+                                val timeoutMillis = biometricTimeout.seconds * 1000L
+                                if (elapsed >= timeoutMillis) {
+                                    isAppLocked = true
+                                    triggerUnlock()
+                                }
                             }
                         }
                         Lifecycle.Event.ON_STOP -> {
                             if (isBiometricEnabled) {
-                                isAppLocked = true
+                                lastStopTimestamp = System.currentTimeMillis()
+                                if (biometricTimeout == BiometricLockTimeout.IMMEDIATELY) {
+                                    isAppLocked = true
+                                }
                             }
                         }
                         else -> {}

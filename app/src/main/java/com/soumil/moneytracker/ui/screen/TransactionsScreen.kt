@@ -27,9 +27,11 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteOutline
+import com.soumil.moneytracker.data.db.canTransferToCash
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.MoneyOff
 import androidx.compose.material.icons.outlined.Savings
@@ -59,6 +61,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.soumil.moneytracker.data.db.AccountEntity
@@ -91,6 +94,9 @@ fun TransactionsScreen(
     onEditTransaction: (TransactionRecord) -> Unit,
     onDeleteTransaction: (TransactionRecord) -> Unit,
     onToggleBudgetInclusion: (TransactionRecord) -> Unit,
+    onTransferToCashWallet: ((Long) -> Unit)? = null,
+    onDismissAtmPrompt: ((Long) -> Unit)? = null,
+    untransferredAtmTransactions: List<TransactionRecord> = emptyList(),
     listState: LazyListState = rememberLazyListState(),
     modifier: Modifier = Modifier,
 ) {
@@ -314,6 +320,80 @@ fun TransactionsScreen(
             }
         }
 
+        if (untransferredAtmTransactions.isNotEmpty()) {
+            val topAtm = untransferredAtmTransactions.first()
+            item(key = "atm-prompt-${topAtm.id}") {
+                MotionReveal(index = 2) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.45f),
+                        ),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.25f)),
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.tertiary.copy(alpha = 0.15f)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.AccountBalanceWallet,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.tertiary,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+                                Spacer(modifier = Modifier.size(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "ATM Cash Withdrawal • ${topAtm.amount.asCurrency()}",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    )
+                                    Text(
+                                        text = "Transfer to Cash in Hand wallet to keep budget & net worth accurate.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.85f),
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Button(
+                                    onClick = {
+                                        haptics.click()
+                                        onTransferToCashWallet?.invoke(topAtm.id)
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                                ) {
+                                    Text("Transfer to Cash Wallet", style = MaterialTheme.typography.labelMedium)
+                                }
+                                TextButton(
+                                    onClick = {
+                                        haptics.click()
+                                        onDismissAtmPrompt?.invoke(topAtm.id)
+                                    },
+                                ) {
+                                    Text("Keep as Expense", style = MaterialTheme.typography.labelMedium)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         item {
             MotionReveal(index = 3) {
                 OutlinedButton(onClick = {
@@ -362,7 +442,15 @@ fun TransactionsScreen(
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
                         ) {
                             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                                TransactionItem(transaction = transaction)
+                                TransactionItem(
+                                    transaction = transaction,
+                                    onTransferToCash = if (transaction.canTransferToCash && onTransferToCashWallet != null) {
+                                        {
+                                            haptics.click()
+                                            onTransferToCashWallet(transaction.id)
+                                        }
+                                    } else null,
+                                )
                                 Spacer(modifier = Modifier.height(10.dp))
                             if (transaction.status == TransactionStatus.REVIEW) {
                                 Row(

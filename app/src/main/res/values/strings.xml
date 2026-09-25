@@ -3,5 +3,7 @@
     <string name="app_name">Money Tracker</string>
     <string name="widget_name">Account Balance</string>
     <string name="widget_description">Track real-time bank balances and net worth directly from your home screen.</string>
+    <string name="budget_widget_name">Budget Gauge</string>
+    <string name="budget_widget_description">Track real-time safe daily spend and monthly budget progress directly from your home screen.</string>
 </resources>
 

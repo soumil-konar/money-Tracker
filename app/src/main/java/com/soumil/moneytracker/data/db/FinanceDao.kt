@@ -207,6 +207,9 @@ interface BudgetDao {
     @Query("SELECT * FROM budgets WHERE monthKey = :monthKey AND category IS NULL LIMIT 1")
     fun observeOverallBudget(monthKey: String): Flow<BudgetEntity?>
 
+    @Query("SELECT * FROM budgets WHERE monthKey = :monthKey AND category IS NULL LIMIT 1")
+    suspend fun getOverallBudget(monthKey: String): BudgetEntity?
+
     @Query("SELECT * FROM budgets WHERE category IS NULL ORDER BY monthKey DESC")
     fun observeOverallBudgets(): Flow<List<BudgetEntity>>
 

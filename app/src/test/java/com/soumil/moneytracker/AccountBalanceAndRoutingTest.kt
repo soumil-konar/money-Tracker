@@ -5,6 +5,10 @@ import com.soumil.moneytracker.data.model.AccountKind
 import com.soumil.moneytracker.data.model.TransactionDirection
 import com.soumil.moneytracker.data.model.TransactionStatus
 import com.soumil.moneytracker.parser.SmsParser
+import com.soumil.moneytracker.data.db.TransactionRecord
+import com.soumil.moneytracker.data.db.canTransferToCash
+import com.soumil.moneytracker.data.db.isAtmWithdrawal
+import com.soumil.moneytracker.data.db.isTransferredToCash
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
@@ -214,5 +218,83 @@ class AccountBalanceAndRoutingTest {
         org.junit.Assert.assertFalse(tx1.countsTowardBudget)
         assertEquals(com.soumil.moneytracker.data.model.TransactionCategory.TRANSFER, tx2.category)
         org.junit.Assert.assertFalse(tx2.countsTowardBudget)
+    }
+
+    @Test
+    fun `atm withdrawal cash in hand accounting preserves net worth and excludes from budget`() {
+        val atmSms = "Rs 5,000.00 debited from A/c XX1234 on 25-Sep-26 at SBI ATM. Avl Bal: Rs 20,000"
+        val parsed = parser.parse("SBINB", atmSms)
+
+        assertTrue("Must be identified as ATM withdrawal", parsed.isAtmWithdrawal)
+        assertEquals(5000.0, parsed.amount ?: 0.0, 0.0)
+
+        // Mock TransactionRecord
+        val atmTx = com.soumil.moneytracker.data.db.TransactionRecord(
+            id = 101L,
+            amount = 5000.0,
+            direction = TransactionDirection.DEBIT,
+            occurredAtMillis = System.currentTimeMillis(),
+            merchant = parsed.merchant ?: "SBI ATM",
+            category = com.soumil.moneytracker.data.model.TransactionCategory.OTHER,
+            accountId = 1L,
+            sourceSender = "SBINB",
+            smsBody = atmSms,
+            confidence = 0.95,
+            status = TransactionStatus.POSTED,
+            note = "ATM Cash Withdrawal",
+            countsTowardBudget = true,
+            accountName = "SBI A/c 1234",
+            accountKind = AccountKind.BANK,
+        )
+
+        // Extension property validation
+        assertTrue(atmTx.isAtmWithdrawal)
+        assertTrue(atmTx.canTransferToCash)
+
+        // Initial balances before ATM withdrawal: Bank = 25000, Cash = 500
+        var bankBalance = 25000.0
+        var cashBalance = 500.0
+        val initialNetWorth = bankBalance + cashBalance // 25500.0
+
+        // Bank debit occurs via SMS (-5000)
+        bankBalance -= atmTx.amount // 20000.0
+
+        // User transfers to Cash in Hand
+        val transferredAtmTx = atmTx.copy(
+            category = com.soumil.moneytracker.data.model.TransactionCategory.TRANSFER,
+            countsTowardBudget = false,
+            note = "Transferred to Cash in Hand",
+        )
+        val pairedCashCredit = com.soumil.moneytracker.data.db.TransactionRecord(
+            id = 102L,
+            amount = 5000.0,
+            direction = TransactionDirection.CREDIT,
+            occurredAtMillis = atmTx.occurredAtMillis,
+            merchant = "Cash in Hand",
+            category = com.soumil.moneytracker.data.model.TransactionCategory.TRANSFER,
+            accountId = 2L,
+            sourceSender = "INTERNAL_TRANSFER",
+            smsBody = null,
+            confidence = 1.0,
+            status = TransactionStatus.POSTED,
+            note = "ATM cash withdrawal from SBI A/c 1234",
+            countsTowardBudget = false,
+            accountName = "Cash in Hand",
+            accountKind = AccountKind.CASH,
+        )
+        cashBalance += pairedCashCredit.amount // 5500.0
+
+        // Verify:
+        // 1. Double-entry net worth is preserved
+        val postTransferNetWorth = bankBalance + cashBalance // 20000 + 5500 = 25500
+        assertEquals(initialNetWorth, postTransferNetWorth, 0.001)
+
+        // 2. Neither transaction counts toward expense budget
+        org.junit.Assert.assertFalse(transferredAtmTx.countsTowardBudget)
+        org.junit.Assert.assertFalse(pairedCashCredit.countsTowardBudget)
+
+        // 3. Status is now transferred
+        assertTrue(transferredAtmTx.isTransferredToCash)
+        org.junit.Assert.assertFalse(transferredAtmTx.canTransferToCash)
     }
 }

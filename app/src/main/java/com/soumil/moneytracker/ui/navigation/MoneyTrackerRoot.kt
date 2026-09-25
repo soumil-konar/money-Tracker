@@ -138,6 +138,8 @@ fun MoneyTrackerRoot(
     val isHapticEnabled by viewModel.isHapticEnabled.collectAsStateWithLifecycle()
     val hapticIntensity by viewModel.hapticIntensity.collectAsStateWithLifecycle()
     val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsStateWithLifecycle()
+    val biometricTimeout by viewModel.biometricTimeout.collectAsStateWithLifecycle()
+    val untransferredAtmTransactions by viewModel.untransferredAtmTransactions.collectAsStateWithLifecycle()
     val isEmailSyncEnabled by viewModel.isEmailSyncEnabled.collectAsStateWithLifecycle()
     val emailAddress by viewModel.emailAddress.collectAsStateWithLifecycle()
     val emailAppPassword by viewModel.emailAppPassword.collectAsStateWithLifecycle()
@@ -331,6 +333,9 @@ fun MoneyTrackerRoot(
                             countsTowardBudget = !transaction.countsTowardBudget,
                         )
                     },
+                    onTransferToCashWallet = viewModel::transferToCashWallet,
+                    onDismissAtmPrompt = viewModel::dismissAtmPrompt,
+                    untransferredAtmTransactions = untransferredAtmTransactions,
                 )
             }
             composable(AppDestination.More.route) {
@@ -395,7 +400,9 @@ fun MoneyTrackerRoot(
                     onSelectHapticIntensity = viewModel::setHapticIntensity,
                     isBiometricEnabled = isBiometricEnabled,
                     isBiometricAvailable = viewModel.isBiometricHardwareAvailable(context),
+                    biometricTimeout = biometricTimeout,
                     onToggleBiometricEnabled = viewModel::setBiometricEnabled,
+                    onSelectBiometricTimeout = viewModel::setBiometricTimeout,
                     isNotificationListenerEnabled = isNotificationListenerEnabled,
                     isNotificationPermissionGranted = notificationPermissionGranted,
                     isGmailMonitoringEnabled = isGmailMonitoringEnabled,
