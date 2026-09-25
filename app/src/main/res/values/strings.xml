@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Money Tracker</string>
+    <string name="widget_name">Account Balance</string>
+    <string name="widget_description">Track real-time bank balances and net worth directly from your home screen.</string>
 </resources>
 

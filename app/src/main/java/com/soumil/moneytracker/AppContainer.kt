@@ -59,6 +59,7 @@ class AppContainer(context: Context) {
             emailSyncManager = emailSyncManager,
             geminiApiClient = geminiApiClient,
             onDeviceAiEngine = onDeviceAiEngine,
+            context = context.applicationContext,
         )
     }
 }

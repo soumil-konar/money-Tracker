@@ -1,5 +1,6 @@
 package com.soumil.moneytracker
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.setContent
@@ -20,10 +21,18 @@ import com.soumil.moneytracker.ui.navigation.MoneyTrackerRoot
 import com.soumil.moneytracker.ui.security.AppLockScreen
 import com.soumil.moneytracker.ui.security.BiometricAuthHelper
 import com.soumil.moneytracker.ui.theme.MoneyTrackerTheme
+import com.soumil.moneytracker.widget.BalanceWidgetProvider
 
 class MainActivity : FragmentActivity() {
+
+    private var openAddTransactionOnLaunch by mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        openAddTransactionOnLaunch = intent?.getBooleanExtra(
+            BalanceWidgetProvider.EXTRA_OPEN_ADD_TRANSACTION,
+            false,
+        ) ?: false
         enableEdgeToEdge()
 
         setContent {
@@ -90,10 +99,22 @@ class MainActivity : FragmentActivity() {
                     if (isAppLocked) {
                         AppLockScreen(onUnlockClick = { triggerUnlock() })
                     } else {
-                        MoneyTrackerRoot(viewModel = mainViewModel)
+                        MoneyTrackerRoot(
+                            viewModel = mainViewModel,
+                            initialOpenAddTransaction = openAddTransactionOnLaunch,
+                            onConsumeOpenAddTransaction = { openAddTransactionOnLaunch = false },
+                        )
                     }
                 }
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra(BalanceWidgetProvider.EXTRA_OPEN_ADD_TRANSACTION, false)) {
+            openAddTransactionOnLaunch = true
         }
     }
 }

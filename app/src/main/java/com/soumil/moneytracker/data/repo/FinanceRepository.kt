@@ -86,7 +86,12 @@ class FinanceRepository(
     val emailSyncManager: EmailSyncManager,
     val geminiApiClient: GeminiApiClient,
     val onDeviceAiEngine: OnDeviceAiEngine,
+    private val context: android.content.Context? = null,
 ) {
+
+    private fun notifyWidgetUpdate() {
+        context?.let { com.soumil.moneytracker.widget.BalanceWidgetProvider.updateAllWidgets(it) }
+    }
 
     val accounts: Flow<List<AccountEntity>> = accountDao.observeAccounts()
     val isInitialSetupComplete: Flow<Boolean> = setupPreferences.isInitialSetupComplete
@@ -1796,6 +1801,7 @@ class FinanceRepository(
                 proofSource = "Manual True-Up",
                 isVerified = true,
             )
+            notifyWidgetUpdate()
             return true
         }
 
@@ -1826,6 +1832,7 @@ class FinanceRepository(
                 proofSource = proof.proofSource,
                 isVerified = true,
             )
+            notifyWidgetUpdate()
             return true
         }
 
@@ -1839,6 +1846,7 @@ class FinanceRepository(
             val calculated = (account.currentBalance + subsequentDelta).coerceAtLeast(0.0)
             val latestTime = maxOf(userSetTime, subsequentTxs.lastOrNull()?.occurredAtMillis ?: userSetTime)
             accountDao.updateBalance(account.id, calculated, latestTime)
+            notifyWidgetUpdate()
             return true
         }
 
@@ -1856,6 +1864,7 @@ class FinanceRepository(
                 proofSource = null,
                 isVerified = false,
             )
+            notifyWidgetUpdate()
             return true
         }
 
@@ -1901,6 +1910,7 @@ class FinanceRepository(
         // 3. Scan and link multi-account internal transfer pairs
         reconciledCount += reconcileTransferPairs()
 
+        notifyWidgetUpdate()
         return reconciledCount
     }
 

@@ -88,6 +88,8 @@ import com.soumil.moneytracker.ui.screen.TransactionsScreen
 @Composable
 fun MoneyTrackerRoot(
     viewModel: MainViewModel,
+    initialOpenAddTransaction: Boolean = false,
+    onConsumeOpenAddTransaction: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val navController = rememberNavController()
@@ -143,6 +145,13 @@ fun MoneyTrackerRoot(
     var showBudgetDialog by remember { mutableStateOf(false) }
     var showAddTransactionDialog by remember { mutableStateOf(false) }
     var showAddSubscriptionDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(initialOpenAddTransaction) {
+        if (initialOpenAddTransaction) {
+            showAddTransactionDialog = true
+            onConsumeOpenAddTransaction?.invoke()
+        }
+    }
     var editingTransaction by remember { mutableStateOf<TransactionRecord?>(null) }
     var pendingDeleteTransaction by remember { mutableStateOf<TransactionRecord?>(null) }
     var pendingDeleteAccount by remember { mutableStateOf<AccountEntity?>(null) }
