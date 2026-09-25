@@ -10,6 +10,11 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -20,6 +25,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
@@ -181,271 +187,361 @@ fun AddTransactionDialog(
         }
     }
 
-    TrackerDialogScaffold(
-        eyebrow = if (initialDraft == null) "Manual Entry" else "Ledger Correction",
-        title = title,
-        subtitle = if (initialDraft == null) {
-            "Capture a transaction in the same ledger style as the imported SMS entries."
-        } else {
-            "Adjust the merchant, amount, direction, account, date, or note."
-        },
-        onDismiss = onDismiss,
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth(0.92f)
+            .widthIn(max = 440.dp)
+            .fillMaxHeight(0.82f)
+            .heightIn(max = 640.dp)
+            .imePadding(),
+        shape = RoundedCornerShape(32.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 10.dp,
+        shadowElevation = 16.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
     ) {
-        Surface(
-            shape = RoundedCornerShape(22.dp),
-            color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.18f),
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = 20.dp, bottom = 16.dp, start = 20.dp, end = 20.dp),
         ) {
+            // 1. Pinned Header
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
-                    contentAlignment = Alignment.Center,
+                Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.18f),
                 ) {
                     Text(
-                        text = if (selectedDirection == TransactionDirection.DEBIT) "DR" else "CR",
-                        style = MaterialTheme.typography.labelLarge,
+                        text = if (initialDraft == null) "Manual Entry" else "Ledger Correction",
+                        style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                     )
                 }
-                Column {
-                    Text(
-                        text = "Ledger details",
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        text = "Keep the transaction clean before it hits charts, filters, and budgets.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                IconButton(
+                    onClick = {
+                        haptics.click()
+                        onDismiss()
+                    },
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Close,
+                        contentDescription = "Close",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
                     )
                 }
             }
-        }
 
-        OutlinedTextField(
-            value = merchant,
-            onValueChange = { merchant = it },
-            label = { Text("Merchant") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        OutlinedTextField(
-            value = amount,
-            onValueChange = { amount = it },
-            label = { Text("Amount") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            DirectionChoice(
-                label = "Debit",
-                selected = selectedDirection == TransactionDirection.DEBIT,
-                onClick = { selectedDirection = TransactionDirection.DEBIT },
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = title,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
             )
-            DirectionChoice(
-                label = "Credit",
-                selected = selectedDirection == TransactionDirection.CREDIT,
-                onClick = { selectedDirection = TransactionDirection.CREDIT },
+            Text(
+                text = if (initialDraft == null) {
+                    "Capture a transaction in the same ledger style as imported SMS entries."
+                } else {
+                    "Adjust the merchant, amount, direction, account, date, or note."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
             )
-        }
 
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
-            modifier = Modifier.fillMaxWidth(),
-            onClick = {
-                haptics.click()
-                showDatePicker = true
-            },
-        ) {
-            Row(
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // 2. Dedicated Scrollable Form Section
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
+                    .weight(1f, fill = false)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f),
                 ) {
-                    Box(
+                    Row(
                         modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
-                        contentAlignment = Alignment.Center,
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        Icon(
-                            imageVector = Icons.Outlined.CalendarMonth,
-                            contentDescription = "Select transaction date",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp),
-                        )
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = if (selectedDirection == TransactionDirection.DEBIT) "DR" else "CR",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "Ledger details",
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+                            Text(
+                                text = "Keep the transaction clean before it hits charts and budgets.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
-                    Column {
+                }
+
+                OutlinedTextField(
+                    value = merchant,
+                    onValueChange = { merchant = it },
+                    label = { Text("Merchant") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                OutlinedTextField(
+                    value = amount,
+                    onValueChange = { amount = it },
+                    label = { Text("Amount (₹)") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    DirectionChoice(
+                        label = "Debit",
+                        selected = selectedDirection == TransactionDirection.DEBIT,
+                        onClick = { selectedDirection = TransactionDirection.DEBIT },
+                    )
+                    DirectionChoice(
+                        label = "Credit",
+                        selected = selectedDirection == TransactionDirection.CREDIT,
+                        onClick = { selectedDirection = TransactionDirection.CREDIT },
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = {
+                        haptics.click()
+                        showDatePicker = true
+                    },
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.CalendarMonth,
+                                    contentDescription = "Select transaction date",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                            Column {
+                                Text(
+                                    text = "Transaction date",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = occurredAtMillis.asFullDate(),
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                            }
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                        ) {
+                            Text(
+                                text = "Change",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            )
+                        }
+                    }
+                }
+
+                ExposedDropdownMenuBox(
+                    expanded = categoryExpanded,
+                    onExpandedChange = { categoryExpanded = !categoryExpanded },
+                ) {
+                    OutlinedTextField(
+                        modifier = Modifier
+                            .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                            .fillMaxWidth(),
+                        readOnly = true,
+                        value = selectedCategory.label,
+                        onValueChange = {},
+                        shape = RoundedCornerShape(16.dp),
+                        label = { Text("Category") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = categoryExpanded) },
+                    )
+                    DropdownMenu(
+                        expanded = categoryExpanded,
+                        onDismissRequest = { categoryExpanded = false },
+                    ) {
+                        TransactionCategory.entries.forEach { category ->
+                            DropdownMenuItem(
+                                text = { Text(category.label) },
+                                onClick = {
+                                    haptics.tick()
+                                    selectedCategory = category
+                                    categoryExpanded = false
+                                },
+                            )
+                        }
+                    }
+                }
+
+                ExposedDropdownMenuBox(
+                    expanded = accountExpanded,
+                    onExpandedChange = { accountExpanded = !accountExpanded },
+                ) {
+                    OutlinedTextField(
+                        modifier = Modifier
+                            .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                            .fillMaxWidth(),
+                        readOnly = true,
+                        value = selectedAccount?.name.orEmpty(),
+                        onValueChange = {},
+                        shape = RoundedCornerShape(16.dp),
+                        label = { Text("Account") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = accountExpanded) },
+                    )
+                    DropdownMenu(
+                        expanded = accountExpanded,
+                        onDismissRequest = { accountExpanded = false },
+                    ) {
+                        accounts.forEach { account ->
+                            DropdownMenuItem(
+                                text = { Text(account.name) },
+                                onClick = {
+                                    haptics.tick()
+                                    selectedAccountId = account.id
+                                    accountExpanded = false
+                                },
+                            )
+                        }
+                    }
+                }
+
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it },
+                    label = { Text("Note") },
+                    placeholder = { Text("Optional context") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Transaction date",
-                            style = MaterialTheme.typography.labelMedium,
+                            text = "Count toward budget",
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        Text(
+                            text = "Excluded transactions skip the budget gauge.",
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Text(
-                            text = occurredAtMillis.asFullDate(),
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
                     }
+                    Switch(
+                        checked = countsTowardBudget,
+                        onCheckedChange = {
+                            haptics.toggle()
+                            countsTowardBudget = it
+                        },
+                    )
                 }
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+
+                Spacer(modifier = Modifier.height(4.dp))
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // 3. Pinned Action Buttons Footer
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                OutlinedButton(
+                    onClick = {
+                        haptics.click()
+                        onDismiss()
+                    },
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.weight(1f),
                 ) {
-                    Text(
-                        text = "Pick date",
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    )
+                    Text("Cancel")
                 }
-            }
-        }
-        ExposedDropdownMenuBox(
-            expanded = categoryExpanded,
-            onExpandedChange = { categoryExpanded = !categoryExpanded },
-        ) {
-            OutlinedTextField(
-                modifier = Modifier
-                    .menuAnchor(MenuAnchorType.PrimaryNotEditable)
-                    .fillMaxWidth(),
-                readOnly = true,
-                value = selectedCategory.label,
-                onValueChange = {},
-                label = { Text("Category") },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = categoryExpanded) },
-            )
-            DropdownMenu(
-                expanded = categoryExpanded,
-                onDismissRequest = { categoryExpanded = false },
-            ) {
-                TransactionCategory.entries.forEach { category ->
-                    DropdownMenuItem(
-                        text = { Text(category.label) },
-                        onClick = {
-                            haptics.tick()
-                            selectedCategory = category
-                            categoryExpanded = false
-                        },
-                    )
+                Button(
+                    onClick = {
+                        val parsedAmount = amount.replace(",", "").toDoubleOrNull() ?: return@Button
+                        if (merchant.isBlank()) return@Button
+                        haptics.success()
+                        onConfirm(
+                            TransactionDraft(
+                                amount = parsedAmount,
+                                direction = selectedDirection,
+                                merchant = merchant.trim(),
+                                category = selectedCategory,
+                                accountId = selectedAccount?.id,
+                                note = note.trim(),
+                                occurredAtMillis = occurredAtMillis,
+                                countsTowardBudget = countsTowardBudget,
+                            ),
+                        )
+                    },
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(confirmLabel)
                 }
-            }
-        }
-        ExposedDropdownMenuBox(
-            expanded = accountExpanded,
-            onExpandedChange = { accountExpanded = !accountExpanded },
-        ) {
-            OutlinedTextField(
-                modifier = Modifier
-                    .menuAnchor(MenuAnchorType.PrimaryNotEditable)
-                    .fillMaxWidth(),
-                readOnly = true,
-                value = selectedAccount?.name.orEmpty(),
-                onValueChange = {},
-                label = { Text("Account") },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = accountExpanded) },
-            )
-            DropdownMenu(
-                expanded = accountExpanded,
-                onDismissRequest = { accountExpanded = false },
-            ) {
-                accounts.forEach { account ->
-                    DropdownMenuItem(
-                        text = { Text(account.name) },
-                        onClick = {
-                            haptics.tick()
-                            selectedAccountId = account.id
-                            accountExpanded = false
-                        },
-                    )
-                }
-            }
-        }
-        OutlinedTextField(
-            value = note,
-            onValueChange = { note = it },
-            label = { Text("Note") },
-            placeholder = { Text("Optional context for future you") },
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Count toward budget",
-                    style = MaterialTheme.typography.titleSmall,
-                )
-                Text(
-                    text = "Excluded transactions still appear in the ledger but skip the budget gauge.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Switch(
-                checked = countsTowardBudget,
-                onCheckedChange = {
-                    haptics.toggle()
-                    countsTowardBudget = it
-                },
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            OutlinedButton(
-                onClick = {
-                    haptics.click()
-                    onDismiss()
-                },
-                modifier = Modifier.weight(1f),
-            ) {
-                Text("Cancel")
-            }
-            Button(
-                onClick = {
-                    val parsedAmount = amount.replace(",", "").toDoubleOrNull() ?: return@Button
-                    if (merchant.isBlank()) return@Button
-                    haptics.success()
-                    onConfirm(
-                        TransactionDraft(
-                            amount = parsedAmount,
-                            direction = selectedDirection,
-                            merchant = merchant.trim(),
-                            category = selectedCategory,
-                            accountId = selectedAccount?.id,
-                            note = note.trim(),
-                            occurredAtMillis = occurredAtMillis,
-                            countsTowardBudget = countsTowardBudget,
-                        ),
-                    )
-                },
-                modifier = Modifier.weight(1f),
-            ) {
-                Text(confirmLabel)
             }
         }
     }
@@ -766,8 +862,12 @@ private fun TrackerDialogScaffold(
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
+                .fillMaxWidth(0.92f)
+                .widthIn(max = 440.dp)
+                .fillMaxHeight(0.85f)
+                .heightIn(max = 680.dp)
+                .imePadding()
+                .padding(vertical = 16.dp),
             shape = RoundedCornerShape(30.dp),
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 8.dp,

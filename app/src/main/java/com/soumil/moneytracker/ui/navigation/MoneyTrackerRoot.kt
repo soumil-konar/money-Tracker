@@ -7,13 +7,26 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import com.soumil.moneytracker.ui.asFullDate
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -214,16 +227,39 @@ fun MoneyTrackerRoot(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
+    val isAddTransactionOpen = showAddTransactionDialog || editingTransaction != null
+    val backgroundBlur by animateDpAsState(
+        targetValue = if (isAddTransactionOpen) 20.dp else 0.dp,
+        animationSpec = spring(
+            dampingRatio = 0.82f,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "mainBackgroundBlur",
+    )
+    val scrimAlpha by animateFloatAsState(
+        targetValue = if (isAddTransactionOpen) 0.54f else 0.0f,
+        animationSpec = spring(
+            dampingRatio = 0.85f,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "scrimAlpha",
+    )
+
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background,
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            NavHost(
-                navController = navController,
-                startDestination = AppDestination.Home.route,
-                modifier = Modifier.fillMaxSize(),
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .blur(backgroundBlur),
             ) {
+                NavHost(
+                    navController = navController,
+                    startDestination = AppDestination.Home.route,
+                    modifier = Modifier.fillMaxSize(),
+                ) {
             composable(AppDestination.Home.route) {
                 HomeScreen(
                     dashboard = dashboard,
@@ -475,6 +511,76 @@ fun MoneyTrackerRoot(
             modifier = Modifier.align(Alignment.BottomCenter),
         )
         }
+
+        if (scrimAlpha > 0.01f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = scrimAlpha))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {
+                            haptics.click()
+                            showAddTransactionDialog = false
+                            editingTransaction = null
+                        },
+                    ),
+            )
+        }
+
+        AnimatedVisibility(
+            visible = isAddTransactionOpen,
+            enter = fadeIn(animationSpec = tween(durationMillis = 280, easing = LinearOutSlowInEasing)) +
+                    slideInVertically(
+                        initialOffsetY = { fullHeight -> (fullHeight * 0.45f).toInt() },
+                        animationSpec = spring(dampingRatio = 0.78f, stiffness = Spring.StiffnessMediumLow),
+                    ) +
+                    scaleIn(
+                        initialScale = 0.65f,
+                        transformOrigin = TransformOrigin(0.5f, 0.95f),
+                        animationSpec = spring(dampingRatio = 0.78f, stiffness = Spring.StiffnessMediumLow),
+                    ),
+            exit = fadeOut(animationSpec = tween(durationMillis = 200, easing = FastOutLinearInEasing)) +
+                   slideOutVertically(
+                       targetOffsetY = { fullHeight -> (fullHeight * 0.35f).toInt() },
+                       animationSpec = spring(dampingRatio = 0.88f, stiffness = Spring.StiffnessMedium),
+                   ) +
+                   scaleOut(
+                       targetScale = 0.72f,
+                       transformOrigin = TransformOrigin(0.5f, 0.95f),
+                       animationSpec = spring(dampingRatio = 0.88f, stiffness = Spring.StiffnessMedium),
+                   ),
+            modifier = Modifier.align(Alignment.Center),
+        ) {
+            val transactionToEdit = editingTransaction
+            AddTransactionDialog(
+                accounts = accounts,
+                onDismiss = {
+                    showAddTransactionDialog = false
+                    editingTransaction = null
+                },
+                onConfirm = {
+                    if (transactionToEdit == null) {
+                        viewModel.addTransaction(it)
+                    } else {
+                        viewModel.updateTransaction(transactionToEdit.id, it)
+                    }
+                    showAddTransactionDialog = false
+                    editingTransaction = null
+                },
+                title = if (transactionToEdit == null) "Add transaction" else "Edit transaction",
+                confirmLabel = if (transactionToEdit == null) "Save" else "Save changes",
+                initialDraft = transactionToEdit?.toDraft(),
+                dialogKey = transactionDialogKey,
+            )
+        }
+        }
+    }
+
+    BackHandler(enabled = isAddTransactionOpen) {
+        showAddTransactionDialog = false
+        editingTransaction = null
     }
 
     if (showAiChatSheet) {
@@ -495,30 +601,6 @@ fun MoneyTrackerRoot(
                 viewModel.setMonthlyBudget(it)
                 showBudgetDialog = false
             },
-        )
-    }
-
-    if (showAddTransactionDialog || editingTransaction != null) {
-        val transactionToEdit = editingTransaction
-        AddTransactionDialog(
-            accounts = accounts,
-            onDismiss = {
-                showAddTransactionDialog = false
-                editingTransaction = null
-            },
-            onConfirm = {
-                if (transactionToEdit == null) {
-                    viewModel.addTransaction(it)
-                } else {
-                    viewModel.updateTransaction(transactionToEdit.id, it)
-                }
-                showAddTransactionDialog = false
-                editingTransaction = null
-            },
-            title = if (transactionToEdit == null) "Add transaction" else "Edit transaction",
-            confirmLabel = if (transactionToEdit == null) "Save" else "Save changes",
-            initialDraft = transactionToEdit?.toDraft(),
-            dialogKey = transactionDialogKey,
         )
     }
 
@@ -852,90 +934,30 @@ private fun RowScope.AddDockItem(
     onClick: () -> Unit,
 ) {
     val haptics = LocalAppHaptics.current
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-
-    LaunchedEffect(isPressed) {
-        if (isPressed) {
-            haptics.sweetImpact()
-        }
-    }
-
-    val buttonScale by animateFloatAsState(
-        targetValue = if (isPressed) 0.82f else 1.0f,
-        animationSpec = spring(
-            dampingRatio = if (isPressed) 0.85f else 0.45f,
-            stiffness = if (isPressed) Spring.StiffnessHigh else Spring.StiffnessMediumLow,
-        ),
-        label = "appleAddButtonScale",
-    )
-
-    val iconRotation by animateFloatAsState(
-        targetValue = if (isPressed) 90f else 0f,
-        animationSpec = spring(
-            dampingRatio = if (isPressed) 0.9f else 0.5f,
-            stiffness = Spring.StiffnessMediumLow,
-        ),
-        label = "appleAddIconRotation",
-    )
-
-    val buttonElevation by animateDpAsState(
-        targetValue = if (isPressed) 2.dp else 10.dp,
-        animationSpec = spring(
-            dampingRatio = 0.8f,
-            stiffness = Spring.StiffnessMedium,
-        ),
-        label = "appleAddElevation",
-    )
-
     Box(
         modifier = Modifier.weight(1f),
         contentAlignment = Alignment.Center,
     ) {
         Surface(
             shape = CircleShape,
-            color = Color.Transparent,
-            shadowElevation = buttonElevation,
-            modifier = Modifier
-                .graphicsLayer {
-                    scaleX = buttonScale
-                    scaleY = buttonScale
-                }
-                .clip(CircleShape)
-                .background(
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.primary,
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.88f),
-                        ),
-                    ),
-                )
-                .border(
-                    BorderStroke(
-                        1.dp,
-                        Color.White.copy(alpha = if (isPressed) 0.45f else 0.28f),
-                    ),
-                    CircleShape,
-                )
-                .clickable(
-                    interactionSource = interactionSource,
-                    indication = null,
-                    onClick = onClick,
-                ),
+            color = MaterialTheme.colorScheme.primary,
+            shadowElevation = 10.dp,
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.28f)),
         ) {
             Box(
-                modifier = Modifier.size(48.dp),
+                modifier = Modifier
+                    .size(48.dp)
+                    .clickable(onClick = {
+                        haptics.sweetImpact()
+                        onClick()
+                    }),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     imageVector = Icons.Outlined.Add,
                     contentDescription = "Add transaction",
                     tint = Color.White,
-                    modifier = Modifier
-                        .size(24.dp)
-                        .graphicsLayer {
-                            rotationZ = iconRotation
-                        },
+                    modifier = Modifier.size(24.dp),
                 )
             }
         }

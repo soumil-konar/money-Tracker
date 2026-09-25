@@ -266,7 +266,7 @@ fun HomeScreen(
         }
 
         item {
-            MotionReveal(index = 5) {
+            MotionReveal(index = 6) {
                 SectionCard(
                     title = "AI Financial Insights",
                     subtitle = "Personalized budget pacing, drivers, and money-saving advice",
@@ -374,7 +374,7 @@ fun HomeScreen(
         }
 
         item {
-            MotionReveal(index = 6) {
+            MotionReveal(index = 7) {
                 SectionCard(
                     title = "Spend mix",
                     subtitle = "Category share this month",
@@ -399,7 +399,7 @@ fun HomeScreen(
         }
 
         item {
-            MotionReveal(index = 6) {
+            MotionReveal(index = 8) {
                 SectionCard(
                     title = "Cashflow trajectory",
                     subtitle = "Last 7 days income vs expense",
@@ -418,7 +418,7 @@ fun HomeScreen(
         }
 
         item {
-            MotionReveal(index = 7) {
+            MotionReveal(index = 9) {
                 SectionCard(
                     title = "Recent transactions",
                     subtitle = "Latest posted and review items",
