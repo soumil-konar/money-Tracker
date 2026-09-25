@@ -147,20 +147,25 @@ object BankDetector {
     )
 
     private val bankAccountLastFourRegexes = listOf(
-        Regex("""(?i)(?:a/c|acct|account|acc)\s*(?:no\.?|number)?[#:\s]*[xX*]*([0-9]{4})\b"""),
-        Regex("""(?i)(?:ending|ending with)\s*(?:a/c|acct|account)?[#:\s]*[xX*]*([0-9]{4})\b"""),
-        Regex("""(?i)\b[xX*]{2,}([0-9]{4})\b"""),
-        Regex("""(?i)\b[xX*]{1,3}([0-9]{4})\b"""),
+        // "A/c ...1234", "A/c No. 1234", "Account XX1234", "A/c ••1234", "A/c ending in 1234"
+        Regex("""(?i)(?:a/c|acct|account|acc)\s*(?:no\.?|number|ending|ending with|ending in)?[#:\s.\-•xX*]*([0-9]{4})\b"""),
+        // "ending with 1234", "ending in 1234", "ending 1234"
+        Regex("""(?i)\b(?:ending|ending with|ending in)\s*(?:a/c|acct|account)?[#:\s.\-•xX*]*([0-9]{4})\b"""),
+        // "from A/c 1234", "to A/c 1234", "in A/c 1234"
+        Regex("""(?i)\b(?:from|to|in|using|via)\s+(?:a/c|acct|account)\s*[#:\s.\-•xX*]*([0-9]{4})\b"""),
+        // Masked account: "**1234", "XX1234", "••1234", "...1234"
+        Regex("""(?i)\b(?:[xX*•]{2,}|\.{2,})([0-9]{4})\b"""),
+        Regex("""(?i)\b[xX*•]{1,3}([0-9]{4})\b"""),
     )
 
     private val cardIndicatorRegexes = listOf(
-        Regex("""(?i)(?:credit\s+card|rupay\s+credit|card\s+ending)\s*(?:no\.?|number|with)?\s*[*xX]*([0-9]{4})"""),
-        Regex("""(?i)(?:on|using|for)\s+credit\s+card\s*[*xX]*([0-9]{4})"""),
+        Regex("""(?i)(?:credit\s+card|rupay\s+credit|card\s+ending)\s*(?:no\.?|number|ending|with|in)?\s*[*xX•.\-\s]*([0-9]{4})"""),
+        Regex("""(?i)(?:on|using|for)\s+credit\s+card\s*[*xX•.\-\s]*([0-9]{4})"""),
     )
 
     private val debitCardIndicatorRegexes = listOf(
-        Regex("""(?i)(?:debit\s+card)\s*(?:no\.?|number|ending|with)?\s*[*xX]*([0-9]{4})"""),
-        Regex("""(?i)(?:on|using|for)\s+debit\s+card\s*[*xX]*([0-9]{4})"""),
+        Regex("""(?i)(?:debit\s+card)\s*(?:no\.?|number|ending|with|in)?\s*[*xX•.\-\s]*([0-9]{4})"""),
+        Regex("""(?i)(?:on|using|for)\s+debit\s+card\s*[*xX•.\-\s]*([0-9]{4})"""),
     )
 
     /**
@@ -319,5 +324,14 @@ object BankDetector {
             }
         }
         return null
+    }
+
+    fun extractCardLastFour(body: String): String? {
+        val cardMatch = cardIndicatorRegexes.firstNotNullOfOrNull { it.find(body) }
+            ?: debitCardIndicatorRegexes.firstNotNullOfOrNull { it.find(body) }
+        return cardMatch?.groupValues?.getOrNull(1)
+            ?.filter(Char::isDigit)
+            ?.takeLast(4)
+            ?.takeIf { it.length == 4 }
     }
 }

@@ -674,11 +674,12 @@ class SmsParser {
     }
 
     private fun extractBankAccountLastFour(body: String): String? {
-        return bankAccountLastFourRegexes.firstNotNullOfOrNull { regex ->
-            regex.find(body)?.groupValues?.getOrNull(1)
-        }?.filter(Char::isDigit)
-            ?.takeLast(4)
-            ?.takeIf { it.length == 4 }
+        return BankDetector.extractBankAccountLastFour(body)
+            ?: bankAccountLastFourRegexes.firstNotNullOfOrNull { regex ->
+                regex.find(body)?.groupValues?.getOrNull(1)
+            }?.filter(Char::isDigit)
+                ?.takeLast(4)
+                ?.takeIf { it.length == 4 }
     }
 
     private fun hasCardSignal(
@@ -710,11 +711,12 @@ class SmsParser {
     }
 
     private fun extractCardLastFour(body: String): String? {
-        return cardLastFourRegexes.firstNotNullOfOrNull { regex ->
-            regex.find(body)?.groupValues?.getOrNull(1)
-        }?.filter(Char::isDigit)
-            ?.takeLast(4)
-            ?.takeIf { it.length == 4 }
+        return BankDetector.extractCardLastFour(body)
+            ?: cardLastFourRegexes.firstNotNullOfOrNull { regex ->
+                regex.find(body)?.groupValues?.getOrNull(1)
+            }?.filter(Char::isDigit)
+                ?.takeLast(4)
+                ?.takeIf { it.length == 4 }
     }
 
     private fun isUpiMessage(normalized: String): Boolean {

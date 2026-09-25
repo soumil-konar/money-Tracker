@@ -314,6 +314,7 @@ class FinanceRepository(
     suspend fun updateTransaction(transactionId: Long, draft: TransactionDraft) {
         val existing = transactionDao.getById(transactionId)
             ?: error("Transaction $transactionId not found")
+        val oldAccountId = existing.accountId
         transactionDao.update(
             existing.copy(
                 amount = draft.amount,
@@ -327,6 +328,8 @@ class FinanceRepository(
                 countsTowardBudget = draft.countsTowardBudget,
             ),
         )
+        oldAccountId?.let { reconcileSingleAccount(it) }
+        draft.accountId?.takeIf { it != oldAccountId }?.let { reconcileSingleAccount(it) }
     }
 
     suspend fun addSubscription(draft: SubscriptionDraft) {
@@ -366,6 +369,7 @@ class FinanceRepository(
                 status = TransactionStatus.POSTED,
             ),
         )
+        draft.accountId?.let { reconcileSingleAccount(it) }
     }
 
     suspend fun promoteSubscription(subscriptionId: Long) {
@@ -378,11 +382,16 @@ class FinanceRepository(
     }
 
     suspend fun approveReview(transactionId: Long) {
+        val existing = transactionDao.getById(transactionId)
         transactionDao.updateStatus(transactionId, TransactionStatus.POSTED.name)
+        existing?.accountId?.let { reconcileSingleAccount(it) }
     }
 
     suspend fun deleteTransaction(transactionId: Long) {
+        val existing = transactionDao.getById(transactionId)
+        val targetAccountId = existing?.accountId
         transactionDao.deleteById(transactionId)
+        targetAccountId?.let { reconcileSingleAccount(it) }
     }
 
     suspend fun setTransactionBudgetInclusion(transactionId: Long, countsTowardBudget: Boolean) {
@@ -1300,6 +1309,7 @@ class FinanceRepository(
                     proofSource = balanceProof.proofSource,
                     isVerified = true,
                 )
+                reconcileSingleAccount(accountId)
             } else if (verifiedAvailableBalance != null) {
                 val snippet = BalanceProofVerifier.extractProofSnippet(sender, body, occurredAtMillis = resolvedOccurredAt)
                 accountDao.updateVerifiedBalance(
@@ -1310,6 +1320,9 @@ class FinanceRepository(
                     proofSource = "SMS (${sender.substringAfter("-")})",
                     isVerified = true,
                 )
+                reconcileSingleAccount(accountId)
+            } else {
+                reconcileSingleAccount(accountId)
             }
         }
 
@@ -1416,11 +1429,15 @@ class FinanceRepository(
 
         return when (effectiveKind) {
             AccountKind.BANK -> {
-                val bankAccount = findConfiguredBankAccount(
-                    accounts = existingAccounts,
-                    lastFourDigits = normalizedBankLastFour,
-                    institutionName = normalizedInstitution,
-                ) ?: findPrimaryBankAccount(existingAccounts, normalizedInstitution)
+                val bankAccount = if (normalizedBankLastFour != null) {
+                    findConfiguredBankAccount(
+                        accounts = existingAccounts,
+                        lastFourDigits = normalizedBankLastFour,
+                        institutionName = normalizedInstitution,
+                    )
+                } else {
+                    findPrimaryBankAccount(existingAccounts, normalizedInstitution)
+                }
                 bankAccount?.id ?: resolveAccount(
                     name = accountLabel ?: defaultAccountName(
                         kind = AccountKind.BANK,
@@ -1477,12 +1494,23 @@ class FinanceRepository(
             }
         }
         val existing = when (kind) {
-            AccountKind.BANK -> findPrimaryBankAccount(existingAccounts, normalizedInstitution)
-                ?.takeIf { normalizedInstitution != null }
-                ?: existingAccounts.firstOrNull { account ->
-                    account.kind == AccountKind.BANK &&
-                        account.name.equals(name, ignoreCase = true)
+            AccountKind.BANK -> {
+                if (normalizedLastFour != null) {
+                    findConfiguredBankAccount(existingAccounts, normalizedLastFour, normalizedInstitution)
+                        ?: existingAccounts.firstOrNull { account ->
+                            account.kind == AccountKind.BANK &&
+                                account.lastFourDigits == null &&
+                                (normalizedInstitution == null || normalizeInstitutionName(account.institutionName) == normalizedInstitution)
+                        }
+                } else {
+                    findPrimaryBankAccount(existingAccounts, normalizedInstitution)
+                        ?.takeIf { normalizedInstitution != null }
+                        ?: existingAccounts.firstOrNull { account ->
+                            account.kind == AccountKind.BANK &&
+                                account.name.equals(name, ignoreCase = true)
+                        }
                 }
+            }
 
             AccountKind.CARD -> findConfiguredCardAccount(
                 accounts = existingAccounts,
@@ -1679,6 +1707,87 @@ class FinanceRepository(
         return duplicatesToDelete.size
     }
 
+    suspend fun reconcileSingleAccount(accountId: Long): Boolean {
+        val account = accountDao.findById(accountId) ?: return false
+        val allAccountTxs = transactionDao.getAllTransactions()
+            .filter { it.accountId == accountId && it.status == TransactionStatus.POSTED }
+            .sortedWith(compareBy({ it.occurredAtMillis }, { it.id }))
+
+        // 1. Find the latest transaction with an authentic, verified available balance proof
+        val verifiedAnchorTx = allAccountTxs.lastOrNull { tx ->
+            if (tx.availableBalance != null && tx.availableBalance > 0.0) {
+                val proof = BalanceProofVerifier.verifyBalance(
+                    sender = tx.sourceSender,
+                    body = tx.smsBody ?: "",
+                    occurredAtMillis = tx.occurredAtMillis,
+                )
+                proof.isVerified
+            } else false
+        }
+
+        if (verifiedAnchorTx != null) {
+            val proof = BalanceProofVerifier.verifyBalance(
+                sender = verifiedAnchorTx.sourceSender,
+                body = verifiedAnchorTx.smsBody ?: "",
+                occurredAtMillis = verifiedAnchorTx.occurredAtMillis,
+            )
+            val anchorBalance = proof.balance ?: verifiedAnchorTx.availableBalance ?: 0.0
+            val anchorTime = verifiedAnchorTx.occurredAtMillis
+
+            // Sum all subsequent transactions strictly after the anchor snapshot
+            val subsequentTxs = allAccountTxs.filter {
+                it.occurredAtMillis > anchorTime || (it.occurredAtMillis == anchorTime && it.id > verifiedAnchorTx.id)
+            }
+            val subsequentDelta = subsequentTxs.sumOf { tx ->
+                if (tx.direction == TransactionDirection.CREDIT) tx.amount else -tx.amount
+            }
+            val calculatedBalance = (anchorBalance + subsequentDelta).coerceAtLeast(0.0)
+            val latestTime = maxOf(anchorTime, subsequentTxs.lastOrNull()?.occurredAtMillis ?: anchorTime)
+
+            accountDao.updateVerifiedBalance(
+                accountId = accountId,
+                balance = calculatedBalance,
+                updatedAt = latestTime,
+                proofSnippet = proof.proofSnippet,
+                proofSource = proof.proofSource,
+                isVerified = true,
+            )
+            return true
+        }
+
+        // 2. If no bank statement proof exists, check if user manually configured/edited a baseline balance
+        if (!account.isBalanceVerified && account.balanceProofSource == "User Entry") {
+            val userSetTime = account.balanceUpdatedAtMillis ?: 0L
+            val subsequentTxs = allAccountTxs.filter { it.occurredAtMillis > userSetTime }
+            val subsequentDelta = subsequentTxs.sumOf { tx ->
+                if (tx.direction == TransactionDirection.CREDIT) tx.amount else -tx.amount
+            }
+            val calculated = (account.currentBalance + subsequentDelta).coerceAtLeast(0.0)
+            val latestTime = maxOf(userSetTime, subsequentTxs.lastOrNull()?.occurredAtMillis ?: userSetTime)
+            accountDao.updateBalance(account.id, calculated, latestTime)
+            return true
+        }
+
+        // 3. For system-generated accounts without any balance statement proof, calculate net cash flow
+        if (account.isSystemGenerated) {
+            val netFlow = allAccountTxs.sumOf { tx ->
+                if (tx.direction == TransactionDirection.CREDIT) tx.amount else -tx.amount
+            }.coerceAtLeast(0.0)
+            val latestTime = allAccountTxs.lastOrNull()?.occurredAtMillis ?: System.currentTimeMillis()
+            accountDao.updateVerifiedBalance(
+                accountId = accountId,
+                balance = netFlow,
+                updatedAt = latestTime,
+                proofSnippet = null,
+                proofSource = null,
+                isVerified = false,
+            )
+            return true
+        }
+
+        return false
+    }
+
     suspend fun reconcileAccountsAndBalances(): Int {
         val existingAccounts = accountDao.getAccounts()
         val allTransactions = transactionDao.getAllTransactions()
@@ -1705,55 +1814,12 @@ class FinanceRepository(
             }
         }
 
-        // 2. Re-anchor genuine bank accounts with verified substantial proof
+        // 2. Re-anchor genuine bank accounts with verified substantial proof and calculate subsequent transaction deltas
         val refreshedAccounts = accountDao.getAccounts()
-        val updatedTransactions = transactionDao.getAllTransactions()
-
         for (account in refreshedAccounts) {
-            if (account.kind != AccountKind.BANK && account.kind != AccountKind.CARD) continue
-
-            // Find the most recent transaction with a verified available balance
-            val txWithBalance = updatedTransactions
-                .filter { it.accountId == account.id && it.status == TransactionStatus.POSTED }
-                .sortedByDescending { it.occurredAtMillis }
-                .firstOrNull { tx ->
-                    if (tx.availableBalance != null && tx.availableBalance > 0.0) {
-                        val proof = BalanceProofVerifier.verifyBalance(
-                            sender = tx.sourceSender,
-                            body = tx.smsBody ?: "",
-                            occurredAtMillis = tx.occurredAtMillis,
-                        )
-                        proof.isVerified
-                    } else false
-                }
-
-            if (txWithBalance != null) {
-                val proof = BalanceProofVerifier.verifyBalance(
-                    sender = txWithBalance.sourceSender,
-                    body = txWithBalance.smsBody ?: "",
-                    occurredAtMillis = txWithBalance.occurredAtMillis,
-                )
-                if (proof.isVerified && proof.balance != null) {
-                    accountDao.updateVerifiedBalance(
-                        accountId = account.id,
-                        balance = proof.balance,
-                        updatedAt = txWithBalance.occurredAtMillis,
-                        proofSnippet = proof.proofSnippet,
-                        proofSource = proof.proofSource,
-                        isVerified = true,
-                    )
-                }
-            } else if (account.isSystemGenerated && account.currentBalance != 0.0 && !account.isBalanceVerified) {
-                // Clear unverified legacy balance if no bank statement verifies it
-                if (account.balanceUpdatedAtMillis == null) {
-                    accountDao.updateVerifiedBalance(
-                        accountId = account.id,
-                        balance = 0.0,
-                        updatedAt = System.currentTimeMillis(),
-                        proofSnippet = null,
-                        proofSource = null,
-                        isVerified = false,
-                    )
+            if (account.kind == AccountKind.BANK || account.kind == AccountKind.CARD) {
+                if (reconcileSingleAccount(account.id)) {
+                    reconciledCount++
                 }
             }
         }
