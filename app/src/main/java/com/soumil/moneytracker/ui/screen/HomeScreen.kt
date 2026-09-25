@@ -16,8 +16,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowDownward
@@ -73,6 +75,7 @@ fun HomeScreen(
     onOpenAssistant: (() -> Unit)? = null,
     onAccountsClick: () -> Unit = {},
     onAccountClick: (AccountEntity) -> Unit = {},
+    listState: LazyListState = rememberLazyListState(),
     modifier: Modifier = Modifier,
 ) {
     val haptics = LocalAppHaptics.current
@@ -80,6 +83,7 @@ fun HomeScreen(
     val navBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     LazyColumn(
+        state = listState,
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(
             start = 20.dp,

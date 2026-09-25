@@ -19,6 +19,7 @@ interface AppHaptics {
     fun success()
     fun warning()
     fun heavy()
+    fun sweetImpact()
 }
 
 val LocalAppHaptics = staticCompositionLocalOf<AppHaptics> {
@@ -33,6 +34,7 @@ object NoOpAppHaptics : AppHaptics {
     override fun success() {}
     override fun warning() {}
     override fun heavy() {}
+    override fun sweetImpact() {}
 }
 
 class HapticFeedbackManager(
@@ -215,6 +217,39 @@ class HapticFeedbackManager(
             } else {
                 @Suppress("DEPRECATION")
                 vib.vibrate(45L)
+            }
+        } catch (e: Exception) {
+            click()
+        }
+    }
+
+    override fun sweetImpact() {
+        if (!isHapticsAllowed()) return
+        val vib = vibrator ?: return
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                vib.areAllPrimitivesSupported(
+                    VibrationEffect.Composition.PRIMITIVE_QUICK_RISE,
+                    VibrationEffect.Composition.PRIMITIVE_CLICK,
+                )
+            ) {
+                val scale = preferences.hapticIntensity.value.scaleFactor.coerceIn(0.2f, 1f)
+                val composition = VibrationEffect.startComposition()
+                    .addPrimitive(VibrationEffect.Composition.PRIMITIVE_QUICK_RISE, scale * 0.65f, 0)
+                    .addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, scale, 12)
+                    .compose()
+                playEffect(composition)
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && vib.hasAmplitudeControl()) {
+                val amp1 = scaleAmplitude(75)
+                val amp2 = scaleAmplitude(170)
+                val timings = longArrayOf(0, 8, 14, 14)
+                val amplitudes = intArrayOf(0, amp1, 0, amp2)
+                playEffect(VibrationEffect.createWaveform(timings, amplitudes, -1))
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                playEffect(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
+            } else {
+                @Suppress("DEPRECATION")
+                vib.vibrate(18L)
             }
         } catch (e: Exception) {
             click()

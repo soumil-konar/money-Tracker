@@ -54,6 +54,7 @@ class HapticFeedbackTest {
         haptics.success()
         haptics.warning()
         haptics.heavy()
+        haptics.sweetImpact()
         assertTrue("NoOpAppHaptics executed all methods without exception", true)
     }
 

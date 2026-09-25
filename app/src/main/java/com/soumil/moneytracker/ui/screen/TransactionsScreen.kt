@@ -19,9 +19,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -32,9 +34,13 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.MoneyOff
 import androidx.compose.material.icons.outlined.Savings
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -43,6 +49,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -61,11 +69,13 @@ import com.soumil.moneytracker.data.model.TransactionFilter
 import com.soumil.moneytracker.data.model.TransactionStatus
 import com.soumil.moneytracker.ui.asCurrency
 import com.soumil.moneytracker.ui.asMonthYear
+import com.soumil.moneytracker.ui.asShortDate
 import com.soumil.moneytracker.ui.components.MotionReveal
 import com.soumil.moneytracker.ui.components.SectionCard
 import com.soumil.moneytracker.ui.components.TransactionItem
 import com.soumil.moneytracker.ui.haptics.LocalAppHaptics
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TransactionsScreen(
     filter: TransactionFilter,
@@ -81,15 +91,60 @@ fun TransactionsScreen(
     onEditTransaction: (TransactionRecord) -> Unit,
     onDeleteTransaction: (TransactionRecord) -> Unit,
     onToggleBudgetInclusion: (TransactionRecord) -> Unit,
+    listState: LazyListState = rememberLazyListState(),
     modifier: Modifier = Modifier,
 ) {
     val haptics = LocalAppHaptics.current
     var selectedCardAccountId by rememberSaveable(filter) { mutableStateOf<Long?>(null) }
-    val visibleTransactions = remember(transactions, filter, selectedCardAccountId) {
-        if (filter == TransactionFilter.CARD && selectedCardAccountId != null) {
+    var selectedDateMillis by rememberSaveable { mutableStateOf<Long?>(null) }
+    var showDatePicker by remember { mutableStateOf(false) }
+
+    if (showDatePicker) {
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = selectedDateMillis ?: System.currentTimeMillis(),
+        )
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    haptics.click()
+                    selectedDateMillis = datePickerState.selectedDateMillis
+                    showDatePicker = false
+                }) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    haptics.click()
+                    showDatePicker = false
+                }) {
+                    Text("Cancel")
+                }
+            },
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
+
+    val visibleTransactions = remember(transactions, filter, selectedCardAccountId, selectedDateMillis) {
+        val base = if (filter == TransactionFilter.CARD && selectedCardAccountId != null) {
             transactions.filter { it.accountId == selectedCardAccountId }
         } else {
             transactions
+        }
+        if (selectedDateMillis != null) {
+            val filterDate = java.time.Instant.ofEpochMilli(selectedDateMillis!!)
+                .atZone(java.time.ZoneId.systemDefault())
+                .toLocalDate()
+            base.filter {
+                val txDate = java.time.Instant.ofEpochMilli(it.occurredAtMillis)
+                    .atZone(java.time.ZoneId.systemDefault())
+                    .toLocalDate()
+                txDate == filterDate
+            }
+        } else {
+            base
         }
     }
     val groupedTransactions = remember(visibleTransactions) {
@@ -103,6 +158,7 @@ fun TransactionsScreen(
     val navBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     LazyColumn(
+        state = listState,
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(
             start = 20.dp,
@@ -169,6 +225,45 @@ fun TransactionsScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    item {
+                        FilterChip(
+                            selected = selectedDateMillis != null,
+                            onClick = {
+                                haptics.click()
+                                if (selectedDateMillis != null) {
+                                    selectedDateMillis = null
+                                } else {
+                                    showDatePicker = true
+                                }
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Outlined.CalendarMonth,
+                                    contentDescription = "Date filter",
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            },
+                            trailingIcon = if (selectedDateMillis != null) {
+                                {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Close,
+                                        contentDescription = "Clear date filter",
+                                        modifier = Modifier
+                                            .size(16.dp)
+                                            .clickable {
+                                                haptics.click()
+                                                selectedDateMillis = null
+                                            },
+                                    )
+                                }
+                            } else null,
+                            label = {
+                                Text(
+                                    text = selectedDateMillis?.asShortDate()?.let { "Date: $it" } ?: "Calendar",
+                                )
+                            },
+                        )
+                    }
                     items(TransactionFilter.entries) { candidate ->
                         FilterChip(
                             selected = filter == candidate,

@@ -11,12 +11,18 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -94,6 +100,9 @@ fun MoneyTrackerRoot(
     val context = LocalContext.current
     val navController = rememberNavController()
     val snackbarHostState = remember { SnackbarHostState() }
+    val homeListState = rememberLazyListState()
+    val transactionsListState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
     val dashboard by viewModel.dashboard.collectAsStateWithLifecycle()
     val budgetHistory by viewModel.budgetHistory.collectAsStateWithLifecycle()
     val transactions by viewModel.filteredTransactions.collectAsStateWithLifecycle()
@@ -219,6 +228,7 @@ fun MoneyTrackerRoot(
                 HomeScreen(
                     dashboard = dashboard,
                     smsPermissionGranted = smsPermissionGranted,
+                    listState = homeListState,
                     onRequestPermissions = {
                         permissionLauncher.launch(context.smsPermissionArray())
                     },
@@ -261,6 +271,7 @@ fun MoneyTrackerRoot(
                     transactions = transactions,
                     cardAccounts = accounts.filter { it.kind == AccountKind.CARD },
                     searchQuery = searchQuery,
+                    listState = transactionsListState,
                     onSearchQueryChange = viewModel::setSearchQuery,
                     onFilterSelected = viewModel::setFilter,
                     onAddTransactionClick = {
@@ -435,17 +446,28 @@ fun MoneyTrackerRoot(
         TrackerBottomBar(
             currentRoute = currentRoute,
             onNavigate = { destination ->
-                haptics.selection()
-                navController.navigate(destination.route) {
-                    popUpTo(navController.graph.startDestinationId) {
-                        saveState = true
+                if (destination == AppDestination.Home && currentRoute == AppDestination.Home.route) {
+                    haptics.click()
+                    coroutineScope.launch {
+                        homeListState.animateScrollToItem(0)
                     }
-                    launchSingleTop = true
-                    restoreState = true
+                } else if (destination == AppDestination.Transactions && currentRoute == AppDestination.Transactions.route) {
+                    haptics.click()
+                    coroutineScope.launch {
+                        transactionsListState.animateScrollToItem(0)
+                    }
+                } else {
+                    haptics.selection()
+                    navController.navigate(destination.route) {
+                        popUpTo(navController.graph.startDestinationId) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
                 }
             },
             onAddTransaction = {
-                haptics.click()
                 editingTransaction = null
                 transactionDialogKey += 1
                 showAddTransactionDialog = true
@@ -829,27 +851,91 @@ private fun RowScope.BottomDockItem(
 private fun RowScope.AddDockItem(
     onClick: () -> Unit,
 ) {
+    val haptics = LocalAppHaptics.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    LaunchedEffect(isPressed) {
+        if (isPressed) {
+            haptics.sweetImpact()
+        }
+    }
+
+    val buttonScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.82f else 1.0f,
+        animationSpec = spring(
+            dampingRatio = if (isPressed) 0.85f else 0.45f,
+            stiffness = if (isPressed) Spring.StiffnessHigh else Spring.StiffnessMediumLow,
+        ),
+        label = "appleAddButtonScale",
+    )
+
+    val iconRotation by animateFloatAsState(
+        targetValue = if (isPressed) 90f else 0f,
+        animationSpec = spring(
+            dampingRatio = if (isPressed) 0.9f else 0.5f,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "appleAddIconRotation",
+    )
+
+    val buttonElevation by animateDpAsState(
+        targetValue = if (isPressed) 2.dp else 10.dp,
+        animationSpec = spring(
+            dampingRatio = 0.8f,
+            stiffness = Spring.StiffnessMedium,
+        ),
+        label = "appleAddElevation",
+    )
+
     Box(
         modifier = Modifier.weight(1f),
         contentAlignment = Alignment.Center,
     ) {
         Surface(
             shape = CircleShape,
-            color = MaterialTheme.colorScheme.primary,
-            shadowElevation = 10.dp,
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.28f)),
+            color = Color.Transparent,
+            shadowElevation = buttonElevation,
+            modifier = Modifier
+                .graphicsLayer {
+                    scaleX = buttonScale
+                    scaleY = buttonScale
+                }
+                .clip(CircleShape)
+                .background(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.primary,
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.88f),
+                        ),
+                    ),
+                )
+                .border(
+                    BorderStroke(
+                        1.dp,
+                        Color.White.copy(alpha = if (isPressed) 0.45f else 0.28f),
+                    ),
+                    CircleShape,
+                )
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = onClick,
+                ),
         ) {
             Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clickable(onClick = onClick),
+                modifier = Modifier.size(48.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     imageVector = Icons.Outlined.Add,
                     contentDescription = "Add transaction",
                     tint = Color.White,
-                    modifier = Modifier.size(24.dp),
+                    modifier = Modifier
+                        .size(24.dp)
+                        .graphicsLayer {
+                            rotationZ = iconRotation
+                        },
                 )
             }
         }

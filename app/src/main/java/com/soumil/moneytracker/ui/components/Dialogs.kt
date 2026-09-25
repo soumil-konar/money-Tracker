@@ -72,6 +72,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountBalance
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material3.Icon
 import androidx.compose.ui.graphics.Color
 import com.soumil.moneytracker.ui.asCurrency
@@ -146,9 +147,39 @@ fun AddTransactionDialog(
     var countsTowardBudget by rememberSaveable(dialogKey) {
         mutableStateOf(initialDraft?.countsTowardBudget ?: true)
     }
+    var occurredAtMillis by rememberSaveable(dialogKey) {
+        mutableStateOf(initialDraft?.occurredAtMillis ?: System.currentTimeMillis())
+    }
+    var showDatePicker by remember { mutableStateOf(false) }
     var accountExpanded by remember { mutableStateOf(false) }
     var categoryExpanded by remember { mutableStateOf(false) }
     val selectedAccount = accounts.firstOrNull { it.id == selectedAccountId } ?: accounts.firstOrNull()
+
+    if (showDatePicker) {
+        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = occurredAtMillis)
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    haptics.click()
+                    datePickerState.selectedDateMillis?.let { occurredAtMillis = it }
+                    showDatePicker = false
+                }) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    haptics.click()
+                    showDatePicker = false
+                }) {
+                    Text("Cancel")
+                }
+            },
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
 
     TrackerDialogScaffold(
         eyebrow = if (initialDraft == null) "Manual Entry" else "Ledger Correction",
@@ -156,7 +187,7 @@ fun AddTransactionDialog(
         subtitle = if (initialDraft == null) {
             "Capture a transaction in the same ledger style as the imported SMS entries."
         } else {
-            "Adjust the merchant, amount, direction, account, or note without changing the original ledger date."
+            "Adjust the merchant, amount, direction, account, date, or note."
         },
         onDismiss = onDismiss,
     ) {
@@ -227,6 +258,68 @@ fun AddTransactionDialog(
                 selected = selectedDirection == TransactionDirection.CREDIT,
                 onClick = { selectedDirection = TransactionDirection.CREDIT },
             )
+        }
+
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+            modifier = Modifier.fillMaxWidth(),
+            onClick = {
+                haptics.click()
+                showDatePicker = true
+            },
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.CalendarMonth,
+                            contentDescription = "Select transaction date",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = "Transaction date",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            text = occurredAtMillis.asFullDate(),
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                ) {
+                    Text(
+                        text = "Pick date",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    )
+                }
+            }
         }
         ExposedDropdownMenuBox(
             expanded = categoryExpanded,
@@ -345,7 +438,7 @@ fun AddTransactionDialog(
                             category = selectedCategory,
                             accountId = selectedAccount?.id,
                             note = note.trim(),
-                            occurredAtMillis = initialDraft?.occurredAtMillis ?: System.currentTimeMillis(),
+                            occurredAtMillis = occurredAtMillis,
                             countsTowardBudget = countsTowardBudget,
                         ),
                     )
