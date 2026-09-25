@@ -780,14 +780,55 @@ fun SettingsScreen(
         // 3. DATA INGESTION & SYNC
         // ==========================================
         if (selectedCategory == SettingsCategory.ALL || selectedCategory == SettingsCategory.DATA_SYNC) {
-            // SMS Permission banner
+            // SMS Auto-Tracking Section
             item {
                 MotionReveal(index = 2) {
-                    PermissionBanner(
-                        smsPermissionGranted = smsPermissionGranted,
-                        onRequestPermissions = onRequestPermissions,
-                        onImportRecentSms = onImportRecentSms,
-                    )
+                    SectionCard(
+                        title = "SMS Auto-Tracking",
+                        subtitle = "Automated local parsing for bank and UPI transaction SMS alerts",
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                            PermissionBanner(
+                                smsPermissionGranted = smsPermissionGranted,
+                                onRequestPermissions = onRequestPermissions,
+                                onImportRecentSms = onImportRecentSms,
+                            )
+
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Security,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "100% On-Device Privacy",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onBackground,
+                                        )
+                                        Text(
+                                            text = "SMS messages are analyzed entirely on your device. No financial text or sender data is ever sent to external cloud servers.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 

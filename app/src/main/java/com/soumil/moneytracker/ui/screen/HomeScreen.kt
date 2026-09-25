@@ -27,6 +27,7 @@ import androidx.compose.material.icons.outlined.AssignmentTurnedIn
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.CreditCard
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.Savings
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -36,7 +37,16 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
+import java.time.YearMonth
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+import com.soumil.moneytracker.ui.components.MonthPickerDialog
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -64,12 +74,13 @@ import com.soumil.moneytracker.ui.haptics.LocalAppHaptics
 @Composable
 fun HomeScreen(
     dashboard: DashboardState,
-    smsPermissionGranted: Boolean,
-    onRequestPermissions: () -> Unit,
-    onImportRecentSms: () -> Unit,
+    smsPermissionGranted: Boolean = false,
+    onRequestPermissions: () -> Unit = {},
+    onImportRecentSms: () -> Unit = {},
     onSetBudgetClick: () -> Unit,
     onAddTransactionClick: () -> Unit,
     onBudgetClick: () -> Unit,
+    onSelectMonth: (YearMonth) -> Unit = {},
     onRefreshAiInsights: () -> Unit = {},
     onOpenAssistant: (() -> Unit)? = null,
     onAccountsClick: () -> Unit = {},
@@ -79,6 +90,7 @@ fun HomeScreen(
     modifier: Modifier = Modifier,
 ) {
     val haptics = LocalAppHaptics.current
+    var showMonthPicker by remember { mutableStateOf(false) }
     val statusBarInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
@@ -107,26 +119,43 @@ fun HomeScreen(
                         fontWeight = FontWeight.Medium,
                     )
                     Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable {
+                                haptics.click()
+                                showMonthPicker = true
+                            },
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
                             Icon(
                                 imageVector = Icons.Outlined.CalendarMonth,
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp),
+                                contentDescription = "Select Month",
+                                modifier = Modifier.size(15.dp),
                                 tint = MaterialTheme.colorScheme.primary,
                             )
+                            val monthLabel = remember(dashboard.selectedYearMonth) {
+                                dashboard.selectedYearMonth.format(
+                                    DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault())
+                                )
+                            }
                             Text(
-                                text = System.currentTimeMillis().asMonthYear(),
-                                style = MaterialTheme.typography.labelSmall,
+                                text = monthLabel,
+                                style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 fontWeight = FontWeight.SemiBold,
+                            )
+                            Icon(
+                                imageVector = Icons.Outlined.KeyboardArrowDown,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
@@ -139,14 +168,6 @@ fun HomeScreen(
                     color = MaterialTheme.colorScheme.onBackground,
                 )
             }
-        }
-
-        item {
-            PermissionBanner(
-                smsPermissionGranted = smsPermissionGranted,
-                onRequestPermissions = onRequestPermissions,
-                onImportRecentSms = onImportRecentSms,
-            )
         }
 
         item {
@@ -424,6 +445,16 @@ fun HomeScreen(
                 }
             }
         }
+    }
+
+    if (showMonthPicker) {
+        MonthPickerDialog(
+            selectedYearMonth = dashboard.selectedYearMonth,
+            onDismiss = { showMonthPicker = false },
+            onSelectMonth = {
+                onSelectMonth(it)
+            },
+        )
     }
 }
 

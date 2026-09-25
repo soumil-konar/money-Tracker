@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
@@ -88,7 +89,14 @@ import com.soumil.moneytracker.ui.asDateTime
 import com.soumil.moneytracker.ui.asFullDate
 import com.soumil.moneytracker.ui.haptics.LocalAppHaptics
 import java.time.LocalDate
+import java.time.Month
+import java.time.YearMonth
 import java.time.ZoneId
+import java.time.format.TextStyle
+import java.util.Locale
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ArrowForward
+import androidx.compose.ui.draw.clip
 
 @Composable
 fun BudgetDialog(
@@ -2116,6 +2124,171 @@ fun RestoreBackupPassphraseDialog(
             }
         }
     }
+}
+
+@Composable
+fun MonthPickerDialog(
+    selectedYearMonth: YearMonth,
+    onDismiss: () -> Unit,
+    onSelectMonth: (YearMonth) -> Unit,
+    availableMonths: List<String> = emptyList(),
+) {
+    val haptics = LocalAppHaptics.current
+    var viewingYear by remember(selectedYearMonth) { mutableStateOf(selectedYearMonth.year) }
+    val currentRealMonth = remember { YearMonth.now() }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Select Month",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    IconButton(
+                        onClick = {
+                            haptics.tick()
+                            viewingYear -= 1
+                        },
+                        modifier = Modifier.size(36.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                            contentDescription = "Previous year",
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                    Text(
+                        text = viewingYear.toString(),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 4.dp),
+                    )
+                    IconButton(
+                        onClick = {
+                            haptics.tick()
+                            viewingYear += 1
+                        },
+                        modifier = Modifier.size(36.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Outlined.ArrowForward,
+                            contentDescription = "Next year",
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                for (row in 0 until 4) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        for (col in 0 until 3) {
+                            val monthNumber = row * 3 + col + 1
+                            val month = Month.of(monthNumber)
+                            val candidate = YearMonth.of(viewingYear, month)
+                            val isSelected = candidate == selectedYearMonth
+                            val isCurrent = candidate == currentRealMonth
+                            val hasData = availableMonths.contains(candidate.toString())
+                            val monthName = month.getDisplayName(TextStyle.SHORT, Locale.getDefault())
+
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = when {
+                                    isSelected -> MaterialTheme.colorScheme.primary
+                                    isCurrent -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                                    else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                },
+                                border = BorderStroke(
+                                    1.dp,
+                                    when {
+                                        isSelected -> MaterialTheme.colorScheme.primary
+                                        isCurrent -> MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                                        else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                                    },
+                                ),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(44.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable {
+                                        haptics.sweetImpact()
+                                        onSelectMonth(candidate)
+                                        onDismiss()
+                                    },
+                            ) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier.fillMaxSize(),
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center,
+                                    ) {
+                                        Text(
+                                            text = monthName,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = if (isSelected || isCurrent) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Medium,
+                                            color = when {
+                                                isSelected -> MaterialTheme.colorScheme.onPrimary
+                                                isCurrent -> MaterialTheme.colorScheme.primary
+                                                else -> MaterialTheme.colorScheme.onSurface
+                                            },
+                                        )
+                                        if (hasData && !isSelected) {
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(5.dp)
+                                                    .clip(CircleShape)
+                                                    .background(MaterialTheme.colorScheme.tertiary),
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    haptics.click()
+                    onSelectMonth(currentRealMonth)
+                    onDismiss()
+                },
+            ) {
+                Text("Current Month")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = {
+                haptics.click()
+                onDismiss()
+            }) {
+                Text("Cancel")
+            }
+        },
+    )
 }
 
 

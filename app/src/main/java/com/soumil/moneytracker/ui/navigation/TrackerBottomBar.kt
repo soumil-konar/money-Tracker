@@ -64,8 +64,8 @@ import com.soumil.moneytracker.ui.haptics.LocalAppHaptics
 fun TrackerBottomBar(
     currentRoute: String?,
     onNavigate: (AppDestination) -> Unit,
-    onAddTransaction: () -> Unit,
     modifier: Modifier = Modifier,
+    onAddTransaction: (() -> Unit)? = null,
 ) {
     val haptics = LocalAppHaptics.current
     val isDark = isSystemInDarkTheme()
@@ -76,8 +76,8 @@ fun TrackerBottomBar(
     }
 
     // Outer shape and styling tokens
-    val outerShape = RoundedCornerShape(32.dp)
-    val innerShape = RoundedCornerShape(26.dp)
+    val outerShape = RoundedCornerShape(30.dp)
+    val innerShape = RoundedCornerShape(24.dp)
 
     val surfaceBaseColor = if (isDark) {
         Color(0xFF14161C).copy(alpha = 0.82f)
@@ -117,16 +117,16 @@ fun TrackerBottomBar(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
         // 1. Ambient theme glow beneath the floating pill bar (inspired by UI_2.png)
         Box(
             modifier = Modifier
                 .width(220.dp)
-                .height(44.dp)
-                .offset(y = 12.dp)
-                .blur(36.dp)
+                .height(36.dp)
+                .offset(y = 10.dp)
+                .blur(32.dp)
                 .background(
                     brush = Brush.radialGradient(
                         colors = listOf(
@@ -144,186 +144,89 @@ fun TrackerBottomBar(
                 .widthIn(max = 370.dp)
                 .fillMaxWidth()
                 .shadow(
-                    elevation = 20.dp,
+                    elevation = 18.dp,
                     shape = outerShape,
                     clip = false,
-                    ambientColor = Color.Black.copy(alpha = 0.35f),
-                    spotColor = Color.Black.copy(alpha = 0.50f),
+                    ambientColor = Color.Black.copy(alpha = 0.30f),
+                    spotColor = Color.Black.copy(alpha = 0.45f),
                 )
                 .clip(outerShape)
                 .background(surfaceBaseColor)
                 .background(specularBrush)
                 .border(BorderStroke(1.2.dp, rimBrush), outerShape)
-                .padding(horizontal = 10.dp, vertical = 8.dp),
+                .padding(horizontal = 6.dp, vertical = 6.dp),
         ) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(7.dp),
+            // Navigation Row with gliding capsule
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(innerShape)
+                    .background(innerFrameBg)
+                    .border(BorderStroke(1.dp, innerFrameRimBrush), innerShape)
+                    .padding(horizontal = 4.dp, vertical = 4.dp),
             ) {
-                // Top Action Pill ("Add transaction" capture pill)
-                TopActionPill(
-                    onClick = {
-                        haptics.sweetImpact()
-                        onAddTransaction()
-                    },
-                    isDark = isDark,
+                val totalWidth = maxWidth
+                val tabWidth = totalWidth / destinations.size
+
+                // Material 3 Expressive animated sliding indicator position
+                val animatedIndex by animateFloatAsState(
+                    targetValue = selectedIndex.toFloat(),
+                    animationSpec = spring(
+                        dampingRatio = 0.74f,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                    label = "dockIndicatorOffset",
                 )
 
-                // Lower Navigation Row with gliding capsule
-                BoxWithConstraints(
+                // Gliding active capsule indicator
+                val indicatorShape = RoundedCornerShape(20.dp)
+                val indicatorBgColor = if (isDark) {
+                    Color(0xFF343842).copy(alpha = 0.88f)
+                } else {
+                    Color.White.copy(alpha = 0.95f)
+                }
+                val indicatorRimBrush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = if (isDark) 0.38f else 0.70f),
+                        Color.White.copy(alpha = if (isDark) 0.12f else 0.25f),
+                    ),
+                )
+
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(innerShape)
-                        .background(innerFrameBg)
-                        .border(BorderStroke(1.dp, innerFrameRimBrush), innerShape)
-                        .padding(horizontal = 4.dp, vertical = 4.dp),
+                        .offset(x = tabWidth * animatedIndex)
+                        .width(tabWidth)
+                        .height(52.dp)
+                        .clip(indicatorShape)
+                        .background(indicatorBgColor)
+                        // Subtle touch of Material 3 Expressive theme accent on active capsule
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = if (isDark) 0.14f else 0.10f))
+                        .border(BorderStroke(1.dp, indicatorRimBrush), indicatorShape)
+                        .shadow(
+                            elevation = 6.dp,
+                            shape = indicatorShape,
+                            ambientColor = Color.Black.copy(alpha = 0.20f),
+                            spotColor = Color.Black.copy(alpha = 0.25f),
+                        ),
+                )
+
+                // 4 Navigation Tab Items
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    val totalWidth = maxWidth
-                    val tabWidth = totalWidth / destinations.size
-
-                    // Material 3 Expressive animated sliding indicator position
-                    val animatedIndex by animateFloatAsState(
-                        targetValue = selectedIndex.toFloat(),
-                        animationSpec = spring(
-                            dampingRatio = 0.74f,
-                            stiffness = Spring.StiffnessMediumLow,
-                        ),
-                        label = "dockIndicatorOffset",
-                    )
-
-                    // Gliding active capsule indicator
-                    val indicatorShape = RoundedCornerShape(22.dp)
-                    val indicatorBgColor = if (isDark) {
-                        Color(0xFF343842).copy(alpha = 0.88f)
-                    } else {
-                        Color.White.copy(alpha = 0.95f)
-                    }
-                    val indicatorRimBrush = Brush.verticalGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = if (isDark) 0.38f else 0.70f),
-                            Color.White.copy(alpha = if (isDark) 0.12f else 0.25f),
-                        ),
-                    )
-
-                    Box(
-                        modifier = Modifier
-                            .offset(x = tabWidth * animatedIndex)
-                            .width(tabWidth)
-                            .height(52.dp)
-                            .clip(indicatorShape)
-                            .background(indicatorBgColor)
-                            // Subtle touch of Material 3 Expressive theme accent on active capsule
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = if (isDark) 0.14f else 0.10f))
-                            .border(BorderStroke(1.dp, indicatorRimBrush), indicatorShape)
-                            .shadow(
-                                elevation = 6.dp,
-                                shape = indicatorShape,
-                                ambientColor = Color.Black.copy(alpha = 0.20f),
-                                spotColor = Color.Black.copy(alpha = 0.25f),
-                            ),
-                    )
-
-                    // 4 Navigation Tab Items
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        destinations.forEachIndexed { index, destination ->
-                            val isSelected = index == selectedIndex
-                            DockTabItem(
-                                destination = destination,
-                                selected = isSelected,
-                                onClick = { onNavigate(destination) },
-                                isDark = isDark,
-                                modifier = Modifier.width(tabWidth),
-                            )
-                        }
+                    destinations.forEachIndexed { index, destination ->
+                        val isSelected = index == selectedIndex
+                        DockTabItem(
+                            destination = destination,
+                            selected = isSelected,
+                            onClick = { onNavigate(destination) },
+                            isDark = isDark,
+                            modifier = Modifier.width(tabWidth),
+                        )
                     }
                 }
             }
-        }
-    }
-}
-
-/**
- * Centered top pill action button inspired by the "Capture" button in the reference screenshot.
- */
-@Composable
-private fun TopActionPill(
-    onClick: () -> Unit,
-    isDark: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-
-    // Expressive tactile squish & brightness on press
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.94f else 1f,
-        animationSpec = spring(
-            dampingRatio = 0.75f,
-            stiffness = Spring.StiffnessMedium,
-        ),
-        label = "topActionScale",
-    )
-
-    val pillShape = CircleShape
-    val pillBorderBrush = Brush.verticalGradient(
-        colors = listOf(
-            Color.White.copy(alpha = if (isPressed) 0.60f else (if (isDark) 0.32f else 0.55f)),
-            Color.White.copy(alpha = if (isDark) 0.10f else 0.20f),
-        ),
-    )
-
-    val pillBgColor = if (isPressed) {
-        Color.White.copy(alpha = if (isDark) 0.16f else 0.24f)
-    } else {
-        Color.White.copy(alpha = if (isDark) 0.08f else 0.14f)
-    }
-
-    val contentColor = if (isDark) {
-        Color.White.copy(alpha = 0.95f)
-    } else {
-        MaterialTheme.colorScheme.onSurface
-    }
-
-    Surface(
-        shape = pillShape,
-        color = pillBgColor,
-        border = BorderStroke(1.dp, pillBorderBrush),
-        modifier = modifier
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
-            .clip(pillShape)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onClick,
-            ),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.Add,
-                contentDescription = "Add transaction",
-                tint = contentColor,
-                modifier = Modifier.size(16.dp),
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                text = "Add transaction",
-                color = contentColor,
-                style = MaterialTheme.typography.labelMedium.copy(
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 0.2.sp,
-                ),
-            )
         }
     }
 }

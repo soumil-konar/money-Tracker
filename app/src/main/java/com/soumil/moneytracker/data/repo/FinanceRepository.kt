@@ -65,6 +65,7 @@ import com.soumil.moneytracker.data.local.ThemePreferences
 import com.soumil.moneytracker.email.EmailSyncManager
 import com.soumil.moneytracker.data.model.AssistantMessage
 import com.soumil.moneytracker.data.model.AssistantSender
+import kotlinx.coroutines.flow.asStateFlow
 
 class FinanceRepository(
     private val accountDao: AccountDao,
@@ -110,6 +111,13 @@ class FinanceRepository(
     private val _isAiLoading = MutableStateFlow(false)
     val isAiLoading: StateFlow<Boolean> = _isAiLoading
 
+    private val _selectedYearMonth = MutableStateFlow<YearMonth>(YearMonth.now())
+    val selectedYearMonth: StateFlow<YearMonth> = _selectedYearMonth.asStateFlow()
+
+    fun setSelectedYearMonth(yearMonth: YearMonth) {
+        _selectedYearMonth.value = yearMonth
+    }
+
     val budgetHistory: Flow<List<MonthBudgetSummary>> = combine(
         postedTransactions,
         allBudgets,
@@ -120,17 +128,19 @@ class FinanceRepository(
     val dashboard: Flow<DashboardState> = combine(
         postedTransactions,
         transactions,
-        currentBudget,
+        allBudgets,
         subscriptions,
         accounts,
         _spendingInsights,
         _isAiLoading,
+        _selectedYearMonth,
     ) { args: Array<Any?> ->
         @Suppress("UNCHECKED_CAST")
         val posted = args[0] as List<TransactionRecord>
         @Suppress("UNCHECKED_CAST")
         val all = args[1] as List<TransactionRecord>
-        val budget = args[2] as? BudgetEntity
+        @Suppress("UNCHECKED_CAST")
+        val budgetsList = args[2] as List<BudgetEntity>
         @Suppress("UNCHECKED_CAST")
         val subs = args[3] as List<SubscriptionRecord>
         @Suppress("UNCHECKED_CAST")
@@ -138,14 +148,18 @@ class FinanceRepository(
         @Suppress("UNCHECKED_CAST")
         val insights = args[5] as List<String>
         val isLoading = args[6] as Boolean
+        val targetMonth = args[7] as YearMonth
+        val budgetEntity = budgetsList.firstOrNull { it.monthKey == targetMonth.toString() }
+
         buildDashboardState(
             postedTransactions = posted,
             allTransactions = all,
-            budget = budget?.amountLimit,
+            budget = budgetEntity?.amountLimit,
             subscriptions = subs,
             accountsList = accountsList,
             insights = insights,
             isAiLoading = isLoading,
+            targetMonth = targetMonth,
         )
     }
 
@@ -301,8 +315,7 @@ class FinanceRepository(
         return result
     }
 
-    suspend fun setMonthlyBudget(amount: Double) {
-        val monthKey = currentMonthKey()
+    suspend fun setMonthlyBudget(amount: Double, monthKey: String = _selectedYearMonth.value.toString()) {
         budgetDao.deleteOverallBudget(monthKey)
         budgetDao.insert(
             BudgetEntity(
@@ -1026,8 +1039,9 @@ class FinanceRepository(
         accountsList: List<AccountEntity> = emptyList(),
         insights: List<String> = emptyList(),
         isAiLoading: Boolean = false,
+        targetMonth: YearMonth = YearMonth.now(),
     ): DashboardState {
-        val currentMonth = YearMonth.now()
+        val currentMonth = targetMonth
         val currentMonthTransactions = postedTransactions.filter {
             YearMonth.from(it.toLocalDate()) == currentMonth
         }
@@ -1055,11 +1069,16 @@ class FinanceRepository(
             .sumOf(TransactionRecord::amount)
 
         val monthNetCashflow = monthIncome - monthSpent
+        val now = YearMonth.now()
         val today = LocalDate.now()
         val daysInMonth = currentMonth.lengthOfMonth()
-        val daysRemaining = (daysInMonth - today.dayOfMonth + 1).coerceAtLeast(1)
+        val daysRemaining = when {
+            currentMonth == now -> (daysInMonth - today.dayOfMonth + 1).coerceAtLeast(1)
+            currentMonth < now -> 1
+            else -> daysInMonth
+        }
         val remainingBudget = if (budget != null) (budget - monthSpent).coerceAtLeast(0.0) else 0.0
-        val safeDailySpend = if (budget != null && budget > 0.0) remainingBudget / daysRemaining else 0.0
+        val safeDailySpend = if (budget != null && budget > 0.0 && currentMonth >= now) remainingBudget / daysRemaining else 0.0
         val budgetPercentUsed = if (budget != null && budget > 0.0) (monthSpent / budget).toFloat() else 0f
 
         val categoryBreakdown = spendTransactions
@@ -1067,29 +1086,57 @@ class FinanceRepository(
             .map { (category, items) -> CategorySlice(category, items.sumOf(TransactionRecord::amount)) }
             .sortedByDescending(CategorySlice::amount)
 
-        val trendPoints = (6 downTo 0).map { daysAgo ->
-            val date = today.minusDays(daysAgo.toLong())
-            val dayTransactions = currentMonthTransactions.filter { it.toLocalDate() == date }
-            TrendPoint(
-                date = date,
-                income = dayTransactions.filter {
-                    it.direction == TransactionDirection.CREDIT &&
-                        it.category != TransactionCategory.TRANSFER &&
-                        it.countsTowardBudget &&
-                        !isRepaymentOrTransfer(it)
-                }.sumOf(TransactionRecord::amount),
-                expense = dayTransactions
-                    .filter {
-                        it.direction == TransactionDirection.DEBIT &&
+        val trendPoints = if (currentMonth == now) {
+            (6 downTo 0).map { daysAgo ->
+                val date = today.minusDays(daysAgo.toLong())
+                val dayTransactions = currentMonthTransactions.filter { it.toLocalDate() == date }
+                TrendPoint(
+                    date = date,
+                    income = dayTransactions.filter {
+                        it.direction == TransactionDirection.CREDIT &&
                             it.category != TransactionCategory.TRANSFER &&
                             it.countsTowardBudget &&
                             !isRepaymentOrTransfer(it)
-                    }
-                    .sumOf(TransactionRecord::amount),
-            )
+                    }.sumOf(TransactionRecord::amount),
+                    expense = dayTransactions
+                        .filter {
+                            it.direction == TransactionDirection.DEBIT &&
+                                it.category != TransactionCategory.TRANSFER &&
+                                it.countsTowardBudget &&
+                                !isRepaymentOrTransfer(it)
+                        }
+                        .sumOf(TransactionRecord::amount),
+                )
+            }
+        } else {
+            val sampleDays = listOf(1, 5, 10, 15, 20, 25, daysInMonth)
+            sampleDays.map { day ->
+                val date = currentMonth.atDay(day.coerceAtMost(daysInMonth))
+                val dayTransactions = currentMonthTransactions.filter { it.toLocalDate() == date }
+                TrendPoint(
+                    date = date,
+                    income = dayTransactions.filter {
+                        it.direction == TransactionDirection.CREDIT &&
+                            it.category != TransactionCategory.TRANSFER &&
+                            it.countsTowardBudget &&
+                            !isRepaymentOrTransfer(it)
+                    }.sumOf(TransactionRecord::amount),
+                    expense = dayTransactions
+                        .filter {
+                            it.direction == TransactionDirection.DEBIT &&
+                                it.category != TransactionCategory.TRANSFER &&
+                                it.countsTowardBudget &&
+                                !isRepaymentOrTransfer(it)
+                        }
+                        .sumOf(TransactionRecord::amount),
+                )
+            }
         }
 
         val totalBankBalance = accountsList.filter { it.kind != AccountKind.CARD }.sumOf { it.currentBalance }
+        val monthAllTransactions = allTransactions.filter {
+            YearMonth.from(it.toLocalDate()) == currentMonth
+        }
 
         return DashboardState(
             trackedBalance = if (totalBankBalance != 0.0) totalBankBalance else monthNetCashflow,
@@ -1105,10 +1152,11 @@ class FinanceRepository(
             activeSubscriptionsCount = subscriptions.count { it.state == SubscriptionState.ACTIVE },
             categoryBreakdown = categoryBreakdown,
             trendPoints = trendPoints,
-            recentTransactions = allTransactions.take(6),
+            recentTransactions = monthAllTransactions.take(6),
             spendingInsights = insights,
             isAiLoading = isAiLoading,
             accounts = accountsList,
+            selectedYearMonth = currentMonth,
         )
     }
 

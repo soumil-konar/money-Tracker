@@ -11,6 +11,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
@@ -233,8 +234,16 @@ fun MoneyTrackerRoot(
         viewModel.messages.collect { snackbarHostState.showSnackbar(it) }
     }
 
+    val pagerState = androidx.compose.foundation.pager.rememberPagerState(initialPage = 0, pageCount = { bottomDestinations.size })
     val navBackStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = navBackStackEntry?.destination?.route
+    val isBudgetHistory = navBackStackEntry?.destination?.route == AppDestination.BudgetHistory.route
+    val currentRoute = if (isBudgetHistory) AppDestination.BudgetHistory.route else bottomDestinations.getOrNull(pagerState.currentPage)?.route ?: AppDestination.Home.route
+
+    BackHandler(enabled = !isBudgetHistory && pagerState.currentPage != 0) {
+        coroutineScope.launch {
+            pagerState.animateScrollToPage(0)
+        }
+    }
 
     val isAddTransactionOpen = showAddTransactionDialog || editingTransaction != null
     val backgroundBlur by animateDpAsState(
@@ -272,287 +281,326 @@ fun MoneyTrackerRoot(
             ) {
                 NavHost(
                     navController = navController,
-                    startDestination = AppDestination.Home.route,
+                    startDestination = "main_pager",
                     modifier = Modifier.fillMaxSize(),
                 ) {
-            composable(AppDestination.Home.route) {
-                HomeScreen(
-                    dashboard = dashboard,
-                    smsPermissionGranted = smsPermissionGranted,
-                    listState = homeListState,
-                    chartReloadKey = chartReloadKey,
-                    onRequestPermissions = {
-                        permissionLauncher.launch(context.smsPermissionArray())
-                    },
-                    onImportRecentSms = { viewModel.importRecentSms(context.contentResolver) },
-                    onSetBudgetClick = { showBudgetDialog = true },
-                    onAddTransactionClick = {
-                        transactionAnchorBounds = null
-                        lastOpenedWasEditing = false
-                        activeEditingTransaction = null
-                        editingTransaction = null
-                        transactionDialogKey += 1
-                        showAddTransactionDialog = true
-                    },
-                    onBudgetClick = {
-                        navController.navigate(AppDestination.BudgetHistory.route)
-                    },
-                    onRefreshAiInsights = { viewModel.refreshAiSpendingInsights() },
-                    onOpenAssistant = { showAiChatSheet = true },
-                    onAccountsClick = { navController.navigate(AppDestination.More.route) },
-                    onAccountClick = { viewingBalanceProofAccount = it },
-                )
-            }
-            composable(AppDestination.BudgetHistory.route) {
-                BudgetHistoryScreen(
-                    history = budgetHistory,
-                    initiallyExpandedKey = budgetHistory.firstOrNull()?.yearMonthKey,
-                    onBack = {
-                        navController.navigate(AppDestination.Home.route) {
-                            popUpTo(AppDestination.BudgetHistory.route) { inclusive = true }
-                            launchSingleTop = true
-                        }
-                    },
-                    onEditTransaction = { transaction, bounds ->
-                        transactionAnchorBounds = bounds
-                        lastOpenedWasEditing = true
-                        activeEditingTransaction = transaction
-                        showAddTransactionDialog = false
-                        editingTransaction = transaction
-                        transactionDialogKey += 1
-                    },
-                )
-            }
-            composable(AppDestination.Transactions.route) {
-                TransactionsScreen(
-                    filter = filter,
-                    transactions = transactions,
-                    cardAccounts = accounts.filter { it.kind == AccountKind.CARD },
-                    searchQuery = searchQuery,
-                    listState = transactionsListState,
-                    onSearchQueryChange = viewModel::setSearchQuery,
-                    onFilterSelected = viewModel::setFilter,
-                    onAddTransactionClick = {
-                        transactionAnchorBounds = null
-                        lastOpenedWasEditing = false
-                        activeEditingTransaction = null
-                        editingTransaction = null
-                        transactionDialogKey += 1
-                        showAddTransactionDialog = true
-                    },
-                    onApproveReview = viewModel::approveReview,
-                    onAnalyzeWithAi = viewModel::enrichTransactionWithAi,
-                    isAiAnalyzing = isAiAnalyzing,
-                    onEditTransaction = { transaction, bounds ->
-                        transactionAnchorBounds = bounds
-                        lastOpenedWasEditing = true
-                        activeEditingTransaction = transaction
-                        showAddTransactionDialog = false
-                        editingTransaction = transaction
-                        transactionDialogKey += 1
-                    },
-                    onDeleteTransaction = { transaction ->
-                        pendingDeleteTransaction = transaction
-                    },
-                    onToggleBudgetInclusion = { transaction ->
-                        viewModel.setTransactionBudgetInclusion(
-                            transactionId = transaction.id,
-                            countsTowardBudget = !transaction.countsTowardBudget,
-                        )
-                    },
-                    onTransferToCashWallet = viewModel::transferToCashWallet,
-                    onDismissAtmPrompt = viewModel::dismissAtmPrompt,
-                    untransferredAtmTransactions = untransferredAtmTransactions,
-                )
-            }
-            composable(AppDestination.More.route) {
-                MoreScreen(
-                    accounts = accounts,
-                    activeSubscriptions = activeSubscriptions,
-                    scheduledTransactions = scheduledTransactions,
-                    suggestedSubscriptions = suggestedSubscriptions,
-                    onAddSubscriptionClick = { showAddSubscriptionDialog = true },
-                    onAddBankClick = {
-                        editingAccount = null
-                        accountDialogDraft = AccountDraft(
-                            name = "",
-                            kind = AccountKind.BANK,
-                            institutionName = primaryBankAccount?.institutionName,
-                        )
-                        accountDialogKey += 1
-                    },
-                    onAddCardClick = {
-                        editingAccount = null
-                        accountDialogDraft = AccountDraft(
-                            name = "",
-                            kind = AccountKind.CARD,
-                            institutionName = primaryBankAccount?.institutionName,
-                        )
-                        accountDialogKey += 1
-                    },
-                    onEditAccount = { account ->
-                        editingAccount = account
-                        accountDialogDraft = account.toDraft()
-                        accountDialogKey += 1
-                    },
-                    onDeleteAccount = { account ->
-                        pendingDeleteAccount = account
-                    },
-                    onAcceptSuggestion = viewModel::acceptSuggestedSubscription,
-                    onDismissSuggestion = viewModel::dismissSuggestedSubscription,
-                    onExportCsv = { exportTransactionsToCsv(context, transactions) },
-                    onAccountClick = { viewingBalanceProofAccount = it },
-                )
-            }
-            composable(AppDestination.Settings.route) {
-                SettingsScreen(
-                    smsPermissionGranted = smsPermissionGranted,
-                    onRequestPermissions = { permissionLauncher.launch(context.smsPermissionArray()) },
-                    onImportRecentSms = { viewModel.importRecentSms(context.contentResolver) },
-                    aiApiKey = aiApiKey,
-                    isAiEnabled = isAiEnabled,
-                    selectedModel = selectedModel,
-                    engineMode = engineMode,
-                    deviceAiStatus = viewModel.deviceStatus,
-                    isPixel9Ready = viewModel.isTensorG4Ready,
-                    aiTestStatus = aiTestStatus,
-                    onUpdateApiKey = viewModel::updateAiApiKey,
-                    onToggleAiEnabled = viewModel::setAiEnabled,
-                    onSelectModel = viewModel::setSelectedModel,
-                    onSelectEngineMode = viewModel::setAiEngineMode,
-                    onTestAiConnection = viewModel::testAiConnection,
-                    isHapticEnabled = isHapticEnabled,
-                    hapticIntensity = hapticIntensity,
-                    onToggleHapticEnabled = viewModel::setHapticEnabled,
-                    onSelectHapticIntensity = viewModel::setHapticIntensity,
-                    isBiometricEnabled = isBiometricEnabled,
-                    isBiometricAvailable = viewModel.isBiometricHardwareAvailable(context),
-                    biometricTimeout = biometricTimeout,
-                    onToggleBiometricEnabled = viewModel::setBiometricEnabled,
-                    onSelectBiometricTimeout = viewModel::setBiometricTimeout,
-                    isNotificationListenerEnabled = isNotificationListenerEnabled,
-                    isNotificationPermissionGranted = notificationPermissionGranted,
-                    isGmailMonitoringEnabled = isGmailMonitoringEnabled,
-                    isPaymentAppsMonitoringEnabled = isPaymentAppsMonitoringEnabled,
-                    isBankAppsMonitoringEnabled = isBankAppsMonitoringEnabled,
-                    notificationLastCapturedTimestamp = notificationLastCapturedTimestamp,
-                    notificationLastCapturedPackage = notificationLastCapturedPackage,
-                    notificationCapturedCount = notificationCapturedCount,
-                    onOpenNotificationSettings = {
-                        try {
-                            val intent = viewModel.buildNotificationSettingsIntent(context)
-                            context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                        } catch (e: Exception) {
-                            runCatching {
-                                context.startActivity(
-                                    Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
-                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    composable("main_pager") {
+                        androidx.compose.foundation.pager.HorizontalPager(
+                            state = pagerState,
+                            modifier = Modifier.fillMaxSize(),
+                            beyondViewportPageCount = 1,
+                        ) { page ->
+                            when (page) {
+                                0 -> HomeScreen(
+                                    dashboard = dashboard,
+                                    smsPermissionGranted = smsPermissionGranted,
+                                    listState = homeListState,
+                                    chartReloadKey = chartReloadKey,
+                                    onRequestPermissions = {
+                                        permissionLauncher.launch(context.smsPermissionArray())
+                                    },
+                                    onImportRecentSms = { viewModel.importRecentSms(context.contentResolver) },
+                                    onSetBudgetClick = { showBudgetDialog = true },
+                                    onAddTransactionClick = {
+                                        transactionAnchorBounds = null
+                                        lastOpenedWasEditing = false
+                                        activeEditingTransaction = null
+                                        editingTransaction = null
+                                        transactionDialogKey += 1
+                                        showAddTransactionDialog = true
+                                    },
+                                    onBudgetClick = {
+                                        navController.navigate(AppDestination.BudgetHistory.route)
+                                    },
+                                    onSelectMonth = viewModel::setSelectedYearMonth,
+                                    onRefreshAiInsights = { viewModel.refreshAiSpendingInsights() },
+                                    onOpenAssistant = { showAiChatSheet = true },
+                                    onAccountsClick = {
+                                        coroutineScope.launch {
+                                            pagerState.animateScrollToPage(2)
+                                        }
+                                    },
+                                    onAccountClick = { viewingBalanceProofAccount = it },
+                                )
+                                1 -> TransactionsScreen(
+                                    filter = filter,
+                                    transactions = transactions,
+                                    cardAccounts = accounts.filter { it.kind == AccountKind.CARD },
+                                    searchQuery = searchQuery,
+                                    listState = transactionsListState,
+                                    onSearchQueryChange = viewModel::setSearchQuery,
+                                    onFilterSelected = viewModel::setFilter,
+                                    onAddTransactionClick = {
+                                        transactionAnchorBounds = null
+                                        lastOpenedWasEditing = false
+                                        activeEditingTransaction = null
+                                        editingTransaction = null
+                                        transactionDialogKey += 1
+                                        showAddTransactionDialog = true
+                                    },
+                                    onApproveReview = viewModel::approveReview,
+                                    onAnalyzeWithAi = viewModel::enrichTransactionWithAi,
+                                    isAiAnalyzing = isAiAnalyzing,
+                                    onEditTransaction = { transaction, bounds ->
+                                        transactionAnchorBounds = bounds
+                                        lastOpenedWasEditing = true
+                                        activeEditingTransaction = transaction
+                                        showAddTransactionDialog = false
+                                        editingTransaction = transaction
+                                        transactionDialogKey += 1
+                                    },
+                                    onDeleteTransaction = { transaction ->
+                                        pendingDeleteTransaction = transaction
+                                    },
+                                    onToggleBudgetInclusion = { transaction ->
+                                        viewModel.setTransactionBudgetInclusion(
+                                            transactionId = transaction.id,
+                                            countsTowardBudget = !transaction.countsTowardBudget,
+                                        )
+                                    },
+                                    onTransferToCashWallet = viewModel::transferToCashWallet,
+                                    onDismissAtmPrompt = viewModel::dismissAtmPrompt,
+                                    untransferredAtmTransactions = untransferredAtmTransactions,
+                                )
+                                2 -> MoreScreen(
+                                    accounts = accounts,
+                                    activeSubscriptions = activeSubscriptions,
+                                    scheduledTransactions = scheduledTransactions,
+                                    suggestedSubscriptions = suggestedSubscriptions,
+                                    onAddSubscriptionClick = { showAddSubscriptionDialog = true },
+                                    onAddBankClick = {
+                                        editingAccount = null
+                                        accountDialogDraft = AccountDraft(
+                                            name = "",
+                                            kind = AccountKind.BANK,
+                                            institutionName = primaryBankAccount?.institutionName,
+                                        )
+                                        accountDialogKey += 1
+                                    },
+                                    onAddCardClick = {
+                                        editingAccount = null
+                                        accountDialogDraft = AccountDraft(
+                                            name = "",
+                                            kind = AccountKind.CARD,
+                                            institutionName = primaryBankAccount?.institutionName,
+                                        )
+                                        accountDialogKey += 1
+                                    },
+                                    onEditAccount = { account ->
+                                        editingAccount = account
+                                        accountDialogDraft = account.toDraft()
+                                        accountDialogKey += 1
+                                    },
+                                    onDeleteAccount = { account ->
+                                        pendingDeleteAccount = account
+                                    },
+                                    onAcceptSuggestion = viewModel::acceptSuggestedSubscription,
+                                    onDismissSuggestion = viewModel::dismissSuggestedSubscription,
+                                    onExportCsv = { exportTransactionsToCsv(context, transactions) },
+                                    onAccountClick = { viewingBalanceProofAccount = it },
+                                )
+                                3 -> SettingsScreen(
+                                    smsPermissionGranted = smsPermissionGranted,
+                                    onRequestPermissions = { permissionLauncher.launch(context.smsPermissionArray()) },
+                                    onImportRecentSms = { viewModel.importRecentSms(context.contentResolver) },
+                                    aiApiKey = aiApiKey,
+                                    isAiEnabled = isAiEnabled,
+                                    selectedModel = selectedModel,
+                                    engineMode = engineMode,
+                                    deviceAiStatus = viewModel.deviceStatus,
+                                    isPixel9Ready = viewModel.isTensorG4Ready,
+                                    aiTestStatus = aiTestStatus,
+                                    onUpdateApiKey = viewModel::updateAiApiKey,
+                                    onToggleAiEnabled = viewModel::setAiEnabled,
+                                    onSelectModel = viewModel::setSelectedModel,
+                                    onSelectEngineMode = viewModel::setAiEngineMode,
+                                    onTestAiConnection = viewModel::testAiConnection,
+                                    isHapticEnabled = isHapticEnabled,
+                                    hapticIntensity = hapticIntensity,
+                                    onToggleHapticEnabled = viewModel::setHapticEnabled,
+                                    onSelectHapticIntensity = viewModel::setHapticIntensity,
+                                    isBiometricEnabled = isBiometricEnabled,
+                                    isBiometricAvailable = viewModel.isBiometricHardwareAvailable(context),
+                                    biometricTimeout = biometricTimeout,
+                                    onToggleBiometricEnabled = viewModel::setBiometricEnabled,
+                                    onSelectBiometricTimeout = viewModel::setBiometricTimeout,
+                                    isNotificationListenerEnabled = isNotificationListenerEnabled,
+                                    isNotificationPermissionGranted = notificationPermissionGranted,
+                                    isGmailMonitoringEnabled = isGmailMonitoringEnabled,
+                                    isPaymentAppsMonitoringEnabled = isPaymentAppsMonitoringEnabled,
+                                    isBankAppsMonitoringEnabled = isBankAppsMonitoringEnabled,
+                                    notificationLastCapturedTimestamp = notificationLastCapturedTimestamp,
+                                    notificationLastCapturedPackage = notificationLastCapturedPackage,
+                                    notificationCapturedCount = notificationCapturedCount,
+                                    onOpenNotificationSettings = {
+                                        try {
+                                            val intent = viewModel.buildNotificationSettingsIntent(context)
+                                            context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                                        } catch (e: Exception) {
+                                            runCatching {
+                                                context.startActivity(
+                                                    Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                                                )
+                                            }
+                                        }
+                                    },
+                                    onToggleNotificationListener = viewModel::setNotificationListenerEnabled,
+                                    onToggleGmailMonitoring = viewModel::setGmailMonitoringEnabled,
+                                    onTogglePaymentAppsMonitoring = viewModel::setPaymentAppsMonitoringEnabled,
+                                    onToggleBankAppsMonitoring = viewModel::setBankAppsMonitoringEnabled,
+                                    isExclusionFilterEnabled = isExclusionFilterEnabled,
+                                    excludedKeywords = excludedKeywords,
+                                    onToggleExclusionFilter = viewModel::setExclusionFilterEnabled,
+                                    onAddExclusionKeyword = viewModel::addExclusionKeyword,
+                                    onRemoveExclusionKeyword = viewModel::removeExclusionKeyword,
+                                    onResetExclusionKeywords = viewModel::resetExclusionKeywords,
+                                    isEmailSyncEnabled = isEmailSyncEnabled,
+                                    emailAddress = emailAddress,
+                                    emailAppPassword = emailAppPassword,
+                                    emailLastSyncTimestamp = emailLastSyncTimestamp,
+                                    emailLastSyncStatus = emailLastSyncStatus,
+                                    isEmailSyncing = isEmailSyncing,
+                                    emailTestStatus = emailTestStatus,
+                                    onToggleEmailSync = viewModel::setEmailSyncEnabled,
+                                    onUpdateEmailCredentials = viewModel::updateEmailCredentials,
+                                    onTestEmailConnection = viewModel::testEmailConnection,
+                                    onClearEmailCredentials = viewModel::clearEmailCredentials,
+                                    onSyncRecentEmails = viewModel::syncRecentEmails,
+                                    themeMode = themeMode,
+                                    themeAccent = themeAccent,
+                                    onSelectThemeMode = viewModel::setThemeMode,
+                                    onSelectThemeAccent = viewModel::setThemeAccent,
+                                    onRequestExportBackup = { showExportPassphraseDialog = true },
+                                    onRequestRestoreBackup = { openBackupLauncher.launch(arrayOf("*/*")) },
                                 )
                             }
                         }
-                    },
-                    onToggleNotificationListener = viewModel::setNotificationListenerEnabled,
-                    onToggleGmailMonitoring = viewModel::setGmailMonitoringEnabled,
-                    onTogglePaymentAppsMonitoring = viewModel::setPaymentAppsMonitoringEnabled,
-                    onToggleBankAppsMonitoring = viewModel::setBankAppsMonitoringEnabled,
-                    isExclusionFilterEnabled = isExclusionFilterEnabled,
-                    excludedKeywords = excludedKeywords,
-                    onToggleExclusionFilter = viewModel::setExclusionFilterEnabled,
-                    onAddExclusionKeyword = viewModel::addExclusionKeyword,
-                    onRemoveExclusionKeyword = viewModel::removeExclusionKeyword,
-                    onResetExclusionKeywords = viewModel::resetExclusionKeywords,
-                    isEmailSyncEnabled = isEmailSyncEnabled,
-                    emailAddress = emailAddress,
-                    emailAppPassword = emailAppPassword,
-                    emailLastSyncTimestamp = emailLastSyncTimestamp,
-                    emailLastSyncStatus = emailLastSyncStatus,
-                    isEmailSyncing = isEmailSyncing,
-                    emailTestStatus = emailTestStatus,
-                    onToggleEmailSync = viewModel::setEmailSyncEnabled,
-                    onUpdateEmailCredentials = viewModel::updateEmailCredentials,
-                    onTestEmailConnection = viewModel::testEmailConnection,
-                    onClearEmailCredentials = viewModel::clearEmailCredentials,
-                    onSyncRecentEmails = viewModel::syncRecentEmails,
-                    themeMode = themeMode,
-                    themeAccent = themeAccent,
-                    onSelectThemeMode = viewModel::setThemeMode,
-                    onSelectThemeAccent = viewModel::setThemeAccent,
-                    onRequestExportBackup = { showExportPassphraseDialog = true },
-                    onRequestRestoreBackup = { openBackupLauncher.launch(arrayOf("*/*")) },
-                )
-            }
-        }
+                    }
+                    composable(AppDestination.BudgetHistory.route) {
+                        BudgetHistoryScreen(
+                            history = budgetHistory,
+                            initiallyExpandedKey = budgetHistory.firstOrNull()?.yearMonthKey,
+                            onBack = {
+                                navController.popBackStack()
+                            },
+                            onEditTransaction = { transaction, bounds ->
+                                transactionAnchorBounds = bounds
+                                lastOpenedWasEditing = true
+                                activeEditingTransaction = transaction
+                                showAddTransactionDialog = false
+                                editingTransaction = transaction
+                                transactionDialogKey += 1
+                            },
+                        )
+                    }
+                }
 
         SnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .padding(bottom = 138.dp),
+                .padding(bottom = 96.dp),
         )
 
-        FloatingActionButton(
-            onClick = {
-                haptics.click()
-                showAiChatSheet = true
-            },
-            containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = Color.White,
-            shape = CircleShape,
+        val isMainPager = !isBudgetHistory
+        val showFab = isMainPager && (pagerState.currentPage == 0 || pagerState.currentPage == 1)
+
+        AnimatedVisibility(
+            visible = showFab,
+            enter = scaleIn() + fadeIn(),
+            exit = scaleOut() + fadeOut(),
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .navigationBarsPadding()
-                .padding(end = 20.dp, bottom = 132.dp)
-                .size(54.dp),
+                .padding(end = 20.dp, bottom = 88.dp),
         ) {
-            Icon(
-                imageVector = Icons.Outlined.AutoAwesome,
-                contentDescription = "Ask Spending Assistant",
-                modifier = Modifier.size(24.dp),
-            )
-        }
-
-        TrackerBottomBar(
-            currentRoute = currentRoute,
-            onNavigate = { destination ->
-                if (destination == AppDestination.Home && currentRoute == AppDestination.Home.route) {
+            val isHome = pagerState.currentPage == 0
+            FloatingActionButton(
+                onClick = {
                     haptics.click()
-                    chartReloadKey += 1
-                    coroutineScope.launch {
-                        if (homeListState.firstVisibleItemIndex > 2) {
-                            homeListState.scrollToItem(2)
-                        }
-                        homeListState.animateScrollToItem(0)
+                    if (isHome) {
+                        showAiChatSheet = true
+                    } else {
+                        transactionAnchorBounds = null
+                        lastOpenedWasEditing = false
+                        activeEditingTransaction = null
+                        editingTransaction = null
+                        transactionDialogKey += 1
+                        showAddTransactionDialog = true
                     }
-                } else if (destination == AppDestination.Transactions && currentRoute == AppDestination.Transactions.route) {
-                    haptics.click()
-                    coroutineScope.launch {
-                        if (transactionsListState.firstVisibleItemIndex > 3) {
-                            transactionsListState.scrollToItem(3)
-                        }
-                        transactionsListState.animateScrollToItem(0)
-                    }
-                } else {
-                    haptics.selection()
-                    navController.navigate(destination.route) {
-                        popUpTo(navController.graph.startDestinationId) {
-                            saveState = true
-                        }
-                        launchSingleTop = true
-                        restoreState = true
+                },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = Color.White,
+                shape = CircleShape,
+                modifier = Modifier.size(54.dp),
+            ) {
+                androidx.compose.animation.AnimatedContent(
+                    targetState = isHome,
+                    transitionSpec = {
+                        (fadeIn(animationSpec = tween(220, delayMillis = 90)) +
+                            scaleIn(initialScale = 0.82f, animationSpec = tween(220, delayMillis = 90)))
+                            .togetherWith(fadeOut(animationSpec = tween(90)) + scaleOut(targetScale = 0.82f, animationSpec = tween(90)))
+                    },
+                    label = "fabIconAnim",
+                ) { home ->
+                    if (home) {
+                        Icon(
+                            imageVector = Icons.Outlined.AutoAwesome,
+                            contentDescription = "Ask Spending Assistant",
+                            modifier = Modifier.size(24.dp),
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Outlined.Add,
+                            contentDescription = "Add Transaction",
+                            modifier = Modifier.size(24.dp),
+                        )
                     }
                 }
-            },
-            onAddTransaction = {
-                transactionAnchorBounds = null
-                lastOpenedWasEditing = false
-                activeEditingTransaction = null
-                editingTransaction = null
-                transactionDialogKey += 1
-                showAddTransactionDialog = true
-            },
+            }
+        }
+
+        AnimatedVisibility(
+            visible = isMainPager,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
             modifier = Modifier.align(Alignment.BottomCenter),
-        )
+        ) {
+            TrackerBottomBar(
+                currentRoute = currentRoute,
+                onNavigate = { destination ->
+                    val targetIndex = bottomDestinations.indexOf(destination)
+                    if (targetIndex >= 0) {
+                        if (targetIndex == pagerState.currentPage) {
+                            haptics.click()
+                            if (destination == AppDestination.Home) {
+                                chartReloadKey += 1
+                                coroutineScope.launch {
+                                    if (homeListState.firstVisibleItemIndex > 2) {
+                                        homeListState.scrollToItem(2)
+                                    }
+                                    homeListState.animateScrollToItem(0)
+                                }
+                            } else if (destination == AppDestination.Transactions) {
+                                coroutineScope.launch {
+                                    if (transactionsListState.firstVisibleItemIndex > 3) {
+                                        transactionsListState.scrollToItem(3)
+                                    }
+                                    transactionsListState.animateScrollToItem(0)
+                                }
+                            }
+                        } else {
+                            haptics.selection()
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(targetIndex)
+                            }
+                        }
+                    }
+                },
+            )
+        }
         }
 
         if (scrimAlpha > 0.01f) {
@@ -712,10 +760,10 @@ fun MoneyTrackerRoot(
 
     if (showBudgetDialog) {
         BudgetDialog(
-            currentValue = budget?.amountLimit,
+            currentValue = dashboard.budgetLimit,
             onDismiss = { showBudgetDialog = false },
             onConfirm = {
-                viewModel.setMonthlyBudget(it)
+                viewModel.setMonthlyBudget(it, dashboard.selectedYearMonth)
                 showBudgetDialog = false
             },
         )

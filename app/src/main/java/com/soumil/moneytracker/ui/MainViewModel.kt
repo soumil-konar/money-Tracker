@@ -3,6 +3,7 @@ package com.soumil.moneytracker.ui
 import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
+import java.time.YearMonth
 import com.soumil.moneytracker.backup.BackupRestoreResult
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -105,6 +106,12 @@ class MainViewModel(
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = DashboardState(),
     )
+
+    val selectedYearMonth: StateFlow<YearMonth> = repository.selectedYearMonth
+
+    fun setSelectedYearMonth(yearMonth: YearMonth) {
+        repository.setSelectedYearMonth(yearMonth)
+    }
 
     val accounts: StateFlow<List<AccountEntity>> = repository.accounts.stateIn(
         scope = viewModelScope,
@@ -397,7 +404,7 @@ class MainViewModel(
         )
     }
 
-    fun setMonthlyBudget(amountText: String) {
+    fun setMonthlyBudget(amountText: String, yearMonth: YearMonth = repository.selectedYearMonth.value) {
         val amount = amountText.replace(",", "").toDoubleOrNull()
         if (amount == null || amount <= 0.0) {
             emitMessage("Enter a valid monthly budget.")
@@ -405,7 +412,7 @@ class MainViewModel(
         }
         viewModelScope.launch {
             runCatching {
-                repository.setMonthlyBudget(amount)
+                repository.setMonthlyBudget(amount, yearMonth.toString())
             }.onSuccess {
                 emitMessage("Monthly budget updated.")
             }.onFailure {

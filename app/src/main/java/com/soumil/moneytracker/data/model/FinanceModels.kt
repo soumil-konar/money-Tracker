@@ -3,6 +3,7 @@ package com.soumil.moneytracker.data.model
 import com.soumil.moneytracker.data.db.AccountEntity
 import com.soumil.moneytracker.data.db.TransactionRecord
 import java.time.LocalDate
+import java.time.YearMonth
 
 enum class TransactionDirection {
     CREDIT,
@@ -131,6 +132,7 @@ data class DashboardState(
     val spendingInsights: List<String> = emptyList(),
     val isAiLoading: Boolean = false,
     val accounts: List<AccountEntity> = emptyList(),
+    val selectedYearMonth: YearMonth = YearMonth.now(),
 )
 
 data class CategorySlice(
