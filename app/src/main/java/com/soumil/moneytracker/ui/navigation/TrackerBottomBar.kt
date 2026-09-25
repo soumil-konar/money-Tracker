@@ -26,12 +26,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -75,62 +71,48 @@ fun TrackerBottomBar(
         if (it >= 0) it else 0
     }
 
-    // Outer shape and styling tokens
-    val outerShape = RoundedCornerShape(30.dp)
-    val innerShape = RoundedCornerShape(24.dp)
+    // Styling tokens for single sleek floating pill dock
+    val pillShape = CircleShape
 
     val surfaceBaseColor = if (isDark) {
-        Color(0xFF14161C).copy(alpha = 0.82f)
+        Color(0xFF14161C).copy(alpha = 0.88f)
     } else {
-        Color(0xFFFFFFFF).copy(alpha = 0.88f)
+        Color(0xFFFFFFFF).copy(alpha = 0.92f)
     }
 
     val rimBrush = Brush.verticalGradient(
         colors = listOf(
-            Color.White.copy(alpha = if (isDark) 0.42f else 0.75f),
-            Color.White.copy(alpha = if (isDark) 0.08f else 0.20f),
+            Color.White.copy(alpha = if (isDark) 0.24f else 0.55f),
+            Color.White.copy(alpha = if (isDark) 0.05f else 0.15f),
         ),
     )
 
     val specularBrush = Brush.verticalGradient(
         colors = listOf(
-            Color.White.copy(alpha = if (isDark) 0.16f else 0.45f),
+            Color.White.copy(alpha = if (isDark) 0.12f else 0.35f),
             Color.Transparent,
-            Color.Black.copy(alpha = if (isDark) 0.15f else 0.03f),
+            Color.Black.copy(alpha = if (isDark) 0.18f else 0.04f),
         ),
     )
-
-    val innerFrameRimBrush = Brush.verticalGradient(
-        colors = listOf(
-            Color.White.copy(alpha = if (isDark) 0.20f else 0.35f),
-            Color.White.copy(alpha = if (isDark) 0.04f else 0.10f),
-        ),
-    )
-
-    val innerFrameBg = if (isDark) {
-        Color.Black.copy(alpha = 0.22f)
-    } else {
-        Color.Black.copy(alpha = 0.04f)
-    }
 
     Box(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = 20.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
         // 1. Ambient theme glow beneath the floating pill bar (inspired by UI_2.png)
         Box(
             modifier = Modifier
-                .width(220.dp)
-                .height(36.dp)
-                .offset(y = 10.dp)
-                .blur(32.dp)
+                .width(180.dp)
+                .height(30.dp)
+                .offset(y = 8.dp)
+                .blur(28.dp)
                 .background(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            MaterialTheme.colorScheme.primary.copy(alpha = if (isDark) 0.32f else 0.16f),
+                            MaterialTheme.colorScheme.primary.copy(alpha = if (isDark) 0.30f else 0.16f),
                             Color.Transparent,
                         ),
                     ),
@@ -138,93 +120,82 @@ fun TrackerBottomBar(
                 ),
         )
 
-        // 2. Main Glassmorphic Dock Container
-        Box(
+        // 2. Main Glassmorphic Dock Pill (Single container - no outer double border, compact width)
+        BoxWithConstraints(
             modifier = Modifier
-                .widthIn(max = 370.dp)
-                .fillMaxWidth()
+                .widthIn(max = 308.dp)
+                .fillMaxWidth(0.80f)
                 .shadow(
-                    elevation = 18.dp,
-                    shape = outerShape,
+                    elevation = 16.dp,
+                    shape = pillShape,
                     clip = false,
-                    ambientColor = Color.Black.copy(alpha = 0.30f),
-                    spotColor = Color.Black.copy(alpha = 0.45f),
+                    ambientColor = Color.Black.copy(alpha = 0.28f),
+                    spotColor = Color.Black.copy(alpha = 0.40f),
                 )
-                .clip(outerShape)
+                .clip(pillShape)
                 .background(surfaceBaseColor)
                 .background(specularBrush)
-                .border(BorderStroke(1.2.dp, rimBrush), outerShape)
-                .padding(horizontal = 6.dp, vertical = 6.dp),
+                .border(BorderStroke(1.dp, rimBrush), pillShape)
+                .padding(horizontal = 4.dp, vertical = 4.dp),
         ) {
-            // Navigation Row with gliding capsule
-            BoxWithConstraints(
+            val totalWidth = maxWidth
+            val tabWidth = totalWidth / destinations.size
+
+            // Material 3 Expressive animated sliding indicator position
+            val animatedIndex by animateFloatAsState(
+                targetValue = selectedIndex.toFloat(),
+                animationSpec = spring(
+                    dampingRatio = 0.74f,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+                label = "dockIndicatorOffset",
+            )
+
+            // Gliding active capsule indicator
+            val indicatorShape = CircleShape
+            val indicatorBgColor = if (isDark) {
+                Color(0xFF323640).copy(alpha = 0.88f)
+            } else {
+                Color.White.copy(alpha = 0.95f)
+            }
+            val indicatorRimBrush = Brush.verticalGradient(
+                colors = listOf(
+                    Color.White.copy(alpha = if (isDark) 0.30f else 0.65f),
+                    Color.White.copy(alpha = if (isDark) 0.08f else 0.20f),
+                ),
+            )
+
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(innerShape)
-                    .background(innerFrameBg)
-                    .border(BorderStroke(1.dp, innerFrameRimBrush), innerShape)
-                    .padding(horizontal = 4.dp, vertical = 4.dp),
+                    .offset(x = tabWidth * animatedIndex)
+                    .width(tabWidth)
+                    .height(48.dp)
+                    .clip(indicatorShape)
+                    .background(indicatorBgColor)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = if (isDark) 0.14f else 0.10f))
+                    .border(BorderStroke(0.8.dp, indicatorRimBrush), indicatorShape)
+                    .shadow(
+                        elevation = 4.dp,
+                        shape = indicatorShape,
+                        ambientColor = Color.Black.copy(alpha = 0.20f),
+                        spotColor = Color.Black.copy(alpha = 0.25f),
+                    ),
+            )
+
+            // 4 Navigation Tab Items
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                val totalWidth = maxWidth
-                val tabWidth = totalWidth / destinations.size
-
-                // Material 3 Expressive animated sliding indicator position
-                val animatedIndex by animateFloatAsState(
-                    targetValue = selectedIndex.toFloat(),
-                    animationSpec = spring(
-                        dampingRatio = 0.74f,
-                        stiffness = Spring.StiffnessMediumLow,
-                    ),
-                    label = "dockIndicatorOffset",
-                )
-
-                // Gliding active capsule indicator
-                val indicatorShape = RoundedCornerShape(20.dp)
-                val indicatorBgColor = if (isDark) {
-                    Color(0xFF343842).copy(alpha = 0.88f)
-                } else {
-                    Color.White.copy(alpha = 0.95f)
-                }
-                val indicatorRimBrush = Brush.verticalGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = if (isDark) 0.38f else 0.70f),
-                        Color.White.copy(alpha = if (isDark) 0.12f else 0.25f),
-                    ),
-                )
-
-                Box(
-                    modifier = Modifier
-                        .offset(x = tabWidth * animatedIndex)
-                        .width(tabWidth)
-                        .height(52.dp)
-                        .clip(indicatorShape)
-                        .background(indicatorBgColor)
-                        // Subtle touch of Material 3 Expressive theme accent on active capsule
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = if (isDark) 0.14f else 0.10f))
-                        .border(BorderStroke(1.dp, indicatorRimBrush), indicatorShape)
-                        .shadow(
-                            elevation = 6.dp,
-                            shape = indicatorShape,
-                            ambientColor = Color.Black.copy(alpha = 0.20f),
-                            spotColor = Color.Black.copy(alpha = 0.25f),
-                        ),
-                )
-
-                // 4 Navigation Tab Items
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    destinations.forEachIndexed { index, destination ->
-                        val isSelected = index == selectedIndex
-                        DockTabItem(
-                            destination = destination,
-                            selected = isSelected,
-                            onClick = { onNavigate(destination) },
-                            isDark = isDark,
-                            modifier = Modifier.width(tabWidth),
-                        )
-                    }
+                destinations.forEachIndexed { index, destination ->
+                    val isSelected = index == selectedIndex
+                    DockTabItem(
+                        destination = destination,
+                        selected = isSelected,
+                        onClick = { onNavigate(destination) },
+                        isDark = isDark,
+                        modifier = Modifier.width(tabWidth),
+                    )
                 }
             }
         }
@@ -281,7 +252,7 @@ private fun DockTabItem(
 
     Box(
         modifier = modifier
-            .height(52.dp)
+            .height(48.dp)
             .graphicsLayer {
                 scaleX = pressScale
                 scaleY = pressScale
@@ -305,7 +276,7 @@ private fun DockTabItem(
                 contentDescription = destination.label,
                 tint = contentColor,
                 modifier = Modifier
-                    .size(20.dp)
+                    .size(19.dp)
                     .graphicsLayer {
                         scaleX = iconScale
                         scaleY = iconScale
@@ -316,9 +287,9 @@ private fun DockTabItem(
                 text = destination.label,
                 color = contentColor,
                 style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 11.sp,
+                    fontSize = 10.5.sp,
                     fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                    letterSpacing = 0.1.sp,
+                    letterSpacing = 0.sp,
                 ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
