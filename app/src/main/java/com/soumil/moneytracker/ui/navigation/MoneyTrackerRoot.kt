@@ -72,7 +72,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -176,6 +179,11 @@ fun MoneyTrackerRoot(
             onConsumeOpenAddTransaction?.invoke()
         }
     }
+    var chartReloadKey by remember { mutableStateOf(0) }
+    var transactionAnchorBounds by remember { mutableStateOf<Rect?>(null) }
+    var lastOpenedWasEditing by remember { mutableStateOf(false) }
+    var activeEditingTransaction by remember { mutableStateOf<TransactionRecord?>(null) }
+    var rootLayoutSize by remember { mutableStateOf(IntSize.Zero) }
     var editingTransaction by remember { mutableStateOf<TransactionRecord?>(null) }
     var pendingDeleteTransaction by remember { mutableStateOf<TransactionRecord?>(null) }
     var pendingDeleteAccount by remember { mutableStateOf<AccountEntity?>(null) }
@@ -250,7 +258,13 @@ fun MoneyTrackerRoot(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background,
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .onGloballyPositioned { coordinates ->
+                    rootLayoutSize = coordinates.size
+                },
+        ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -266,12 +280,16 @@ fun MoneyTrackerRoot(
                     dashboard = dashboard,
                     smsPermissionGranted = smsPermissionGranted,
                     listState = homeListState,
+                    chartReloadKey = chartReloadKey,
                     onRequestPermissions = {
                         permissionLauncher.launch(context.smsPermissionArray())
                     },
                     onImportRecentSms = { viewModel.importRecentSms(context.contentResolver) },
                     onSetBudgetClick = { showBudgetDialog = true },
                     onAddTransactionClick = {
+                        transactionAnchorBounds = null
+                        lastOpenedWasEditing = false
+                        activeEditingTransaction = null
                         editingTransaction = null
                         transactionDialogKey += 1
                         showAddTransactionDialog = true
@@ -295,7 +313,10 @@ fun MoneyTrackerRoot(
                             launchSingleTop = true
                         }
                     },
-                    onEditTransaction = { transaction ->
+                    onEditTransaction = { transaction, bounds ->
+                        transactionAnchorBounds = bounds
+                        lastOpenedWasEditing = true
+                        activeEditingTransaction = transaction
                         showAddTransactionDialog = false
                         editingTransaction = transaction
                         transactionDialogKey += 1
@@ -312,6 +333,9 @@ fun MoneyTrackerRoot(
                     onSearchQueryChange = viewModel::setSearchQuery,
                     onFilterSelected = viewModel::setFilter,
                     onAddTransactionClick = {
+                        transactionAnchorBounds = null
+                        lastOpenedWasEditing = false
+                        activeEditingTransaction = null
                         editingTransaction = null
                         transactionDialogKey += 1
                         showAddTransactionDialog = true
@@ -319,7 +343,10 @@ fun MoneyTrackerRoot(
                     onApproveReview = viewModel::approveReview,
                     onAnalyzeWithAi = viewModel::enrichTransactionWithAi,
                     isAiAnalyzing = isAiAnalyzing,
-                    onEditTransaction = { transaction ->
+                    onEditTransaction = { transaction, bounds ->
+                        transactionAnchorBounds = bounds
+                        lastOpenedWasEditing = true
+                        activeEditingTransaction = transaction
                         showAddTransactionDialog = false
                         editingTransaction = transaction
                         transactionDialogKey += 1
@@ -461,7 +488,7 @@ fun MoneyTrackerRoot(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .padding(bottom = 110.dp),
+                .padding(bottom = 138.dp),
         )
 
         FloatingActionButton(
@@ -475,7 +502,7 @@ fun MoneyTrackerRoot(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .navigationBarsPadding()
-                .padding(end = 20.dp, bottom = 96.dp)
+                .padding(end = 20.dp, bottom = 132.dp)
                 .size(54.dp),
         ) {
             Icon(
@@ -490,12 +517,19 @@ fun MoneyTrackerRoot(
             onNavigate = { destination ->
                 if (destination == AppDestination.Home && currentRoute == AppDestination.Home.route) {
                     haptics.click()
+                    chartReloadKey += 1
                     coroutineScope.launch {
+                        if (homeListState.firstVisibleItemIndex > 2) {
+                            homeListState.scrollToItem(2)
+                        }
                         homeListState.animateScrollToItem(0)
                     }
                 } else if (destination == AppDestination.Transactions && currentRoute == AppDestination.Transactions.route) {
                     haptics.click()
                     coroutineScope.launch {
+                        if (transactionsListState.firstVisibleItemIndex > 3) {
+                            transactionsListState.scrollToItem(3)
+                        }
                         transactionsListState.animateScrollToItem(0)
                     }
                 } else {
@@ -510,6 +544,9 @@ fun MoneyTrackerRoot(
                 }
             },
             onAddTransaction = {
+                transactionAnchorBounds = null
+                lastOpenedWasEditing = false
+                activeEditingTransaction = null
                 editingTransaction = null
                 transactionDialogKey += 1
                 showAddTransactionDialog = true
@@ -535,28 +572,83 @@ fun MoneyTrackerRoot(
             )
         }
 
+        val isSpatialEdit = lastOpenedWasEditing || editingTransaction != null
+        val anchorBounds = transactionAnchorBounds
+        val hasSpatialAnchor = isSpatialEdit && anchorBounds != null && rootLayoutSize.width > 0 && rootLayoutSize.height > 0
+
+        val spatialTransformOrigin = if (hasSpatialAnchor) {
+            TransformOrigin(
+                pivotFractionX = (anchorBounds!!.center.x / rootLayoutSize.width).coerceIn(0.08f, 0.92f),
+                pivotFractionY = (anchorBounds.center.y / rootLayoutSize.height).coerceIn(0.08f, 0.92f),
+            )
+        } else if (isSpatialEdit) {
+            TransformOrigin(0.5f, 0.45f)
+        } else {
+            TransformOrigin(0.5f, 0.88f)
+        }
+
         AnimatedVisibility(
             visible = isAddTransactionOpen,
-            enter = fadeIn(animationSpec = tween(durationMillis = 280, easing = LinearOutSlowInEasing)) +
-                    slideInVertically(
-                        initialOffsetY = { fullHeight -> (fullHeight * 0.35f).toInt() },
-                        animationSpec = spring(dampingRatio = 0.80f, stiffness = Spring.StiffnessMediumLow),
-                    ) +
-                    scaleIn(
-                        initialScale = 0.82f,
-                        transformOrigin = TransformOrigin(0.5f, 0.85f),
-                        animationSpec = spring(dampingRatio = 0.80f, stiffness = Spring.StiffnessMediumLow),
-                    ),
-            exit = fadeOut(animationSpec = tween(durationMillis = 200, easing = FastOutLinearInEasing)) +
-                   slideOutVertically(
-                       targetOffsetY = { fullHeight -> (fullHeight * 0.25f).toInt() },
-                       animationSpec = spring(dampingRatio = 0.88f, stiffness = Spring.StiffnessMedium),
-                   ) +
-                   scaleOut(
-                       targetScale = 0.88f,
-                       transformOrigin = TransformOrigin(0.5f, 0.85f),
-                       animationSpec = spring(dampingRatio = 0.88f, stiffness = Spring.StiffnessMedium),
-                   ),
+            enter = if (isSpatialEdit) {
+                fadeIn(animationSpec = tween(durationMillis = 260, easing = LinearOutSlowInEasing)) +
+                scaleIn(
+                    initialScale = 0.58f,
+                    transformOrigin = spatialTransformOrigin,
+                    animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow),
+                ) +
+                slideInVertically(
+                    initialOffsetY = { _ ->
+                        if (hasSpatialAnchor) {
+                            val screenCenterY = rootLayoutSize.height / 2f
+                            ((anchorBounds!!.center.y - screenCenterY) * 0.28f).toInt()
+                        } else {
+                            0
+                        }
+                    },
+                    animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow),
+                )
+            } else {
+                fadeIn(animationSpec = tween(durationMillis = 280, easing = LinearOutSlowInEasing)) +
+                slideInVertically(
+                    initialOffsetY = { fullHeight -> (fullHeight * 0.18f).toInt() },
+                    animationSpec = spring(dampingRatio = 0.80f, stiffness = Spring.StiffnessMediumLow),
+                ) +
+                scaleIn(
+                    initialScale = 0.82f,
+                    transformOrigin = TransformOrigin(0.5f, 0.88f),
+                    animationSpec = spring(dampingRatio = 0.80f, stiffness = Spring.StiffnessMediumLow),
+                )
+            },
+            exit = if (isSpatialEdit) {
+                fadeOut(animationSpec = tween(durationMillis = 190, easing = FastOutLinearInEasing)) +
+                scaleOut(
+                    targetScale = 0.58f,
+                    transformOrigin = spatialTransformOrigin,
+                    animationSpec = spring(dampingRatio = 0.88f, stiffness = Spring.StiffnessMedium),
+                ) +
+                slideOutVertically(
+                    targetOffsetY = { _ ->
+                        if (hasSpatialAnchor) {
+                            val screenCenterY = rootLayoutSize.height / 2f
+                            ((anchorBounds!!.center.y - screenCenterY) * 0.22f).toInt()
+                        } else {
+                            0
+                        }
+                    },
+                    animationSpec = spring(dampingRatio = 0.88f, stiffness = Spring.StiffnessMedium),
+                )
+            } else {
+                fadeOut(animationSpec = tween(durationMillis = 200, easing = FastOutLinearInEasing)) +
+                slideOutVertically(
+                    targetOffsetY = { fullHeight -> (fullHeight * 0.18f).toInt() },
+                    animationSpec = spring(dampingRatio = 0.88f, stiffness = Spring.StiffnessMedium),
+                ) +
+                scaleOut(
+                    targetScale = 0.88f,
+                    transformOrigin = TransformOrigin(0.5f, 0.88f),
+                    animationSpec = spring(dampingRatio = 0.88f, stiffness = Spring.StiffnessMedium),
+                )
+            },
             modifier = Modifier.fillMaxSize(),
         ) {
             Box(
@@ -577,7 +669,7 @@ fun MoneyTrackerRoot(
                     .padding(horizontal = 20.dp, vertical = 16.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                val transactionToEdit = editingTransaction
+                val transactionToEdit = editingTransaction ?: activeEditingTransaction.takeIf { isSpatialEdit }
                 AddTransactionDialog(
                     accounts = accounts,
                     onDismiss = {
@@ -787,191 +879,6 @@ private fun android.content.Context.smsPermissionArray(): Array<String> {
         permissions += Manifest.permission.POST_NOTIFICATIONS
     }
     return permissions.toTypedArray()
-}
-
-@Composable
-private fun TrackerBottomBar(
-    currentRoute: String?,
-    onNavigate: (AppDestination) -> Unit,
-    onAddTransaction: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val barShape = RoundedCornerShape(32.dp)
-    val baseColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f)
-    val highlightBrush = Brush.verticalGradient(
-        colors = listOf(
-            Color.White.copy(alpha = 0.35f),
-            Color.Transparent,
-        ),
-    )
-    val rimBrush = Brush.verticalGradient(
-        colors = listOf(
-            Color.White.copy(alpha = 0.70f),
-            MaterialTheme.colorScheme.outline.copy(alpha = 0.55f),
-        ),
-    )
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = 18.dp, vertical = 14.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .shadow(
-                    elevation = 24.dp,
-                    shape = barShape,
-                    clip = false,
-                    ambientColor = Color.Black.copy(alpha = 0.40f),
-                    spotColor = Color.Black.copy(alpha = 0.55f),
-                )
-                .clip(barShape)
-                .background(baseColor)
-                .background(brush = highlightBrush)
-                .border(BorderStroke(1.2.dp, rimBrush), barShape),
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                BottomDockItem(
-                    destination = AppDestination.Home,
-                    selected = currentRoute == AppDestination.Home.route,
-                    onClick = { onNavigate(AppDestination.Home) },
-                )
-                BottomDockItem(
-                    destination = AppDestination.Transactions,
-                    selected = currentRoute == AppDestination.Transactions.route,
-                    onClick = { onNavigate(AppDestination.Transactions) },
-                )
-                AddDockItem(onClick = onAddTransaction)
-                BottomDockItem(
-                    destination = AppDestination.More,
-                    selected = currentRoute == AppDestination.More.route,
-                    onClick = { onNavigate(AppDestination.More) },
-                )
-                BottomDockItem(
-                    destination = AppDestination.Settings,
-                    selected = currentRoute == AppDestination.Settings.route,
-                    onClick = { onNavigate(AppDestination.Settings) },
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun RowScope.BottomDockItem(
-    destination: AppDestination,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    val iconTint by animateColorAsState(
-        targetValue = if (selected) {
-            MaterialTheme.colorScheme.primary
-        } else {
-            MaterialTheme.colorScheme.onSurfaceVariant
-        },
-        animationSpec = spring(
-            dampingRatio = 0.92f,
-            stiffness = Spring.StiffnessMediumLow,
-        ),
-        label = "navIconTint",
-    )
-    val containerColor by animateColorAsState(
-        targetValue = if (selected) {
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-        } else {
-            Color.Transparent
-        },
-        animationSpec = spring(
-            dampingRatio = 0.92f,
-            stiffness = Spring.StiffnessMediumLow,
-        ),
-        label = "navContainerColor",
-    )
-    val iconScale by animateFloatAsState(
-        targetValue = if (selected) 1f else 0.92f,
-        animationSpec = spring(
-            dampingRatio = 0.82f,
-            stiffness = Spring.StiffnessMediumLow,
-        ),
-        label = "navIconScale",
-    )
-    Box(
-        modifier = Modifier.weight(1f),
-        contentAlignment = Alignment.Center,
-    ) {
-        Surface(
-            shape = CircleShape,
-            color = containerColor,
-            border = if (selected) {
-                BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.18f))
-            } else {
-                null
-            },
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clickable(onClick = onClick),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = destination.icon,
-                    contentDescription = destination.label,
-                    tint = iconTint,
-                    modifier = Modifier
-                        .size(22.dp)
-                        .graphicsLayer {
-                            scaleX = iconScale
-                            scaleY = iconScale
-                        },
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun RowScope.AddDockItem(
-    onClick: () -> Unit,
-) {
-    val haptics = LocalAppHaptics.current
-    Box(
-        modifier = Modifier.weight(1f),
-        contentAlignment = Alignment.Center,
-    ) {
-        Surface(
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.primary,
-            shadowElevation = 10.dp,
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.28f)),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clickable(onClick = {
-                        haptics.sweetImpact()
-                        onClick()
-                    }),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Add,
-                    contentDescription = "Add transaction",
-                    tint = Color.White,
-                    modifier = Modifier.size(24.dp),
-                )
-            }
-        }
-    }
 }
 
 private fun exportTransactionsToCsv(context: Context, transactions: List<TransactionRecord>) {
