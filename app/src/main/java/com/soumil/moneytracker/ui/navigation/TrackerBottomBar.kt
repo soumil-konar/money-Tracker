@@ -71,27 +71,27 @@ fun TrackerBottomBar(
         if (it >= 0) it else 0
     }
 
-    // Styling tokens for single sleek floating liquid glass pill dock
+    // Styling tokens for floating translucent liquid glass pill dock
     val pillShape = CircleShape
 
+    // Translucent frosted glass tint (obscures content behind so it cannot be seen clearly)
     val surfaceBaseColor = if (isDark) {
-        Color(0xFF10141D).copy(alpha = 0.55f)
+        Color(0xFF141720).copy(alpha = 0.82f)
     } else {
-        Color(0xFFFFFFFF).copy(alpha = 0.58f)
+        Color.White.copy(alpha = 0.82f)
     }
 
+    // Single outer boundary for the navbar pill
     val rimBrush = Brush.verticalGradient(
         colors = if (isDark) {
             listOf(
-                Color.White.copy(alpha = 0.65f),
-                Color.White.copy(alpha = 0.14f),
-                Color.White.copy(alpha = 0.32f),
+                Color.White.copy(alpha = 0.45f),
+                Color.White.copy(alpha = 0.10f),
             )
         } else {
             listOf(
-                Color.White.copy(alpha = 0.95f),
-                Color.White.copy(alpha = 0.45f),
-                Color.White.copy(alpha = 0.70f),
+                Color.White.copy(alpha = 0.85f),
+                Color.White.copy(alpha = 0.35f),
             )
         },
     )
@@ -99,49 +99,15 @@ fun TrackerBottomBar(
     val specularBrush = Brush.verticalGradient(
         colors = if (isDark) {
             listOf(
-                Color.White.copy(alpha = 0.28f),
-                Color.White.copy(alpha = 0.06f),
-                Color.Black.copy(alpha = 0.18f),
                 Color.White.copy(alpha = 0.14f),
+                Color.Transparent,
+                Color.White.copy(alpha = 0.06f),
             )
         } else {
             listOf(
-                Color.White.copy(alpha = 0.70f),
+                Color.White.copy(alpha = 0.40f),
+                Color.White.copy(alpha = 0.10f),
                 Color.White.copy(alpha = 0.20f),
-                Color.White.copy(alpha = 0.08f),
-                Color.White.copy(alpha = 0.35f),
-            )
-        },
-    )
-
-    val topGlossBrush = Brush.verticalGradient(
-        colors = if (isDark) {
-            listOf(
-                Color.White.copy(alpha = 0.22f),
-                Color.White.copy(alpha = 0.04f),
-                Color.Transparent,
-            )
-        } else {
-            listOf(
-                Color.White.copy(alpha = 0.50f),
-                Color.White.copy(alpha = 0.12f),
-                Color.Transparent,
-            )
-        },
-    )
-
-    val innerRefractionBrush = Brush.verticalGradient(
-        colors = if (isDark) {
-            listOf(
-                Color.White.copy(alpha = 0.25f),
-                Color.Black.copy(alpha = 0.15f),
-                Color.Black.copy(alpha = 0.35f),
-            )
-        } else {
-            listOf(
-                Color.White.copy(alpha = 0.65f),
-                Color(0xFF0F172A).copy(alpha = 0.06f),
-                Color(0xFF0F172A).copy(alpha = 0.12f),
             )
         },
     )
@@ -179,13 +145,13 @@ fun TrackerBottomBar(
                 ),
         )
 
-        // 2. Liquid Glass Dock Pill
+        // 2. Liquid Glass Dock Pill (Single outer boundary only)
         BoxWithConstraints(
             modifier = Modifier
                 .widthIn(max = 370.dp)
                 .fillMaxWidth()
                 .shadow(
-                    elevation = if (isDark) 16.dp else 12.dp,
+                    elevation = if (isDark) 16.dp else 10.dp,
                     shape = pillShape,
                     clip = false,
                     ambientColor = Color.Black.copy(alpha = if (isDark) 0.35f else 0.10f),
@@ -194,29 +160,11 @@ fun TrackerBottomBar(
                 .clip(pillShape)
                 .background(surfaceBaseColor)
                 .background(specularBrush)
-                .border(BorderStroke(1.2.dp, rimBrush), pillShape)
+                .border(BorderStroke(1.dp, rimBrush), pillShape)
                 .padding(horizontal = 4.dp, vertical = 4.dp),
         ) {
             val totalWidth = maxWidth
             val tabWidth = totalWidth / destinations.size
-
-            // Top liquid glass convex specular gloss sheen
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(26.dp)
-                    .align(Alignment.TopCenter)
-                    .clip(pillShape)
-                    .background(topGlossBrush),
-            )
-
-            // Inner glass lens refraction bevel (curved glass thickness)
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .clip(pillShape)
-                    .border(BorderStroke(1.dp, innerRefractionBrush), pillShape),
-            )
 
             // Material 3 Expressive animated sliding indicator position
             val animatedIndex by animateFloatAsState(
@@ -228,23 +176,23 @@ fun TrackerBottomBar(
                 label = "dockIndicatorOffset",
             )
 
-            // Gliding active liquid glass capsule indicator
+            // Gliding active liquid glass capsule indicator (Selected icon boundary)
             val indicatorShape = CircleShape
             val indicatorBgColor = if (isDark) {
-                Color(0xFF222836).copy(alpha = 0.68f)
+                Color(0xFF282E3C).copy(alpha = 0.85f)
             } else {
-                Color.White.copy(alpha = 0.65f)
+                Color.White.copy(alpha = 0.90f)
             }
             val indicatorRimBrush = Brush.verticalGradient(
                 colors = if (isDark) {
                     listOf(
-                        Color.White.copy(alpha = 0.50f),
-                        Color.White.copy(alpha = 0.14f),
+                        Color.White.copy(alpha = 0.45f),
+                        Color.White.copy(alpha = 0.12f),
                     )
                 } else {
                     listOf(
                         Color.White.copy(alpha = 0.95f),
-                        Color.White.copy(alpha = 0.40f),
+                        Color.White.copy(alpha = 0.45f),
                     )
                 },
             )
