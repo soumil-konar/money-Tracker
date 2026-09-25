@@ -567,7 +567,7 @@ fun MoneyTrackerRoot(
                             editingTransaction = null
                         },
                     )
-                    .padding(horizontal = 20.dp, vertical = 24.dp),
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 val transactionToEdit = editingTransaction

@@ -194,7 +194,7 @@ fun AddTransactionDialog(
         modifier = modifier
             .fillMaxWidth()
             .widthIn(max = 440.dp)
-            .fillMaxHeight(0.85f)
+            .fillMaxHeight(0.90f)
             .heightIn(max = 620.dp)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
