@@ -46,6 +46,8 @@ data class AccountEntity(
         Index(value = ["occurredAtMillis"]),
         Index(value = ["status"]),
         Index(value = ["accountId"]),
+        Index(value = ["accountId", "occurredAtMillis"]),
+        Index(value = ["direction", "countsTowardBudget"]),
     ],
 )
 data class TransactionEntity(
