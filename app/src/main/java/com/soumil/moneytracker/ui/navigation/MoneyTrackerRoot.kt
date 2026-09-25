@@ -73,6 +73,7 @@ import com.soumil.moneytracker.ui.components.BudgetDialog
 import com.soumil.moneytracker.ui.components.DeleteAccountDialog
 import com.soumil.moneytracker.ui.components.DeleteTransactionDialog
 import com.soumil.moneytracker.ui.components.InitialSetupDialog
+import com.soumil.moneytracker.ui.components.TrueUpBalanceDialog
 import com.soumil.moneytracker.ui.screen.BudgetHistoryScreen
 import com.soumil.moneytracker.ui.screen.HomeScreen
 import com.soumil.moneytracker.ui.screen.MoreScreen
@@ -148,6 +149,7 @@ fun MoneyTrackerRoot(
     var accountDialogDraft by remember { mutableStateOf<AccountDraft?>(null) }
     var accountDialogKey by remember { mutableStateOf(0) }
     var viewingBalanceProofAccount by remember { mutableStateOf<AccountEntity?>(null) }
+    var viewingTrueUpAccount by remember { mutableStateOf<AccountEntity?>(null) }
     var smsPermissionGranted by remember { mutableStateOf(context.hasSmsPermissions()) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -552,6 +554,23 @@ fun MoneyTrackerRoot(
                     accountDialogDraft = targetAccount.toDraft()
                     accountDialogKey += 1
                 }
+            },
+            onTrueUpBalance = {
+                val targetAccount = viewingBalanceProofAccount
+                viewingBalanceProofAccount = null
+                if (targetAccount != null) {
+                    viewingTrueUpAccount = targetAccount
+                }
+            },
+        )
+    }
+
+    viewingTrueUpAccount?.let { account ->
+        TrueUpBalanceDialog(
+            account = account,
+            onDismiss = { viewingTrueUpAccount = null },
+            onConfirm = { newBalance, reason ->
+                viewModel.trueUpAccountBalance(account.id, newBalance, reason)
             },
         )
     }

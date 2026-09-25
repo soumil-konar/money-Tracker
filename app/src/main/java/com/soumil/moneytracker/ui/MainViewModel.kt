@@ -437,6 +437,18 @@ class MainViewModel(
         }
     }
 
+    fun trueUpAccountBalance(accountId: Long, newBalance: Double, reason: String? = null) {
+        viewModelScope.launch {
+            runCatching {
+                repository.trueUpAccountBalance(accountId, newBalance, reason)
+            }.onSuccess {
+                emitMessage("Account balance adjusted and reconciled.")
+            }.onFailure {
+                emitMessage("Could not adjust account balance.")
+            }
+        }
+    }
+
     fun markInitialSetupComplete() {
         repository.markInitialSetupComplete()
         emitMessage("Bank and card setup saved.")

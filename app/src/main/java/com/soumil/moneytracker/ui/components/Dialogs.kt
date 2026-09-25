@@ -1311,6 +1311,7 @@ fun BalanceProofDialog(
     account: AccountEntity,
     onDismiss: () -> Unit,
     onEditBalance: () -> Unit,
+    onTrueUpBalance: () -> Unit = {},
 ) {
     val haptics = LocalAppHaptics.current
     val isVerified = account.isBalanceVerified && !account.balanceProofSnippet.isNullOrBlank()
@@ -1526,7 +1527,7 @@ fun BalanceProofDialog(
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             OutlinedButton(
                 onClick = {
@@ -1537,15 +1538,169 @@ fun BalanceProofDialog(
             ) {
                 Text("Close")
             }
-            Button(
+            OutlinedButton(
                 onClick = {
                     haptics.click()
                     onDismiss()
                     onEditBalance()
                 },
+                modifier = Modifier.weight(1.1f),
+            ) {
+                Text("Edit Details")
+            }
+            Button(
+                onClick = {
+                    haptics.click()
+                    onDismiss()
+                    onTrueUpBalance()
+                },
+                modifier = Modifier.weight(1.3f),
+            ) {
+                Icon(Icons.Outlined.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.size(4.dp))
+                Text("True-Up")
+            }
+        }
+    }
+}
+
+@Composable
+fun TrueUpBalanceDialog(
+    account: AccountEntity,
+    onDismiss: () -> Unit,
+    onConfirm: (newBalance: Double, reason: String?) -> Unit,
+) {
+    val haptics = LocalAppHaptics.current
+    var balanceText by rememberSaveable {
+        mutableStateOf(if (account.currentBalance > 0.0) "%.2f".format(account.currentBalance) else "")
+    }
+    var reasonText by rememberSaveable { mutableStateOf("") }
+    val parsedBalance = balanceText.toDoubleOrNull()
+    val isValid = parsedBalance != null && parsedBalance >= 0.0
+
+    TrackerDialogScaffold(
+        eyebrow = "Account Reconciliation",
+        title = "Adjust / True-Up Balance",
+        subtitle = "Set your account's exact real-world balance. Money Tracker will lock this as the new anchor and calculate all future transactions from here.",
+        onDismiss = onDismiss,
+    ) {
+        Surface(
+            shape = RoundedCornerShape(18.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = account.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = "Current Tracked Balance: ${account.currentBalance.asCurrency()}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                account.lastFourDigits?.let {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                    ) {
+                        Text(
+                            text = "••$it",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        )
+                    }
+                }
+            }
+        }
+
+        OutlinedTextField(
+            value = balanceText,
+            onValueChange = { balanceText = it },
+            label = { Text("Exact Verified Balance (₹)") },
+            placeholder = { Text("e.g. 45250.00") },
+            leadingIcon = {
+                Icon(Icons.Outlined.CheckCircle, contentDescription = null)
+            },
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Decimal,
+            ),
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        OutlinedTextField(
+            value = reasonText,
+            onValueChange = { reasonText = it },
+            label = { Text("Reconciliation Note (Optional)") },
+            placeholder = { Text("e.g. Net-banking sync, ATM cash withdrawal") },
+            leadingIcon = {
+                Icon(Icons.Outlined.Info, contentDescription = null)
+            },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Info,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.tertiary,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    text = "This sets a new baseline anchor. All subsequent SMS & push transaction alerts will add to or subtract from this amount in real time.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            OutlinedButton(
+                onClick = {
+                    haptics.click()
+                    onDismiss()
+                },
                 modifier = Modifier.weight(1f),
             ) {
-                Text("Edit balance")
+                Text("Cancel")
+            }
+            Button(
+                onClick = {
+                    if (parsedBalance != null && parsedBalance >= 0.0) {
+                        haptics.success()
+                        onConfirm(parsedBalance, reasonText.takeIf { it.isNotBlank() })
+                        onDismiss()
+                    }
+                },
+                enabled = isValid,
+                modifier = Modifier.weight(1.3f),
+            ) {
+                Text("Confirm True-Up")
             }
         }
     }

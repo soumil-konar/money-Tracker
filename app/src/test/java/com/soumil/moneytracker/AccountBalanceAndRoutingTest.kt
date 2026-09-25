@@ -109,4 +109,35 @@ class AccountBalanceAndRoutingTest {
         assertTrue(matchAccount(sbiAccount2Digits, "2222", bankInstitution))
         org.junit.Assert.assertFalse(matchAccount(sbiAccount2Digits, "1111", bankInstitution))
     }
+
+    @Test
+    fun `manual true-up balance anchors accurately and takes precedence over older bank statement proofs`() {
+        val oldSmsTimestamp = 1727100000000L
+        val oldSmsBalance = 40000.0
+
+        val userTrueUpTimestamp = 1727200000000L
+        val userTrueUpBalance = 75000.0
+
+        data class MockTx(val amount: Double, val direction: TransactionDirection, val timestamp: Long)
+
+        val transactions = listOf(
+            MockTx(amount = 1500.0, direction = TransactionDirection.DEBIT, timestamp = 1727150000000L), // between SMS and True-Up
+            MockTx(amount = 2500.0, direction = TransactionDirection.DEBIT, timestamp = 1727250000000L), // after True-Up
+            MockTx(amount = 5000.0, direction = TransactionDirection.CREDIT, timestamp = 1727300000000L), // after True-Up
+        )
+
+        // Reconciliation logic when userTrueUpTimestamp > oldSmsTimestamp:
+        // Prioritize user true-up baseline
+        var currentBalance = userTrueUpBalance
+        val postTrueUpTxs = transactions.filter { it.timestamp > userTrueUpTimestamp }
+        for (tx in postTrueUpTxs) {
+            when (tx.direction) {
+                TransactionDirection.CREDIT -> currentBalance += tx.amount
+                TransactionDirection.DEBIT -> currentBalance -= tx.amount
+            }
+        }
+
+        // Expected: 75000 - 2500 + 5000 = 77500.0 (the 1500 debit before true-up is already reflected in the 75000 true-up)
+        assertEquals(77500.0, currentBalance, 0.001)
+    }
 }

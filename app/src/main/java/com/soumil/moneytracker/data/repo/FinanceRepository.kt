@@ -1707,13 +1707,35 @@ class FinanceRepository(
         return duplicatesToDelete.size
     }
 
+    suspend fun trueUpAccountBalance(
+        accountId: Long,
+        newBalance: Double,
+        reason: String? = null,
+        effectiveTimestamp: Long = System.currentTimeMillis(),
+    ): Boolean {
+        val account = accountDao.findById(accountId) ?: return false
+        val cleanBalance = newBalance.coerceAtLeast(0.0)
+        val note = if (!reason.isNullOrBlank()) reason.trim() else "User verified baseline balance"
+
+        accountDao.updateVerifiedBalance(
+            accountId = accountId,
+            balance = cleanBalance,
+            updatedAt = effectiveTimestamp,
+            proofSnippet = "Manual True-Up: $note",
+            proofSource = "Manual True-Up",
+            isVerified = true,
+        )
+
+        return reconcileSingleAccount(accountId)
+    }
+
     suspend fun reconcileSingleAccount(accountId: Long): Boolean {
         val account = accountDao.findById(accountId) ?: return false
         val allAccountTxs = transactionDao.getAllTransactions()
             .filter { it.accountId == accountId && it.status == TransactionStatus.POSTED }
             .sortedWith(compareBy({ it.occurredAtMillis }, { it.id }))
 
-        // 1. Find the latest transaction with an authentic, verified available balance proof
+        // 1. Check for the most recent verified bank SMS transaction
         val verifiedAnchorTx = allAccountTxs.lastOrNull { tx ->
             if (tx.availableBalance != null && tx.availableBalance > 0.0) {
                 val proof = BalanceProofVerifier.verifyBalance(
@@ -1723,6 +1745,30 @@ class FinanceRepository(
                 )
                 proof.isVerified
             } else false
+        }
+
+        val smsAnchorTime = verifiedAnchorTx?.occurredAtMillis ?: 0L
+        val isManualTrueUp = account.balanceProofSource == "Manual True-Up"
+        val userTrueUpTime = if (isManualTrueUp) (account.balanceUpdatedAtMillis ?: 0L) else 0L
+
+        // Prioritize manual true-up anchor if user performed it after the latest bank SMS proof
+        if (isManualTrueUp && userTrueUpTime > smsAnchorTime) {
+            val subsequentTxs = allAccountTxs.filter { it.occurredAtMillis > userTrueUpTime }
+            val subsequentDelta = subsequentTxs.sumOf { tx ->
+                if (tx.direction == TransactionDirection.CREDIT) tx.amount else -tx.amount
+            }
+            val calculatedBalance = (account.currentBalance + subsequentDelta).coerceAtLeast(0.0)
+            val latestTime = maxOf(userTrueUpTime, subsequentTxs.lastOrNull()?.occurredAtMillis ?: userTrueUpTime)
+
+            accountDao.updateVerifiedBalance(
+                accountId = accountId,
+                balance = calculatedBalance,
+                updatedAt = latestTime,
+                proofSnippet = account.balanceProofSnippet ?: "Manual True-Up",
+                proofSource = "Manual True-Up",
+                isVerified = true,
+            )
+            return true
         }
 
         if (verifiedAnchorTx != null) {
