@@ -159,7 +159,7 @@ An enterprise-grade, privacy-first automated personal finance management platfor
 ## Project Structure
 
 ```
-app/src/main/java/com/soumil/moneytracker/
+app/src/main/java/com/moneytracker/app/
 ├── MoneyTrackerApp.kt           # Application class & container initialization
 ├── AppContainer.kt              # Dependency container with on-demand lazy singletons
 ├── MainActivity.kt              # FragmentActivity hosting Jetpack Compose & BiometricPrompt

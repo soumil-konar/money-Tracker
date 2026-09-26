@@ -68,7 +68,7 @@
             android:label="@string/widget_name">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="com.soumil.moneytracker.action.REFRESH_WIDGET" />
+                <action android:name="com.moneytracker.app.action.REFRESH_WIDGET" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
@@ -81,7 +81,7 @@
             android:label="@string/budget_widget_name">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="com.soumil.moneytracker.action.REFRESH_BUDGET_WIDGET" />
+                <action android:name="com.moneytracker.app.action.REFRESH_BUDGET_WIDGET" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
