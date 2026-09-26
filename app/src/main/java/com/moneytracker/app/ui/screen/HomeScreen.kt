@@ -86,7 +86,7 @@ fun HomeScreen(
     onBudgetClick: () -> Unit,
     onSelectMonth: (YearMonth) -> Unit = {},
     onRefreshAiInsights: () -> Unit = {},
-    onOpenAssistant: (() -> Unit)? = null,
+    onOpenAssistant: ((Rect?) -> Unit)? = null,
     onAccountsClick: () -> Unit = {},
     onAccountClick: (AccountEntity) -> Unit = {},
     listState: LazyListState = rememberLazyListState(),
@@ -363,12 +363,18 @@ fun HomeScreen(
                                 }
                             }
                             if (onOpenAssistant != null) {
+                                var askAiButtonCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
                                 Button(
                                     onClick = {
                                         haptics.click()
-                                        onOpenAssistant.invoke()
+                                        val bounds = askAiButtonCoords?.takeIf { it.isAttached }?.boundsInRoot()
+                                        onOpenAssistant.invoke(bounds)
                                     },
-                                    modifier = Modifier.weight(1f),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .onGloballyPositioned { coords ->
+                                            askAiButtonCoords = coords
+                                        },
                                 ) {
                                     Icon(
                                         imageVector = Icons.Outlined.AutoAwesome,

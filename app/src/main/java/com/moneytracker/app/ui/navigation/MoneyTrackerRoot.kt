@@ -108,6 +108,7 @@ import com.moneytracker.app.ui.screen.BudgetHistoryScreen
 import com.moneytracker.app.ui.screen.HomeScreen
 import com.moneytracker.app.ui.screen.MoreScreen
 import com.moneytracker.app.ui.screen.SettingsScreen
+import com.moneytracker.app.ui.screen.SpendingAssistantDialog
 import com.moneytracker.app.ui.screen.SpendingAssistantSheet
 import com.moneytracker.app.ui.screen.TransactionsScreen
 
@@ -173,7 +174,8 @@ fun MoneyTrackerRoot(
     val primaryBankAccount = accounts.firstOrNull { it.kind == AccountKind.BANK && it.institutionName != null }
         ?: accounts.firstOrNull { it.kind == AccountKind.BANK }
 
-    var showAiChatSheet by remember { mutableStateOf(false) }
+    var showAiAssistantDialog by remember { mutableStateOf(false) }
+    var assistantAnchorBounds by remember { mutableStateOf<Rect?>(null) }
     var showBudgetDialog by remember { mutableStateOf(false) }
     var showAddTransactionDialog by remember { mutableStateOf(false) }
     var showAddSubscriptionDialog by remember { mutableStateOf(false) }
@@ -256,8 +258,10 @@ fun MoneyTrackerRoot(
     }
 
     val isAddTransactionOpen = showAddTransactionDialog || editingTransaction != null
+    val isAssistantOpen = showAiAssistantDialog
+    val isOverlayOpen = isAddTransactionOpen || isAssistantOpen
     val backgroundBlur by animateDpAsState(
-        targetValue = if (isAddTransactionOpen) 20.dp else 0.dp,
+        targetValue = if (isOverlayOpen) 20.dp else 0.dp,
         animationSpec = spring(
             dampingRatio = 0.82f,
             stiffness = Spring.StiffnessMediumLow,
@@ -265,7 +269,7 @@ fun MoneyTrackerRoot(
         label = "mainBackgroundBlur",
     )
     val scrimAlpha by animateFloatAsState(
-        targetValue = if (isAddTransactionOpen) 0.54f else 0.0f,
+        targetValue = if (isOverlayOpen) 0.54f else 0.0f,
         animationSpec = spring(
             dampingRatio = 0.85f,
             stiffness = Spring.StiffnessMediumLow,
@@ -324,7 +328,10 @@ fun MoneyTrackerRoot(
                                     },
                                     onSelectMonth = viewModel::setSelectedYearMonth,
                                     onRefreshAiInsights = { viewModel.refreshAiSpendingInsights() },
-                                    onOpenAssistant = { showAiChatSheet = true },
+                                    onOpenAssistant = { bounds ->
+                                        assistantAnchorBounds = bounds
+                                        showAiAssistantDialog = true
+                                    },
                                     onAccountsClick = {
                                         coroutineScope.launch {
                                             pagerState.animateScrollToPage(2)
@@ -535,10 +542,11 @@ fun MoneyTrackerRoot(
             FloatingActionButton(
                 onClick = {
                     haptics.click()
+                    val bounds = fabCoordinates?.takeIf { it.isAttached }?.boundsInRoot()
                     if (isHome) {
-                        showAiChatSheet = true
+                        assistantAnchorBounds = bounds
+                        showAiAssistantDialog = true
                     } else {
-                        val bounds = fabCoordinates?.takeIf { it.isAttached }?.boundsInRoot()
                         transactionAnchorBounds = bounds
                         lastOpenedWasEditing = false
                         activeEditingTransaction = null
@@ -635,6 +643,7 @@ fun MoneyTrackerRoot(
                             haptics.click()
                             showAddTransactionDialog = false
                             editingTransaction = null
+                            showAiAssistantDialog = false
                         },
                     ),
             )
@@ -763,22 +772,119 @@ fun MoneyTrackerRoot(
                 )
             }
         }
+
+        val hasAssistantSpatialAnchor = assistantAnchorBounds != null && rootLayoutSize.width > 0 && rootLayoutSize.height > 0
+        val assistantTransformOrigin = if (hasAssistantSpatialAnchor) {
+            TransformOrigin(
+                pivotFractionX = (assistantAnchorBounds!!.center.x / rootLayoutSize.width).coerceIn(0.04f, 0.96f),
+                pivotFractionY = (assistantAnchorBounds!!.center.y / rootLayoutSize.height).coerceIn(0.04f, 0.96f),
+            )
+        } else {
+            TransformOrigin(0.85f, 0.88f)
+        }
+
+        AnimatedVisibility(
+            visible = showAiAssistantDialog,
+            enter = if (hasAssistantSpatialAnchor) {
+                fadeIn(
+                    animationSpec = tween(
+                        durationMillis = 280,
+                        easing = FastOutSlowInEasing,
+                    ),
+                ) +
+                scaleIn(
+                    initialScale = 0.15f,
+                    transformOrigin = assistantTransformOrigin,
+                    animationSpec = spring(
+                        dampingRatio = 0.78f,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                )
+            } else {
+                fadeIn(
+                    animationSpec = tween(
+                        durationMillis = 240,
+                        easing = FastOutSlowInEasing,
+                    ),
+                ) +
+                scaleIn(
+                    initialScale = 0.82f,
+                    transformOrigin = assistantTransformOrigin,
+                    animationSpec = spring(
+                        dampingRatio = 0.82f,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                )
+            },
+            exit = if (hasAssistantSpatialAnchor) {
+                fadeOut(
+                    animationSpec = tween(
+                        durationMillis = 200,
+                        easing = FastOutLinearInEasing,
+                    ),
+                ) +
+                scaleOut(
+                    targetScale = 0.15f,
+                    transformOrigin = assistantTransformOrigin,
+                    animationSpec = spring(
+                        dampingRatio = 0.88f,
+                        stiffness = Spring.StiffnessMedium,
+                    ),
+                )
+            } else {
+                fadeOut(
+                    animationSpec = tween(
+                        durationMillis = 200,
+                        easing = FastOutLinearInEasing,
+                    ),
+                ) +
+                scaleOut(
+                    targetScale = 0.82f,
+                    transformOrigin = assistantTransformOrigin,
+                    animationSpec = spring(
+                        dampingRatio = 0.88f,
+                        stiffness = Spring.StiffnessMedium,
+                    ),
+                )
+            },
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .imePadding()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {
+                            haptics.click()
+                            showAiAssistantDialog = false
+                        },
+                    )
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                SpendingAssistantDialog(
+                    messages = assistantMessages,
+                    isThinking = isAssistantThinking,
+                    onSendMessage = viewModel::askAssistant,
+                    onClearChat = viewModel::clearAssistantChat,
+                    onDismiss = { showAiAssistantDialog = false },
+                )
+            }
+        }
         }
     }
 
-    BackHandler(enabled = isAddTransactionOpen) {
-        showAddTransactionDialog = false
-        editingTransaction = null
-    }
-
-    if (showAiChatSheet) {
-        SpendingAssistantSheet(
-            messages = assistantMessages,
-            isThinking = isAssistantThinking,
-            onSendMessage = viewModel::askAssistant,
-            onClearChat = viewModel::clearAssistantChat,
-            onDismiss = { showAiChatSheet = false },
-        )
+    BackHandler(enabled = isAddTransactionOpen || showAiAssistantDialog) {
+        if (showAiAssistantDialog) {
+            showAiAssistantDialog = false
+        } else {
+            showAddTransactionDialog = false
+            editingTransaction = null
+        }
     }
 
     if (showBudgetDialog) {

@@ -53,6 +53,7 @@ import com.moneytracker.app.ai.FinanceRagEngine
 import com.moneytracker.app.ai.GeminiApiClient
 import com.moneytracker.app.ai.OnDeviceAiEngine
 import com.moneytracker.app.ai.RagAnswerResponse
+import com.moneytracker.app.ai.SpendingAssistantGuardrail
 import com.moneytracker.app.data.db.TransactionEmbeddingDao
 import com.moneytracker.app.data.db.TransactionEmbeddingEntity
 import com.moneytracker.app.data.local.AiEngineMode
@@ -674,13 +675,44 @@ class FinanceRepository(
     }
 
     suspend fun askSpendingAssistant(userQuery: String): Result<AssistantMessage> {
+        val trimmedQuery = userQuery.trim()
+        if (trimmedQuery.isBlank()) {
+            return Result.failure(IllegalArgumentException("Query cannot be blank"))
+        }
+
+        // 1. Guardrail: Friendly greeting check
+        if (SpendingAssistantGuardrail.isGreeting(trimmedQuery)) {
+            return Result.success(
+                AssistantMessage(
+                    sender = AssistantSender.ASSISTANT,
+                    text = SpendingAssistantGuardrail.getGreetingResponse(),
+                    citedTransactions = emptyList(),
+                ),
+            )
+        }
+
+        val allPosted = postedTransactions.first()
+        val allAccounts = accounts.first()
+        val knownMerchants = allPosted.map { it.merchant }.toSet()
+        val knownAccounts = allAccounts.map { it.name }.toSet()
+
+        // 2. Guardrail: Off-topic detection returning a cute response
+        if (SpendingAssistantGuardrail.isOffTopic(trimmedQuery, knownMerchants, knownAccounts)) {
+            return Result.success(
+                AssistantMessage(
+                    sender = AssistantSender.ASSISTANT,
+                    text = SpendingAssistantGuardrail.getCuteOffTopicResponse(trimmedQuery),
+                    citedTransactions = emptyList(),
+                ),
+            )
+        }
+
         val apiKey = aiPreferences.apiKey.value
         val engineMode = aiPreferences.engineMode.value
-        val allPosted = postedTransactions.first()
         val currentBudgetLimit = currentBudget.first()?.amountLimit
 
         val context = ragEngine.retrieveContext(
-            query = userQuery,
+            query = trimmedQuery,
             apiKey = apiKey,
             currentBudgetLimit = currentBudgetLimit,
             allPosted = allPosted,

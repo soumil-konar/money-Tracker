@@ -259,9 +259,12 @@ class GeminiApiClient {
                 2. Use the exact numbers, merchants, categories, and dates from the retrieved transactions above. Do not make up or hallucinate transactions.
                 3. If the user asks where money was spent, mention the exact place/detail note from the data (e.g. Indiranagar, Swiggy order, etc.).
                 4. Provide practical, encouraging financial observations or tips when relevant.
-                5. At the very end of your response, on a new line, list ONLY the IDs of the transactions you directly cited or used in the exact format:
+                5. GUARDRAILS & OFF-TOPIC QUESTIONS:
+                   If the user asks an inquiry that is unrelated to personal finances, spending, money, budgets, savings, transactions, accounts, or the app (such as trivia, general knowledge, coding, creative writing, science, recipes, homework, weather, or random chit-chat):
+                   DO NOT answer the off-topic question. Instead, reply with a cute, friendly, and playful message explaining that you are a cute financial piggy bank assistant who only knows about their money and budgets, and invite them to ask about their expenses, coffee runs, or savings instead! (e.g. "Beep boop! 🪙✨ I'm just a little financial piggy bank assistant! 🐷 I only know about your coins, rupees, budgets, and spending habits. Ask me about your expenses, coffee runs, or savings goals! 🍰💳").
+                6. At the very end of your response, on a new line, list ONLY the IDs of the transactions you directly cited or used in the exact format:
                    CITATIONS: [id1, id2, ...]
-                   (If none were used, output: CITATIONS: [])
+                   (If none were used or if the question was off-topic, output: CITATIONS: [])
             """.trimIndent()
 
             val requestJson = JSONObject().apply {

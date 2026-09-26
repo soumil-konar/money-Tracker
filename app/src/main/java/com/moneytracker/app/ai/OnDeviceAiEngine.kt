@@ -320,7 +320,28 @@ class OnDeviceAiEngine(
         retrievedTransactions: List<TransactionRecord>,
         macroContext: String,
     ): Result<RagAnswerResponse> {
-        val lowerQuery = userQuery.lowercase(Locale.getDefault())
+        val trimmedQuery = userQuery.trim()
+
+        if (SpendingAssistantGuardrail.isGreeting(trimmedQuery)) {
+            return Result.success(
+                RagAnswerResponse(
+                    answer = SpendingAssistantGuardrail.getGreetingResponse(),
+                    citedTransactionIds = emptyList(),
+                ),
+            )
+        }
+
+        val knownMerchants = retrievedTransactions.map { it.merchant }.toSet()
+        if (SpendingAssistantGuardrail.isOffTopic(trimmedQuery, knownMerchants)) {
+            return Result.success(
+                RagAnswerResponse(
+                    answer = SpendingAssistantGuardrail.getCuteOffTopicResponse(trimmedQuery),
+                    citedTransactionIds = emptyList(),
+                ),
+            )
+        }
+
+        val lowerQuery = trimmedQuery.lowercase(Locale.getDefault())
 
         val isFoodQuery = listOf("food", "dining", "eat", "restaurant", "cafe", "swiggy", "zomato").any { it in lowerQuery }
         val isTravelQuery = listOf("travel", "transport", "transportation", "uber", "ola", "metro", "fuel", "petrol", "cab", "ride", "auto", "train", "flight").any { it in lowerQuery }
