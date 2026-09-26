@@ -14,6 +14,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -74,6 +75,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntSize
@@ -174,12 +177,6 @@ fun MoneyTrackerRoot(
     var showAddTransactionDialog by remember { mutableStateOf(false) }
     var showAddSubscriptionDialog by remember { mutableStateOf(false) }
 
-    LaunchedEffect(initialOpenAddTransaction) {
-        if (initialOpenAddTransaction) {
-            showAddTransactionDialog = true
-            onConsumeOpenAddTransaction?.invoke()
-        }
-    }
     var chartReloadKey by remember { mutableStateOf(0) }
     var transactionAnchorBounds by remember { mutableStateOf<Rect?>(null) }
     var lastOpenedWasEditing by remember { mutableStateOf(false) }
@@ -189,6 +186,18 @@ fun MoneyTrackerRoot(
     var pendingDeleteTransaction by remember { mutableStateOf<TransactionRecord?>(null) }
     var pendingDeleteAccount by remember { mutableStateOf<AccountEntity?>(null) }
     var transactionDialogKey by remember { mutableStateOf(0) }
+
+    LaunchedEffect(initialOpenAddTransaction) {
+        if (initialOpenAddTransaction) {
+            transactionAnchorBounds = null
+            lastOpenedWasEditing = false
+            activeEditingTransaction = null
+            editingTransaction = null
+            transactionDialogKey += 1
+            showAddTransactionDialog = true
+            onConsumeOpenAddTransaction?.invoke()
+        }
+    }
     var editingAccount by remember { mutableStateOf<AccountEntity?>(null) }
     var accountDialogDraft by remember { mutableStateOf<AccountDraft?>(null) }
     var accountDialogKey by remember { mutableStateOf(0) }
@@ -301,8 +310,8 @@ fun MoneyTrackerRoot(
                                     },
                                     onImportRecentSms = { viewModel.importRecentSms(context.contentResolver) },
                                     onSetBudgetClick = { showBudgetDialog = true },
-                                    onAddTransactionClick = {
-                                        transactionAnchorBounds = null
+                                    onAddTransactionClick = { bounds ->
+                                        transactionAnchorBounds = bounds
                                         lastOpenedWasEditing = false
                                         activeEditingTransaction = null
                                         editingTransaction = null
@@ -330,8 +339,8 @@ fun MoneyTrackerRoot(
                                     listState = transactionsListState,
                                     onSearchQueryChange = viewModel::setSearchQuery,
                                     onFilterSelected = viewModel::setFilter,
-                                    onAddTransactionClick = {
-                                        transactionAnchorBounds = null
+                                    onAddTransactionClick = { bounds ->
+                                        transactionAnchorBounds = bounds
                                         lastOpenedWasEditing = false
                                         activeEditingTransaction = null
                                         editingTransaction = null
@@ -517,13 +526,15 @@ fun MoneyTrackerRoot(
                 .padding(end = 20.dp, bottom = 88.dp),
         ) {
             val isHome = pagerState.currentPage == 0
+            var fabCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
             FloatingActionButton(
                 onClick = {
                     haptics.click()
                     if (isHome) {
                         showAiChatSheet = true
                     } else {
-                        transactionAnchorBounds = null
+                        val bounds = fabCoordinates?.takeIf { it.isAttached }?.boundsInRoot()
+                        transactionAnchorBounds = bounds
                         lastOpenedWasEditing = false
                         activeEditingTransaction = null
                         editingTransaction = null
@@ -534,7 +545,11 @@ fun MoneyTrackerRoot(
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = Color.White,
                 shape = CircleShape,
-                modifier = Modifier.size(54.dp),
+                modifier = Modifier
+                    .size(54.dp)
+                    .onGloballyPositioned { coords ->
+                        fabCoordinates = coords
+                    },
             ) {
                 androidx.compose.animation.AnimatedContent(
                     targetState = isHome,
@@ -622,79 +637,82 @@ fun MoneyTrackerRoot(
 
         val isSpatialEdit = lastOpenedWasEditing || editingTransaction != null
         val anchorBounds = transactionAnchorBounds
-        val hasSpatialAnchor = isSpatialEdit && anchorBounds != null && rootLayoutSize.width > 0 && rootLayoutSize.height > 0
+        val hasSpatialAnchor = anchorBounds != null && rootLayoutSize.width > 0 && rootLayoutSize.height > 0
+        val initialTargetScale = if (isSpatialEdit) 0.58f else 0.15f
 
         val spatialTransformOrigin = if (hasSpatialAnchor) {
             TransformOrigin(
-                pivotFractionX = (anchorBounds!!.center.x / rootLayoutSize.width).coerceIn(0.08f, 0.92f),
-                pivotFractionY = (anchorBounds.center.y / rootLayoutSize.height).coerceIn(0.08f, 0.92f),
+                pivotFractionX = (anchorBounds!!.center.x / rootLayoutSize.width).coerceIn(0.04f, 0.96f),
+                pivotFractionY = (anchorBounds.center.y / rootLayoutSize.height).coerceIn(0.04f, 0.96f),
             )
         } else if (isSpatialEdit) {
             TransformOrigin(0.5f, 0.45f)
         } else {
-            TransformOrigin(0.5f, 0.88f)
+            TransformOrigin(0.85f, 0.88f)
         }
 
         AnimatedVisibility(
             visible = isAddTransactionOpen,
-            enter = if (isSpatialEdit) {
-                fadeIn(animationSpec = tween(durationMillis = 260, easing = LinearOutSlowInEasing)) +
-                scaleIn(
-                    initialScale = 0.58f,
-                    transformOrigin = spatialTransformOrigin,
-                    animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow),
+            enter = if (hasSpatialAnchor) {
+                fadeIn(
+                    animationSpec = tween(
+                        durationMillis = 280,
+                        easing = FastOutSlowInEasing,
+                    ),
                 ) +
-                slideInVertically(
-                    initialOffsetY = { _ ->
-                        if (hasSpatialAnchor) {
-                            val screenCenterY = rootLayoutSize.height / 2f
-                            ((anchorBounds!!.center.y - screenCenterY) * 0.28f).toInt()
-                        } else {
-                            0
-                        }
-                    },
-                    animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow),
+                scaleIn(
+                    initialScale = initialTargetScale,
+                    transformOrigin = spatialTransformOrigin,
+                    animationSpec = spring(
+                        dampingRatio = 0.78f,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
                 )
             } else {
-                fadeIn(animationSpec = tween(durationMillis = 280, easing = LinearOutSlowInEasing)) +
-                slideInVertically(
-                    initialOffsetY = { fullHeight -> (fullHeight * 0.18f).toInt() },
-                    animationSpec = spring(dampingRatio = 0.80f, stiffness = Spring.StiffnessMediumLow),
+                fadeIn(
+                    animationSpec = tween(
+                        durationMillis = 240,
+                        easing = FastOutSlowInEasing,
+                    ),
                 ) +
                 scaleIn(
                     initialScale = 0.82f,
-                    transformOrigin = TransformOrigin(0.5f, 0.88f),
-                    animationSpec = spring(dampingRatio = 0.80f, stiffness = Spring.StiffnessMediumLow),
+                    transformOrigin = spatialTransformOrigin,
+                    animationSpec = spring(
+                        dampingRatio = 0.82f,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
                 )
             },
-            exit = if (isSpatialEdit) {
-                fadeOut(animationSpec = tween(durationMillis = 190, easing = FastOutLinearInEasing)) +
-                scaleOut(
-                    targetScale = 0.58f,
-                    transformOrigin = spatialTransformOrigin,
-                    animationSpec = spring(dampingRatio = 0.88f, stiffness = Spring.StiffnessMedium),
+            exit = if (hasSpatialAnchor) {
+                fadeOut(
+                    animationSpec = tween(
+                        durationMillis = 200,
+                        easing = FastOutLinearInEasing,
+                    ),
                 ) +
-                slideOutVertically(
-                    targetOffsetY = { _ ->
-                        if (hasSpatialAnchor) {
-                            val screenCenterY = rootLayoutSize.height / 2f
-                            ((anchorBounds!!.center.y - screenCenterY) * 0.22f).toInt()
-                        } else {
-                            0
-                        }
-                    },
-                    animationSpec = spring(dampingRatio = 0.88f, stiffness = Spring.StiffnessMedium),
+                scaleOut(
+                    targetScale = initialTargetScale,
+                    transformOrigin = spatialTransformOrigin,
+                    animationSpec = spring(
+                        dampingRatio = 0.88f,
+                        stiffness = Spring.StiffnessMedium,
+                    ),
                 )
             } else {
-                fadeOut(animationSpec = tween(durationMillis = 200, easing = FastOutLinearInEasing)) +
-                slideOutVertically(
-                    targetOffsetY = { fullHeight -> (fullHeight * 0.18f).toInt() },
-                    animationSpec = spring(dampingRatio = 0.88f, stiffness = Spring.StiffnessMedium),
+                fadeOut(
+                    animationSpec = tween(
+                        durationMillis = 200,
+                        easing = FastOutLinearInEasing,
+                    ),
                 ) +
                 scaleOut(
-                    targetScale = 0.88f,
-                    transformOrigin = TransformOrigin(0.5f, 0.88f),
-                    animationSpec = spring(dampingRatio = 0.88f, stiffness = Spring.StiffnessMedium),
+                    targetScale = 0.82f,
+                    transformOrigin = spatialTransformOrigin,
+                    animationSpec = spring(
+                        dampingRatio = 0.88f,
+                        stiffness = Spring.StiffnessMedium,
+                    ),
                 )
             },
             modifier = Modifier.fillMaxSize(),

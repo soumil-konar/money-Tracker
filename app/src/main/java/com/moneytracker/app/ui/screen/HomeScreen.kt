@@ -53,6 +53,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.moneytracker.app.data.db.AccountEntity
@@ -78,7 +82,7 @@ fun HomeScreen(
     onRequestPermissions: () -> Unit = {},
     onImportRecentSms: () -> Unit = {},
     onSetBudgetClick: () -> Unit,
-    onAddTransactionClick: () -> Unit,
+    onAddTransactionClick: (Rect?) -> Unit = {},
     onBudgetClick: () -> Unit,
     onSelectMonth: (YearMonth) -> Unit = {},
     onRefreshAiInsights: () -> Unit = {},
@@ -413,7 +417,9 @@ fun HomeScreen(
                 if (dashboard.trendPoints.all { it.expense == 0.0 && it.income == 0.0 }) {
                     EmptyContent(
                         message = "The chart will start filling once transactions arrive.",
-                        onAction = if (smsPermissionGranted) onImportRecentSms else onRequestPermissions,
+                        onAction = {
+                            if (smsPermissionGranted) onImportRecentSms() else onRequestPermissions()
+                        },
                         actionLabel = if (smsPermissionGranted) "Import recent SMS" else "Enable SMS access",
                     )
                 } else {
@@ -461,16 +467,25 @@ fun HomeScreen(
 @Composable
 private fun EmptyContent(
     message: String,
-    onAction: () -> Unit,
+    onAction: (Rect?) -> Unit,
     actionLabel: String,
 ) {
+    var buttonCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
             text = message,
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Button(onClick = onAction) {
+        Button(
+            modifier = Modifier.onGloballyPositioned { coords ->
+                buttonCoordinates = coords
+            },
+            onClick = {
+                val bounds = buttonCoordinates?.takeIf { it.isAttached }?.boundsInRoot()
+                onAction(bounds)
+            },
+        ) {
             Text(actionLabel)
         }
     }

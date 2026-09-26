@@ -91,7 +91,7 @@ fun TransactionsScreen(
     searchQuery: String = "",
     onSearchQueryChange: (String) -> Unit = {},
     onFilterSelected: (TransactionFilter) -> Unit,
-    onAddTransactionClick: () -> Unit,
+    onAddTransactionClick: (Rect?) -> Unit,
     onApproveReview: (Long) -> Unit,
     onAnalyzeWithAi: ((Long) -> Unit)? = null,
     isAiAnalyzing: Boolean = false,
@@ -400,10 +400,17 @@ fun TransactionsScreen(
 
         item {
             MotionReveal(index = 3) {
-                OutlinedButton(onClick = {
-                    haptics.click()
-                    onAddTransactionClick()
-                }) {
+                var addManualCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+                OutlinedButton(
+                    modifier = Modifier.onGloballyPositioned { coords ->
+                        addManualCoordinates = coords
+                    },
+                    onClick = {
+                        haptics.click()
+                        val bounds = addManualCoordinates?.takeIf { it.isAttached }?.boundsInRoot()
+                        onAddTransactionClick(bounds)
+                    },
+                ) {
                     Text("Add manual transaction")
                 }
             }
@@ -416,10 +423,17 @@ fun TransactionsScreen(
                         title = "No transactions yet",
                         subtitle = "SMS imports and manual entries will appear here.",
                     ) {
-                        Button(onClick = {
-                            haptics.click()
-                            onAddTransactionClick()
-                        }) {
+                        var addEmptyCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+                        Button(
+                            modifier = Modifier.onGloballyPositioned { coords ->
+                                addEmptyCoordinates = coords
+                            },
+                            onClick = {
+                                haptics.click()
+                                val bounds = addEmptyCoordinates?.takeIf { it.isAttached }?.boundsInRoot()
+                                onAddTransactionClick(bounds)
+                            },
+                        ) {
                             Text("Add transaction")
                         }
                     }
