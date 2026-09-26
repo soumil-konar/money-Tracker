@@ -215,7 +215,7 @@ fun TransactionsScreen(
         ),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        item {
+        item(key = "transactions_header") {
             MotionReveal(index = 0) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -278,9 +278,11 @@ fun TransactionsScreen(
         }
 
         if (showNotificationSection) {
-            item {
+            item(key = "transactions_notification_section") {
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .animateItem()
+                        .fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
@@ -348,127 +350,133 @@ fun TransactionsScreen(
             }
         }
 
-        item {
-            MotionReveal(index = 1) {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = onSearchQueryChange,
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Search merchant, note, amount...") },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Outlined.Search,
-                            contentDescription = "Search",
-                        )
-                    },
-                    trailingIcon = {
-                        if (searchQuery.isNotBlank()) {
-                            IconButton(onClick = {
-                                haptics.tick()
-                                onSearchQueryChange("")
-                            }) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Close,
-                                    contentDescription = "Clear",
-                                )
+        item(key = "transactions_search_field") {
+            Box(modifier = Modifier.animateItem().fillMaxWidth()) {
+                MotionReveal(index = 1) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = onSearchQueryChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("Search merchant, note, amount...") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Outlined.Search,
+                                contentDescription = "Search",
+                            )
+                        },
+                        trailingIcon = {
+                            if (searchQuery.isNotBlank()) {
+                                IconButton(onClick = {
+                                    haptics.tick()
+                                    onSearchQueryChange("")
+                                }) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Close,
+                                        contentDescription = "Clear",
+                                    )
+                                }
                             }
-                        }
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(18.dp),
-                )
+                        },
+                        singleLine = true,
+                        shape = RoundedCornerShape(18.dp),
+                    )
+                }
             }
         }
 
-        item {
-            MotionReveal(index = 1) {
-                LazyRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    item {
-                        FilterChip(
-                            selected = selectedDateMillis != null,
-                            onClick = {
-                                haptics.click()
-                                if (selectedDateMillis != null) {
-                                    selectedDateMillis = null
-                                } else {
-                                    showDatePicker = true
-                                }
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Outlined.CalendarMonth,
-                                    contentDescription = "Date filter",
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            },
-                            trailingIcon = if (selectedDateMillis != null) {
-                                {
+        item(key = "transactions_filter_chips") {
+            Box(modifier = Modifier.animateItem().fillMaxWidth()) {
+                MotionReveal(index = 1) {
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        item(key = "filter_calendar") {
+                            FilterChip(
+                                selected = selectedDateMillis != null,
+                                onClick = {
+                                    haptics.click()
+                                    if (selectedDateMillis != null) {
+                                        selectedDateMillis = null
+                                    } else {
+                                        showDatePicker = true
+                                    }
+                                },
+                                leadingIcon = {
                                     Icon(
-                                        imageVector = Icons.Outlined.Close,
-                                        contentDescription = "Clear date filter",
-                                        modifier = Modifier
-                                            .size(16.dp)
-                                            .clickable {
-                                                haptics.click()
-                                                selectedDateMillis = null
-                                            },
+                                        imageVector = Icons.Outlined.CalendarMonth,
+                                        contentDescription = "Date filter",
+                                        modifier = Modifier.size(18.dp),
                                     )
-                                }
-                            } else null,
-                            label = {
-                                Text(
-                                    text = selectedDateMillis?.asShortDate()?.let { "Date: $it" } ?: "Calendar",
-                                )
-                            },
-                        )
-                    }
-                    items(TransactionFilter.entries) { candidate ->
-                        FilterChip(
-                            selected = filter == candidate,
-                            onClick = {
-                                haptics.tick()
-                                onFilterSelected(candidate)
-                            },
-                            label = { Text(candidate.label) },
-                        )
+                                },
+                                trailingIcon = if (selectedDateMillis != null) {
+                                    {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Close,
+                                            contentDescription = "Clear date filter",
+                                            modifier = Modifier
+                                                .size(16.dp)
+                                                .clickable {
+                                                    haptics.click()
+                                                    selectedDateMillis = null
+                                                },
+                                        )
+                                    }
+                                } else null,
+                                label = {
+                                    Text(
+                                        text = selectedDateMillis?.asShortDate()?.let { "Date: $it" } ?: "Calendar",
+                                    )
+                                },
+                            )
+                        }
+                        items(TransactionFilter.entries, key = { it.name }) { candidate ->
+                            FilterChip(
+                                selected = filter == candidate,
+                                onClick = {
+                                    haptics.tick()
+                                    onFilterSelected(candidate)
+                                },
+                                label = { Text(candidate.label) },
+                            )
+                        }
                     }
                 }
             }
         }
 
         if (filter == TransactionFilter.CARD && selectableCards.isNotEmpty()) {
-            item {
-                MotionReveal(index = 2) {
-                    LazyRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        item {
-                            FilterChip(
-                                selected = selectedCardAccountId == null,
-                                onClick = {
-                                    haptics.tick()
-                                    selectedCardAccountId = null
-                                },
-                                label = { Text("All cards") },
-                            )
-                        }
-                        items(selectableCards, key = { it.id }) { account ->
-                            FilterChip(
-                                selected = selectedCardAccountId == account.id,
-                                onClick = {
-                                    haptics.tick()
-                                    selectedCardAccountId = account.id
-                                },
-                                label = {
-                                    Text(
-                                        account.lastFourDigits?.let { "${account.name} ending $it" } ?: account.name,
-                                    )
-                                },
-                            )
+            item(key = "transactions_card_filter_chips") {
+                Box(modifier = Modifier.animateItem().fillMaxWidth()) {
+                    MotionReveal(index = 2) {
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            item(key = "filter_card_all") {
+                                FilterChip(
+                                    selected = selectedCardAccountId == null,
+                                    onClick = {
+                                        haptics.tick()
+                                        selectedCardAccountId = null
+                                    },
+                                    label = { Text("All cards") },
+                                )
+                            }
+                            items(selectableCards, key = { it.id }) { account ->
+                                FilterChip(
+                                    selected = selectedCardAccountId == account.id,
+                                    onClick = {
+                                        haptics.tick()
+                                        selectedCardAccountId = account.id
+                                    },
+                                    label = {
+                                        Text(
+                                            account.lastFourDigits?.let { "${account.name} ending $it" } ?: account.name,
+                                        )
+                                    },
+                                )
+                            }
                         }
                     }
                 }
@@ -549,43 +557,47 @@ fun TransactionsScreen(
             }
         }
 
-        item {
-            MotionReveal(index = 3) {
-                var addManualCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
-                OutlinedButton(
-                    modifier = Modifier.onGloballyPositioned { coords ->
-                        addManualCoordinates = coords
-                    },
-                    onClick = {
-                        haptics.click()
-                        val bounds = addManualCoordinates?.takeIf { it.isAttached }?.boundsInRoot()
-                        onAddTransactionClick(bounds)
-                    },
-                ) {
-                    Text("Add manual transaction")
+        item(key = "transactions_add_manual_button") {
+            Box(modifier = Modifier.animateItem()) {
+                MotionReveal(index = 3) {
+                    var addManualCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+                    OutlinedButton(
+                        modifier = Modifier.onGloballyPositioned { coords ->
+                            addManualCoordinates = coords
+                        },
+                        onClick = {
+                            haptics.click()
+                            val bounds = addManualCoordinates?.takeIf { it.isAttached }?.boundsInRoot()
+                            onAddTransactionClick(bounds)
+                        },
+                    ) {
+                        Text("Add manual transaction")
+                    }
                 }
             }
         }
 
         if (visibleTransactions.isEmpty()) {
-            item {
-                MotionReveal(index = 4) {
-                    SectionCard(
-                        title = "No transactions yet",
-                        subtitle = "SMS imports and manual entries will appear here.",
-                    ) {
-                        var addEmptyCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
-                        Button(
-                            modifier = Modifier.onGloballyPositioned { coords ->
-                                addEmptyCoordinates = coords
-                            },
-                            onClick = {
-                                haptics.click()
-                                val bounds = addEmptyCoordinates?.takeIf { it.isAttached }?.boundsInRoot()
-                                onAddTransactionClick(bounds)
-                            },
+            item(key = "transactions_empty_state") {
+                Box(modifier = Modifier.animateItem()) {
+                    MotionReveal(index = 4) {
+                        SectionCard(
+                            title = "No transactions yet",
+                            subtitle = "SMS imports and manual entries will appear here.",
                         ) {
-                            Text("Add transaction")
+                            var addEmptyCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+                            Button(
+                                modifier = Modifier.onGloballyPositioned { coords ->
+                                    addEmptyCoordinates = coords
+                                },
+                                onClick = {
+                                    haptics.click()
+                                    val bounds = addEmptyCoordinates?.takeIf { it.isAttached }?.boundsInRoot()
+                                    onAddTransactionClick(bounds)
+                                },
+                            ) {
+                                Text("Add transaction")
+                            }
                         }
                     }
                 }
