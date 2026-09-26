@@ -23,7 +23,6 @@ import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Vibration
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -335,22 +334,57 @@ fun ThemeAndHapticsSection(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         HapticIntensity.entries.forEach { intensity ->
-                            FilterChip(
-                                selected = hapticIntensity == intensity,
-                                onClick = {
-                                    haptics.selection()
-                                    onSelectHapticIntensity(intensity)
+                            val isSelected = hapticIntensity == intensity
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable {
+                                        haptics.selection()
+                                        onSelectHapticIntensity(intensity)
+                                    },
+                                shape = RoundedCornerShape(14.dp),
+                                color = if (isSelected) {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                                 },
-                                label = { Text(intensity.label) },
-                                leadingIcon = {
+                                border = BorderStroke(
+                                    width = if (isSelected) 1.5.dp else 1.dp,
+                                    color = if (isSelected) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                                    },
+                                ),
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(vertical = 12.dp, horizontal = 4.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
                                     Icon(
                                         imageVector = Icons.Outlined.Vibration,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
+                                        contentDescription = intensity.label,
+                                        modifier = Modifier.size(20.dp),
+                                        tint = if (isSelected) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        },
                                     )
-                                },
-                                modifier = Modifier.weight(1f),
-                            )
+                                    Text(
+                                        text = intensity.label,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) {
+                                            MaterialTheme.colorScheme.onPrimaryContainer
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        },
+                                        maxLines = 1,
+                                    )
+                                }
+                            }
                         }
                     }
                 }

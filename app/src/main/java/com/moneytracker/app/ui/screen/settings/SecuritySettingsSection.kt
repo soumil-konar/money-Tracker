@@ -8,12 +8,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ErrorOutline
-import androidx.compose.material.icons.outlined.Fingerprint
-import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material3.FilterChip
+import androidx.compose.material.icons.outlined.HourglassBottom
+import androidx.compose.material.icons.outlined.LockClock
+import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -24,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.moneytracker.app.data.local.BiometricLockTimeout
 import com.moneytracker.app.ui.components.SectionCard
@@ -138,22 +140,63 @@ fun SecuritySettingsSection(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     BiometricLockTimeout.entries.forEach { timeout ->
-                        FilterChip(
-                            selected = biometricTimeout == timeout,
-                            onClick = {
-                                haptics.selection()
-                                onSelectBiometricTimeout(timeout)
+                        val isSelected = biometricTimeout == timeout
+                        val icon = when (timeout) {
+                            BiometricLockTimeout.IMMEDIATELY -> Icons.Outlined.LockClock
+                            BiometricLockTimeout.ONE_MINUTE -> Icons.Outlined.Timer
+                            BiometricLockTimeout.FIVE_MINUTES -> Icons.Outlined.HourglassBottom
+                        }
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable {
+                                    haptics.selection()
+                                    onSelectBiometricTimeout(timeout)
+                                },
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (isSelected) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                             },
-                            label = { Text(timeout.label) },
-                            leadingIcon = {
+                            border = BorderStroke(
+                                width = if (isSelected) 1.5.dp else 1.dp,
+                                color = if (isSelected) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                                },
+                            ),
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(vertical = 12.dp, horizontal = 4.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
                                 Icon(
-                                    imageVector = Icons.Outlined.Lock,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp),
+                                    imageVector = icon,
+                                    contentDescription = timeout.label,
+                                    modifier = Modifier.size(20.dp),
+                                    tint = if (isSelected) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
                                 )
-                            },
-                            modifier = Modifier.weight(1f),
-                        )
+                                Text(
+                                    text = timeout.label,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) {
+                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    maxLines = 1,
+                                    textAlign = TextAlign.Center,
+                                )
+                            }
+                        }
                     }
                 }
             }
