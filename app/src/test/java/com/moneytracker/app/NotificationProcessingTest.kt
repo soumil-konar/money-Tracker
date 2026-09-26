@@ -101,11 +101,49 @@ class NotificationProcessingTest {
     }
 
     @Test
+    fun `tata neu push notification parses merchant amount and category`() {
+        val pkg = NotificationPreferences.PACKAGE_TATA_NEU
+        val title = "Tata Neu"
+        val text = "Payment of ₹1,499.00 to Croma successful via Tata Pay UPI"
+
+        assertTrue(isEligibleNotification(pkg, title, text))
+
+        val combined = "$title: $text"
+        val parsed = onDeviceAi.parseSmsOnDevice(combined, "Tata Neu").getOrNull()
+        assertNotNull(parsed)
+        assertTrue(parsed!!.isTransaction)
+        assertEquals(1499.0, parsed.amount)
+        assertEquals(TransactionDirection.DEBIT, parsed.direction)
+        assertEquals("Croma", parsed.merchant)
+        assertEquals(TransactionCategory.SHOPPING, parsed.category)
+    }
+
+    @Test
+    fun `bhim upi push notification parses merchant amount and description`() {
+        val pkg = NotificationPreferences.PACKAGE_BHIM
+        val title = "BHIM"
+        val text = "Paid ₹150.00 to Chai Point successfully."
+
+        assertTrue(isEligibleNotification(pkg, title, text))
+
+        val combined = "$title: $text"
+        val parsed = onDeviceAi.parseSmsOnDevice(combined, "BHIM").getOrNull()
+        assertNotNull(parsed)
+        assertTrue(parsed!!.isTransaction)
+        assertEquals(150.0, parsed.amount)
+        assertEquals(TransactionDirection.DEBIT, parsed.direction)
+        assertEquals("Chai Point", parsed.merchant)
+        assertEquals(TransactionCategory.FOOD, parsed.category)
+    }
+
+    @Test
     fun `package monitoring groups cover all key indian financial apps`() {
         assertTrue(NotificationPreferences.PAYMENT_APP_PACKAGES.contains("com.google.android.apps.nbu.paisa.user"))
         assertTrue(NotificationPreferences.PAYMENT_APP_PACKAGES.contains("com.phonepe.app"))
         assertTrue(NotificationPreferences.PAYMENT_APP_PACKAGES.contains("net.one97.paytm"))
         assertTrue(NotificationPreferences.PAYMENT_APP_PACKAGES.contains("com.dreamplug.androidapp"))
+        assertTrue(NotificationPreferences.PAYMENT_APP_PACKAGES.contains("in.org.npci.upiapp"))
+        assertTrue(NotificationPreferences.PAYMENT_APP_PACKAGES.contains("com.tatadigital.tcp"))
         assertTrue(NotificationPreferences.BANK_APP_PACKAGES.contains("com.snapwork.hdfc"))
         assertTrue(NotificationPreferences.BANK_APP_PACKAGES.contains("com.sbi.lotusintouch"))
         assertTrue(NotificationPreferences.BANK_APP_PACKAGES.contains("com.csam.icici.bank.imobile"))

@@ -336,5 +336,86 @@ class SmsParserTest {
         assertEquals(TransactionDirection.DEBIT, result2.direction)
         assertTrue(result2.isAtmWithdrawal)
     }
+
+    @Test
+    fun `parses Tata Neu payment notification with Rupee symbol and merchant`() {
+        val result = parser.parse(
+            sender = "Tata Neu",
+            body = "Tata Neu: Payment of ₹1,499.00 to Croma successful via Tata Pay UPI",
+        )
+
+        assertFalse(result.shouldIgnore)
+        assertEquals(1499.0, result.amount ?: 0.0, 0.0)
+        assertEquals(TransactionDirection.DEBIT, result.direction)
+        assertEquals("Croma", result.merchant)
+        assertEquals(TransactionCategory.SHOPPING, result.inferredCategory)
+    }
+
+    @Test
+    fun `parses BHIM UPI payment notification with Rupee symbol and merchant`() {
+        val result = parser.parse(
+            sender = "BHIM",
+            body = "BHIM: Paid ₹150.00 to Chai Point successfully.",
+        )
+
+        assertFalse(result.shouldIgnore)
+        assertEquals(150.0, result.amount ?: 0.0, 0.0)
+        assertEquals(TransactionDirection.DEBIT, result.direction)
+        assertEquals("Chai Point", result.merchant)
+        assertEquals(TransactionCategory.FOOD, result.inferredCategory)
+    }
+
+    @Test
+    fun `parses Tata Neu BigBasket payment notification with food category`() {
+        val result = parser.parse(
+            sender = "Tata Neu",
+            body = "Tata Neu: You paid ₹450 to BigBasket",
+        )
+
+        assertFalse(result.shouldIgnore)
+        assertEquals(450.0, result.amount ?: 0.0, 0.0)
+        assertEquals(TransactionDirection.DEBIT, result.direction)
+        assertEquals("BigBasket", result.merchant)
+        assertEquals(TransactionCategory.FOOD, result.inferredCategory)
+    }
+
+    @Test
+    fun `parses Tata 1mg payment notification with health category`() {
+        val result = parser.parse(
+            sender = "Tata Neu",
+            body = "Tata Neu: Paid ₹820.00 to 1mg using UPI",
+        )
+
+        assertFalse(result.shouldIgnore)
+        assertEquals(820.0, result.amount ?: 0.0, 0.0)
+        assertEquals(TransactionDirection.DEBIT, result.direction)
+        assertEquals("1mg", result.merchant)
+        assertEquals(TransactionCategory.HEALTH, result.inferredCategory)
+    }
+
+    @Test
+    fun `does not ignore payment even if promotional sale keyword is in merchant or body`() {
+        val result = parser.parse(
+            sender = "HDFCBK",
+            body = "Paid ₹1,200.00 at Flipkart Big Billion Days Sale from A/c XX1234",
+        )
+
+        assertFalse(result.shouldIgnore)
+        assertEquals(1200.0, result.amount ?: 0.0, 0.0)
+        assertEquals(TransactionDirection.DEBIT, result.direction)
+    }
+
+    @Test
+    fun `parses BHIM money sent notification accurately`() {
+        val result = parser.parse(
+            sender = "BHIM",
+            body = "Sent ₹500.00 to Ramesh Kumar successfully via BHIM UPI",
+        )
+
+        assertFalse(result.shouldIgnore)
+        assertEquals(500.0, result.amount ?: 0.0, 0.0)
+        assertEquals(TransactionDirection.DEBIT, result.direction)
+        assertEquals("Ramesh Kumar", result.merchant)
+    }
 }
 

@@ -47,6 +47,17 @@ class SmsParser {
         "paid",
         "purchase",
         "withdrawn",
+        "payment to",
+        "payment of",
+        "payment made",
+        "paid to",
+        "paid for",
+        "paid using",
+        "you paid",
+        "money sent",
+        "deducted",
+        "bill payment",
+        "order placed",
     )
 
     private val creditKeywords = listOf(
@@ -57,6 +68,10 @@ class SmsParser {
         "salary",
         "reversal",
         "reversed",
+        "money received",
+        "received from",
+        "cashback received",
+        "received towards",
     )
 
     private val debitAbbreviationRegex = Regex("(?i)\\bdr\\b")
@@ -185,16 +200,17 @@ class SmsParser {
     )
 
     private val amountRegexes = listOf(
-        Regex("(?i)(?:rs\\.?|inr)\\s*([0-9,]+(?:\\.\\d{1,2})?)"),
-        Regex("(?i)([0-9,]+(?:\\.\\d{1,2})?)\\s*(?:rs\\.?|inr)"),
-        Regex("(?i)(?:debited|credited|spent|withdrawn|paid)\\s+(?:by|for|of)?\\s*([0-9,]+(?:\\.\\d{1,2})?)"),
+        Regex("(?i)(?:rs\\.?|inr|re\\.?|₹)\\s*[:.-]?\\s*([0-9,]+(?:\\.\\d{1,2})?)"),
+        Regex("(?i)([0-9,]+(?:\\.\\d{1,2})?)\\s*[:.-]?\\s*(?:rs\\.?|inr|re\\.?|₹)"),
+        Regex("(?i)(?:debited|credited|spent|withdrawn|paid|sent|received|deducted|payment of|transfer of)\\s*(?:by|for|of|to)?\\s*(?:rs\\.?|inr|re\\.?|₹)?\\s*([0-9,]+(?:\\.\\d{1,2})?)"),
     )
 
     private val merchantRegexes = listOf(
-        Regex("(?i)(?:to|at|towards|for|in favour of|in favor of)\\s+([a-z0-9@ &._-]{3,80})"),
-        Regex("(?i)(?:from)\\s+([a-z0-9@ &._-]{3,80})"),
-        Regex("(?i)(?:via upi to)\\s+([a-z0-9@ &._-]{3,80})"),
-        Regex("(?i)(?:merchant|biller)\\s*[:.-]?\\s*([a-z0-9@ &._-]{3,80})"),
+        Regex("(?i)(?:to|at|towards|for|in favour of|in favor of)\\s+([a-z0-9@ &._-]{2,80})"),
+        Regex("(?i)(?:paid to|sent to)\\s+([a-z0-9@ &._-]{2,80})"),
+        Regex("(?i)(?:from)\\s+([a-z0-9@ &._-]{2,80})"),
+        Regex("(?i)(?:via upi to)\\s+([a-z0-9@ &._-]{2,80})"),
+        Regex("(?i)(?:merchant|biller)\\s*[:.-]?\\s*([a-z0-9@ &._-]{2,80})"),
     )
 
     private val scheduledDateRegexes = listOf(
@@ -353,7 +369,12 @@ class SmsParser {
             isCardBillPayment = isCardBillPayment,
         )
 
-        if (promotionalKeywords.any(normalized::contains)) {
+        val hasExecutionSignal = listOf(
+            "debited", "paid", "spent", "sent ₹", "sent rs", "sent inr",
+            "credited", "withdrawn", "deposited", "payment of", "a/c debited", "account debited"
+        ).any(normalized::contains)
+
+        if (promotionalKeywords.any(normalized::contains) && !hasExecutionSignal) {
             return ParsedSmsMessage(shouldIgnore = true)
         }
 
@@ -639,6 +660,11 @@ class SmsParser {
             "credited",
             "upi",
             "spent",
+            "paid",
+            "sent",
+            "deducted",
+            "transfer",
+            "transferred",
             "txn",
             "transaction",
             "withdrawn",
@@ -652,6 +678,8 @@ class SmsParser {
             "mandate",
             "autopay",
             "card",
+            "vpa",
+            "order",
         ).any(body::contains)
     }
 
@@ -969,11 +997,12 @@ class SmsParser {
         val source = listOfNotNull(merchant, sender, body).joinToString(" ").lowercase()
         return when {
             direction == TransactionDirection.CREDIT && source.contains("salary") -> TransactionCategory.SALARY
-            listOf("swiggy", "zomato", "restaurant", "cafe", "domino", "food").any(source::contains) -> TransactionCategory.FOOD
-            listOf("uber", "ola", "irctc", "metro", "air", "travel").any(source::contains) -> TransactionCategory.TRAVEL
-            listOf("airtel", "jio", "electricity", "water", "rent", "bill").any(source::contains) -> TransactionCategory.BILLS
-            listOf("netflix", "spotify", "prime", "youtube", "hotstar", "apple.com").any(source::contains) -> TransactionCategory.SUBSCRIPTION
-            listOf("amazon", "flipkart", "myntra", "shopping").any(source::contains) -> TransactionCategory.SHOPPING
+            listOf("swiggy", "zomato", "restaurant", "cafe", "domino", "food", "chai", "coffee", "starbucks", "mcdonald", "kfc", "burger", "pizza", "blinkit", "zepto", "instamart", "bigbasket", "bb daily").any(source::contains) -> TransactionCategory.FOOD
+            listOf("uber", "ola", "irctc", "metro", "air", "travel", "flight", "indigo", "rapido", "redbus").any(source::contains) -> TransactionCategory.TRAVEL
+            listOf("airtel", "jio", "electricity", "water", "rent", "bill", "bescom", "tata power", "gas", "broadband", "dth").any(source::contains) -> TransactionCategory.BILLS
+            listOf("netflix", "spotify", "prime", "youtube", "hotstar", "apple.com", "google play").any(source::contains) -> TransactionCategory.SUBSCRIPTION
+            listOf("1mg", "apollo", "pharmacy", "medical", "medplus", "hospital", "doctor", "pharmeasy").any(source::contains) -> TransactionCategory.HEALTH
+            listOf("amazon", "flipkart", "myntra", "shopping", "croma", "westside", "tatacliq", "tata cliq", "nykaa", "zara", "h&m", "retail").any(source::contains) -> TransactionCategory.SHOPPING
             source.contains("upi") || source.contains("transfer") || source.contains("neft") || source.contains("imps") || source.contains("trf") -> TransactionCategory.TRANSFER
             else -> TransactionCategory.OTHER
         }
@@ -1031,7 +1060,9 @@ class SmsParser {
     }
 
     companion object {
-        private val SANITIZE_MERCHANT_REGEX = Regex("(?i)(?:\\bby\\s+upi\\b|\\bvia\\s+upi\\b|\\bupi\\b|\\bref(?:no)?\\b|\\binfo\\b|\\bavl\\b|\\bbal\\b|\\bavailable balance\\b|\\bdue date\\b|\\bscheduled on\\b|\\bscheduled for\\b|\\bpresented on\\b|\\bwill be debited\\b|\\bwill be presented\\b|\\bfrom a/c\\b|\\bfrom acct\\b|\\bfrom account\\b|\\bon date\\b|\\bon\\s+[0-9]{1,2}[/-][0-9]{1,2}(?:[/-][0-9]{2,4})?\\b|\\bon\\s+[0-9]{1,2}[A-Za-z]{3,9}[0-9]{2,4}\\b|\\bon\\s+[0-9]{1,2}[\\s-][A-Za-z]{3,9}(?:[\\s-][0-9]{2,4})?\\b).*")
+        private val SANITIZE_MERCHANT_REGEX = Regex(
+            "(?i)(?:\\bsuccessful(?:ly)?\\b|\\busing\\b|\\bvia\\b|\\bthrough\\b|\\bwith\\b|\\bby\\s+upi\\b|\\bvia\\s+upi\\b|\\bupi\\b|\\bref(?:no)?\\b|\\brrn\\b|\\butr\\b|\\btxn\\b|\\binfo\\b|\\bavl\\b|\\bbal\\b|\\bavailable balance\\b|\\bdue date\\b|\\bscheduled on\\b|\\bscheduled for\\b|\\bpresented on\\b|\\bwill be debited\\b|\\bwill be presented\\b|\\bfrom a/c\\b|\\bfrom acct\\b|\\bfrom account\\b|\\bon date\\b|\\bon\\s+[0-9]{1,2}[/-][0-9]{1,2}(?:[/-][0-9]{2,4})?\\b|\\bon\\s+[0-9]{1,2}[A-Za-z]{3,9}[0-9]{2,4}\\b|\\bon\\s+[0-9]{1,2}[\\s-][A-Za-z]{3,9}(?:[\\s-][0-9]{2,4})?\\b).*"
+        )
         private val REPLACE_BY_REGEX = Regex("(?i)\\bby\\b$")
         private val WHITESPACE_REGEX = Regex("\\s+")
         private val ORDINAL_REGEX = Regex("(?i)(st|nd|rd|th)")

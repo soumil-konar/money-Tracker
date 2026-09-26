@@ -862,10 +862,15 @@ class FinanceRepository(
             return false
         }
 
-        val combinedBody = when {
+        val baseBody = when {
             title.isNotBlank() && text.isNotBlank() && !text.startsWith(title, ignoreCase = true) -> "$title: $text"
             text.isNotBlank() -> text
             else -> title
+        }
+        val combinedBody = if (subText.isNotBlank() && !baseBody.contains(subText, ignoreCase = true)) {
+            "$baseBody ($subText)"
+        } else {
+            baseBody
         }
         val lower = combinedBody.lowercase(java.util.Locale.getDefault())
 
@@ -892,6 +897,12 @@ class FinanceRepository(
             packageName == NotificationPreferences.PACKAGE_PAYTM -> "Paytm"
             packageName == NotificationPreferences.PACKAGE_CRED -> "CRED"
             packageName == NotificationPreferences.PACKAGE_BHIM -> "BHIM"
+            packageName == NotificationPreferences.PACKAGE_TATA_NEU -> "Tata Neu"
+            packageName == NotificationPreferences.PACKAGE_AMAZON_PAY -> "Amazon Pay"
+            packageName == NotificationPreferences.PACKAGE_NAVI -> "Navi"
+            packageName == NotificationPreferences.PACKAGE_SUPER_MONEY -> "super.money"
+            packageName == NotificationPreferences.PACKAGE_MOBIKWIK -> "MobiKwik"
+            packageName == NotificationPreferences.PACKAGE_FREECHARGE -> "Freecharge"
             isBankApp -> title.takeIf { it.isNotBlank() } ?: "Bank Alert"
             else -> title.takeIf { it.isNotBlank() } ?: packageName
         }
@@ -1405,25 +1416,32 @@ class FinanceRepository(
             }
         }
 
-        val fingerprint = hashFingerprint(sender, body, receivedAtMillis)
-        if (transactionDao.fingerprintExists(fingerprint)) {
-            return SmsIngestionOutcome.DUPLICATE
+        val resolvedOccurredAt = when {
+            receivedAtMillis > 0L -> {
+                val parsedTime = parsed?.occurredAtMillis
+                if (parsedTime != null) {
+                    val parsedDay = java.time.Instant.ofEpochMilli(parsedTime)
+                        .atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+                    val receivedDay = java.time.Instant.ofEpochMilli(receivedAtMillis)
+                        .atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+                    if (parsedDay == receivedDay) {
+                        receivedAtMillis
+                    } else {
+                        val receivedTime = java.time.Instant.ofEpochMilli(receivedAtMillis)
+                            .atZone(java.time.ZoneId.systemDefault()).toLocalTime()
+                        parsedDay.atTime(receivedTime)
+                            .atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+                    }
+                } else {
+                    receivedAtMillis
+                }
+            }
+            else -> parsed?.occurredAtMillis ?: System.currentTimeMillis()
         }
 
-        val resolvedOccurredAt = parsed?.occurredAtMillis ?: receivedAtMillis
-
-        val existingSimilar = transactionDao.findSimilarTransaction(
-            amount = amount,
-            direction = direction,
-            occurredAtMillis = resolvedOccurredAt,
-            timeToleranceMillis = 300_000L,
-        )
-        if (existingSimilar != null) {
-            val merchantMatch = existingSimilar.merchant.equals(resolvedMerchant, ignoreCase = true)
-            val senderMatch = existingSimilar.sourceSender.equals(sender, ignoreCase = true)
-            if (merchantMatch || senderMatch) {
-                return SmsIngestionOutcome.DUPLICATE
-            }
+        val fingerprint = hashFingerprint(sender, body, resolvedOccurredAt)
+        if (transactionDao.fingerprintExists(fingerprint)) {
+            return SmsIngestionOutcome.DUPLICATE
         }
 
         val accountId = resolveParsedAccount(
@@ -1435,15 +1453,70 @@ class FinanceRepository(
             cardType = cardType,
             isCardBillPayment = isCardBillPayment,
         )
+
+        val balanceProof = BalanceProofVerifier.verifyBalance(sender, body, resolvedOccurredAt)
+        val verifiedAvailableBalance = if (balanceProof.isVerified) balanceProof.balance else availableBalance
+
+        val existingSimilar = transactionDao.findSimilarTransaction(
+            amount = amount,
+            direction = direction,
+            occurredAtMillis = resolvedOccurredAt,
+            timeToleranceMillis = 900_000L,
+        ) ?: run {
+            val startOfDay = java.time.Instant.ofEpochMilli(resolvedOccurredAt)
+                .atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+                .atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+            val endOfDay = startOfDay + 86_400_000L
+            val dayCandidates = transactionDao.getAllTransactions().filter {
+                it.amount == amount && it.direction == direction &&
+                    it.occurredAtMillis in startOfDay..endOfDay
+            }
+            dayCandidates.firstOrNull { candidate ->
+                candidate.merchant.equals(resolvedMerchant, ignoreCase = true) ||
+                    candidate.merchant.contains(resolvedMerchant, ignoreCase = true) ||
+                    resolvedMerchant.contains(candidate.merchant, ignoreCase = true)
+            }
+        }
+
+        if (existingSimilar != null) {
+            val merchantMatch = existingSimilar.merchant.equals(resolvedMerchant, ignoreCase = true) ||
+                existingSimilar.merchant.contains(resolvedMerchant, ignoreCase = true) ||
+                resolvedMerchant.contains(existingSimilar.merchant, ignoreCase = true)
+            val senderMatch = existingSimilar.sourceSender.equals(sender, ignoreCase = true)
+
+            if (merchantMatch || senderMatch) {
+                val targetAccountId = accountId ?: existingSimilar.accountId
+                val newAvailableBal = if (balanceProof.isVerified) balanceProof.balance else (availableBalance ?: existingSimilar.availableBalance)
+
+                if (targetAccountId != existingSimilar.accountId || newAvailableBal != existingSimilar.availableBalance) {
+                    val updated = existingSimilar.copy(
+                        accountId = targetAccountId,
+                        availableBalance = newAvailableBal,
+                    )
+                    transactionDao.update(updated)
+
+                    if (targetAccountId != null && balanceProof.isVerified && balanceProof.balance != null) {
+                        accountDao.updateVerifiedBalance(
+                            accountId = targetAccountId,
+                            balance = balanceProof.balance,
+                            updatedAt = resolvedOccurredAt,
+                            proofSnippet = balanceProof.proofSnippet,
+                            proofSource = "SMS (${sender.substringAfter("-")})",
+                            isVerified = true,
+                        )
+                        reconcileSingleAccount(targetAccountId)
+                    }
+                }
+                return SmsIngestionOutcome.DUPLICATE
+            }
+        }
+
         val status = if (confidence >= 0.7) TransactionStatus.POSTED else TransactionStatus.REVIEW
         val countsTowardBudget = if (isCardBillPayment || category == TransactionCategory.TRANSFER) {
             false
         } else {
             parsed?.countsTowardBudget ?: true
         }
-
-        val balanceProof = BalanceProofVerifier.verifyBalance(sender, body, resolvedOccurredAt)
-        val verifiedAvailableBalance = if (balanceProof.isVerified) balanceProof.balance else availableBalance
 
         val inserted = transactionDao.insert(
             TransactionEntity(

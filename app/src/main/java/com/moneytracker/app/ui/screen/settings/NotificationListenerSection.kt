@@ -114,7 +114,7 @@ fun NotificationListenerSection(
         // Real-Time Notification Listener Section
         SectionCard(
             title = "Real-Time Notification Ingestion",
-            subtitle = "Instant alert ingestion from Gmail, GPay, PhonePe, Paytm & bank apps",
+            subtitle = "Instant alert ingestion from UPI apps (BHIM, Tata Neu, GPay, PhonePe, Paytm, CRED), Gmail & bank apps",
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Row(
@@ -230,7 +230,7 @@ fun NotificationListenerSection(
                                 haptics.tick()
                                 onTogglePaymentAppsMonitoring(!isPaymentAppsMonitoringEnabled)
                             },
-                            label = { Text("UPI (GPay, PhonePe, Paytm, CRED)") },
+                            label = { Text("UPI (BHIM, Tata Neu, GPay, PhonePe, Paytm, CRED)") },
                             leadingIcon = {
                                 Icon(
                                     imageVector = Icons.Outlined.Bolt,

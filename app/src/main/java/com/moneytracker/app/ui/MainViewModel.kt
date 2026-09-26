@@ -817,7 +817,13 @@ private fun TransactionRecord.matchesUpiFilter(): Boolean {
         body.contains("vpa") ||
         sourceSender.contains("paytm", ignoreCase = true) ||
         sourceSender.contains("gpay", ignoreCase = true) ||
-        sourceSender.contains("phonepe", ignoreCase = true)
+        sourceSender.contains("google pay", ignoreCase = true) ||
+        sourceSender.contains("phonepe", ignoreCase = true) ||
+        sourceSender.contains("bhim", ignoreCase = true) ||
+        sourceSender.contains("tata neu", ignoreCase = true) ||
+        sourceSender.contains("tata pay", ignoreCase = true) ||
+        sourceSender.contains("cred", ignoreCase = true) ||
+        sourceSender.contains("navi", ignoreCase = true)
 }
 
 private fun TransactionRecord.matchesCardFilter(): Boolean {

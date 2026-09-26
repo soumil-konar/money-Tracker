@@ -103,9 +103,33 @@ object BrandAvatarHelper {
                 containerColor = Color(0xFFFCE4EC),
                 contentColor = Color(0xFFFC2779),
             )
-            "tata" in lower && ("neu" in lower || "cliq" in lower || "1mg" in lower) -> BrandBadge(
-                brandName = "Tata",
-                shortCode = "TT",
+            "croma" in lower -> BrandBadge(
+                brandName = "Croma",
+                shortCode = "CR",
+                containerColor = Color(0xFFE0F7FA),
+                contentColor = Color(0xFF006064),
+            )
+            "1mg" in lower || "tata 1mg" in lower -> BrandBadge(
+                brandName = "Tata 1mg",
+                shortCode = "1MG",
+                containerColor = Color(0xFFFFEBEE),
+                contentColor = Color(0xFFC2185B),
+            )
+            "westside" in lower -> BrandBadge(
+                brandName = "Westside",
+                shortCode = "WS",
+                containerColor = Color(0xFFF3E5F5),
+                contentColor = Color(0xFF6A1B9A),
+            )
+            "tatacliq" in lower || "tata cliq" in lower -> BrandBadge(
+                brandName = "Tata CLiQ",
+                shortCode = "TC",
+                containerColor = Color(0xFFEDE7F6),
+                contentColor = Color(0xFF4A148C),
+            )
+            "tata" in lower && ("neu" in lower || "cliq" in lower || "1mg" in lower || "pay" in lower) -> BrandBadge(
+                brandName = "Tata Neu",
+                shortCode = "NEU",
                 containerColor = Color(0xFFEDE7F6),
                 contentColor = Color(0xFF4A148C),
             )
@@ -195,6 +219,36 @@ object BrandAvatarHelper {
             )
 
             // Fintech & Payments
+            "bhim" in lower || "npci" in lower -> BrandBadge(
+                brandName = "BHIM UPI",
+                shortCode = "BHIM",
+                containerColor = Color(0xFFE0F2F1),
+                contentColor = Color(0xFF00796B),
+            )
+            "tataneu" in lower || "tata neu" in lower || "tata pay" in lower -> BrandBadge(
+                brandName = "Tata Neu",
+                shortCode = "NEU",
+                containerColor = Color(0xFFEDE7F6),
+                contentColor = Color(0xFF4A148C),
+            )
+            "phonepe" in lower -> BrandBadge(
+                brandName = "PhonePe",
+                shortCode = "PE",
+                containerColor = Color(0xFFEDE7F6),
+                contentColor = Color(0xFF5F259F),
+            )
+            "gpay" in lower || "google pay" in lower -> BrandBadge(
+                brandName = "Google Pay",
+                shortCode = "GP",
+                containerColor = Color(0xFFE8F0FE),
+                contentColor = Color(0xFF1A73E8),
+            )
+            "paytm" in lower -> BrandBadge(
+                brandName = "Paytm",
+                shortCode = "PY",
+                containerColor = Color(0xFFE1F5FE),
+                contentColor = Color(0xFF00B9F5),
+            )
             "cred" in lower -> BrandBadge(
                 brandName = "CRED",
                 shortCode = "CR",

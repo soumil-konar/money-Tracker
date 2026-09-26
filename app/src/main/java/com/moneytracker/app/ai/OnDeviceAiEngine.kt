@@ -149,13 +149,21 @@ class OnDeviceAiEngine(
             "debited",
             "spent",
             "paid to",
+            "paid for",
             "paid rs",
             "paid inr",
             "paid ₹",
+            "payment of",
+            "payment to",
+            "payment made",
+            "you paid",
+            "money sent",
+            "successfully paid",
             "withdrawn",
             "sent rs",
             "sent inr",
             "sent ₹",
+            "sent to",
             "deducted",
             "purchase of",
             "purchase at",
@@ -600,6 +608,10 @@ class OnDeviceAiEngine(
             "zomato" in lower -> "Zomato"
             "amazon" in lower -> "Amazon"
             "flipkart" in lower -> "Flipkart"
+            "croma" in lower -> "Croma"
+            "bigbasket" in lower || "bb daily" in lower -> "BigBasket"
+            "1mg" in lower -> "Tata 1mg"
+            "westside" in lower -> "Westside"
             "starbucks" in lower -> "Starbucks"
             "uber" in lower -> "Uber"
             "ola" in lower -> "Ola"
@@ -608,6 +620,7 @@ class OnDeviceAiEngine(
             "netflix" in lower -> "Netflix"
             "spotify" in lower -> "Spotify"
             "apple" in lower -> "Apple"
+            "bhim" in lower -> "BHIM"
             else -> "Merchant"
         }
     }
@@ -624,7 +637,7 @@ class OnDeviceAiEngine(
                 "UPI Transfer (..$last4)"
             }
         }
-        val stopWords = listOf("the", "ltd", "pvt", "limited", "bank", "india", "on", "at", "ref", "avl", "bal")
+        val stopWords = listOf("the", "ltd", "pvt", "limited", "bank", "india", "on", "at", "ref", "avl", "bal", "successful", "successfully", "using", "via", "through", "with", "pay")
         return trimmed.split(Regex("[^a-zA-Z0-9]+"))
             .filter { it.lowercase(Locale.getDefault()) !in stopWords && it.length > 1 }
             .joinToString(" ")
@@ -663,13 +676,13 @@ class OnDeviceAiEngine(
         val text = "$merchant $lower ${place.orEmpty()}".lowercase(Locale.getDefault())
 
         return when {
-            listOf("swiggy", "zomato", "restaurant", "cafe", "starbucks", "food", "kitchen", "bake", "pizza", "burger", "toit", "brew").any { it in text } -> TransactionCategory.FOOD
+            listOf("swiggy", "zomato", "restaurant", "cafe", "starbucks", "food", "kitchen", "bake", "pizza", "burger", "toit", "brew", "bigbasket", "blinkit", "zepto", "chai", "tea", "coffee").any { it in text } -> TransactionCategory.FOOD
             listOf("uber", "ola", "metro", "irctc", "flight", "indigo", "petrol", "fuel", "hpcl", "bpcl", "ioc").any { it in text } -> TransactionCategory.TRAVEL
-            listOf("electricity", "bescom", "water", "bill", "broadband", "wifi", "airtel", "jio", "vi", "gas", "recharge").any { it in text } -> TransactionCategory.BILLS
-            listOf("amazon", "flipkart", "myntra", "zara", "h&m", "shopping", "retail", "mart", "store").any { it in text } -> TransactionCategory.SHOPPING
+            listOf("electricity", "bescom", "water", "bill", "broadband", "wifi", "airtel", "jio", "vodafone", "idea", "vi recharge", "vi bill", "gas", "recharge", "tata power").any { it in text } -> TransactionCategory.BILLS
+            listOf("amazon", "flipkart", "myntra", "zara", "h&m", "shopping", "retail", "mart", "store", "croma", "westside", "tatacliq", "tata cliq").any { it in text } -> TransactionCategory.SHOPPING
             listOf("salary", "payroll", "stipend").any { it in text } -> TransactionCategory.SALARY
             listOf("netflix", "spotify", "prime", "hotstar", "youtube", "subscription").any { it in text } -> TransactionCategory.SUBSCRIPTION
-            listOf("pharmacy", "apollo", "medplus", "hospital", "clinic", "health", "doctor").any { it in text } -> TransactionCategory.HEALTH
+            listOf("pharmacy", "apollo", "medplus", "hospital", "clinic", "health", "doctor", "1mg").any { it in text } -> TransactionCategory.HEALTH
             listOf("transfer", "sent to", "neft", "rtgs", "imps", "card payment").any { it in text } -> TransactionCategory.TRANSFER
             else -> TransactionCategory.OTHER
         }

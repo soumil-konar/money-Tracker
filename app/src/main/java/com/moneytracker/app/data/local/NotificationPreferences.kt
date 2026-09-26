@@ -116,7 +116,12 @@ class NotificationPreferences(
         const val PACKAGE_PAYTM = "net.one97.paytm"
         const val PACKAGE_CRED = "com.dreamplug.androidapp"
         const val PACKAGE_BHIM = "in.org.npci.upiapp"
+        const val PACKAGE_TATA_NEU = "com.tatadigital.tcp"
         const val PACKAGE_AMAZON_PAY = "in.amazon.mShop.android.shopping"
+        const val PACKAGE_NAVI = "com.navi.mutualfunds"
+        const val PACKAGE_SUPER_MONEY = "in.super.money"
+        const val PACKAGE_MOBIKWIK = "com.mobikwik_new"
+        const val PACKAGE_FREECHARGE = "com.freecharge.android"
 
         val PAYMENT_APP_PACKAGES = setOf(
             PACKAGE_GPAY,
@@ -124,7 +129,12 @@ class NotificationPreferences(
             PACKAGE_PAYTM,
             PACKAGE_CRED,
             PACKAGE_BHIM,
+            PACKAGE_TATA_NEU,
             PACKAGE_AMAZON_PAY,
+            PACKAGE_NAVI,
+            PACKAGE_SUPER_MONEY,
+            PACKAGE_MOBIKWIK,
+            PACKAGE_FREECHARGE,
         )
 
         val BANK_APP_PACKAGES = setOf(
