@@ -198,10 +198,67 @@ class SmsParser {
     )
 
     private val scheduledDateRegexes = listOf(
-        Regex("(?i)(?:scheduled on|scheduled for|presented on|auto[ -]?debit on|autopay on|due on|due date|debit on|will be debited on|to be debited on)\\s*[:.-]?\\s*([0-9]{1,2}[/-][0-9]{1,2}[/-][0-9]{2,4})"),
-        Regex("(?i)(?:scheduled on|scheduled for|presented on|auto[ -]?debit on|autopay on|due on|due date|debit on|will be debited on|to be debited on)\\s*[:.-]?\\s*([0-9]{1,2}[\\s-][A-Za-z]{3,9}[\\s-][0-9]{2,4})"),
-        Regex("(?i)(?:scheduled on|scheduled for|presented on|auto[ -]?debit on|autopay on|due on|due date|debit on|will be debited on|to be debited on)\\s*[:.-]?\\s*([0-9]{1,2}[A-Za-z]{3,9}[0-9]{2,4})"),
-        Regex("(?i)(?:scheduled on|scheduled for|presented on|auto[ -]?debit on|autopay on|due on|due date|debit on|will be debited on|to be debited on)\\s*[:.-]?\\s*([0-9]{1,2}[\\s-][A-Za-z]{3,9})"),
+        Regex("(?i)(?:scheduled on|scheduled for|presented on|auto[ -]?debit on|autopay on|due on|due date|debit on|will be debited on|to be debited on|pay by|pay before|by)\\s*[:.-]?\\s*([0-9]{1,2}[/-][0-9]{1,2}[/-][0-9]{2,4})"),
+        Regex("(?i)(?:scheduled on|scheduled for|presented on|auto[ -]?debit on|autopay on|due on|due date|debit on|will be debited on|to be debited on|pay by|pay before|by)\\s*[:.-]?\\s*([0-9]{1,2}[\\s-][A-Za-z]{3,9}[\\s-][0-9]{2,4})"),
+        Regex("(?i)(?:scheduled on|scheduled for|presented on|auto[ -]?debit on|autopay on|due on|due date|debit on|will be debited on|to be debited on|pay by|pay before|by)\\s*[:.-]?\\s*([0-9]{1,2}[A-Za-z]{3,9}[0-9]{2,4})"),
+        Regex("(?i)(?:scheduled on|scheduled for|presented on|auto[ -]?debit on|autopay on|due on|due date|debit on|will be debited on|to be debited on|pay by|pay before|by)\\s*[:.-]?\\s*([0-9]{1,2}[\\s-][A-Za-z]{3,9})"),
+    )
+
+    private val billAmountRegexes = listOf(
+        Regex("(?i)(?:total\\s+(?:amount|amt)?\\s*due|total\\s+due|bill\\s*amount|bill\\s*of)\\s*[:.-]?\\s*(?:rs\\.?|inr|₹)?\\s*([0-9,]+(?:\\.\\d{1,2})?)"),
+        Regex("(?i)(?:rs\\.?|inr|₹)\\s*([0-9,]+(?:\\.\\d{1,2})?)\\s*(?:is\\s+)?(?:total\\s+(?:amount|amt)?\\s*due|total\\s+due)"),
+        Regex("(?i)(?:payment\\s+of\\s+)?(?:rs\\.?|inr|₹)\\s*([0-9,]+(?:\\.\\d{1,2})?)\\s+(?:is\\s+)?(?:due|towards)"),
+        Regex("(?i)(?:due\\s*(?:amount|amt)?)\\s*[:.-]?\\s*(?:rs\\.?|inr|₹)?\\s*([0-9,]+(?:\\.\\d{1,2})?)"),
+    )
+
+    private val billReminderKeywords = listOf(
+        "total amount due",
+        "minimum amount due",
+        "total amt due",
+        "min amt due",
+        "payment due",
+        "bill due",
+        "bill generated",
+        "statement generated",
+        "e-bill",
+        "bill amount",
+        "due date",
+        "due on",
+        "pay by",
+        "pay before",
+        "to avoid late",
+        "current outstanding",
+        "bill reminder",
+        "recharge due",
+    )
+
+    private val billPaymentExecutedKeywords = listOf(
+        "paid for",
+        "paid on",
+        "paid to",
+        "paid from",
+        "debited from",
+        "debited for",
+        "debited by",
+        "has been debited",
+        "is debited",
+        "was debited",
+        "payment received towards",
+        "payment received for",
+        "payment received from",
+        "credited towards your credit card",
+        "credited to your credit card",
+        "credited towards credit card",
+        "credited to credit card",
+        "successfully paid",
+        "thank you for paying",
+        "thank you for payment",
+        "paid via cred",
+        "paid through cred",
+        "paid via billdesk",
+        "paid through billdesk",
+        "debited successfully",
+        "processed successfully",
     )
 
     private val transactionDateRegexes = listOf(
@@ -301,6 +358,21 @@ class SmsParser {
         }
 
         parseScheduledMandate(
+            sender = sender,
+            body = body,
+            normalized = normalized,
+            institutionName = institutionName,
+            bankAccountLastFourDigits = bankAccountLastFourDigits,
+            cardLastFourDigits = cardLastFourDigits,
+            cardType = cardType,
+            accountKind = accountKind,
+            isUpiPayment = isUpiPayment,
+            hasCardSignal = hasCardSignal,
+        )?.let {
+            return ParsedSmsMessage(scheduledTransaction = it)
+        }
+
+        parseBillReminder(
             sender = sender,
             body = body,
             normalized = normalized,
@@ -483,6 +555,81 @@ class SmsParser {
             cardType = cardType,
             isUpiPayment = isUpiPayment,
             isCardPayment = hasCardSignal,
+        )
+    }
+
+    private fun parseBillReminder(
+        sender: String,
+        body: String,
+        normalized: String,
+        institutionName: String?,
+        bankAccountLastFourDigits: String?,
+        cardLastFourDigits: String?,
+        cardType: CardType?,
+        accountKind: AccountKind,
+        isUpiPayment: Boolean,
+        hasCardSignal: Boolean,
+    ): ParsedScheduledTransaction? {
+        val hasBillSignal = billReminderKeywords.any(normalized::contains) ||
+            (normalized.contains("bill") && (normalized.contains("due") || normalized.contains("statement") || normalized.contains("outstanding") || normalized.contains("pay before") || normalized.contains("pay by")))
+        val looksExecuted = billPaymentExecutedKeywords.any(normalized::contains)
+
+        if (!hasBillSignal || looksExecuted) {
+            return null
+        }
+
+        val amount = billAmountRegexes.firstNotNullOfOrNull { regex ->
+            regex.find(body)?.groupValues?.getOrNull(1)?.replace(",", "")?.toDoubleOrNull()
+        } ?: extractAmount(body) ?: return null
+
+        val scheduledForMillis = extractScheduledDate(body)
+            ?: extractTransactionDate(body)
+            ?: run {
+                LocalDate.now().plusDays(5).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+            }
+
+        val resolvedInstitution = institutionName ?: inferInstitutionName(sender = sender, body = body)
+        val isCreditCard = hasCardSignal || normalized.contains("credit card") || normalized.contains("card no") || normalized.contains("card")
+
+        val merchant = when {
+            isCreditCard -> {
+                val inst = resolvedInstitution ?: "Card"
+                if (!cardLastFourDigits.isNullOrBlank()) {
+                    "$inst Credit Card (..$cardLastFourDigits)"
+                } else {
+                    "$inst Credit Card"
+                }
+            }
+            resolvedInstitution != null -> "$resolvedInstitution Bill"
+            else -> extractMerchant(body) ?: "Bill Payment"
+        }
+
+        val effectiveAccountKind = if (isCreditCard) AccountKind.CARD else accountKind
+        val effectiveCardType = if (isCreditCard) CardType.CREDIT else cardType
+
+        val accountLabel = inferAccountLabel(
+            institutionName = resolvedInstitution,
+            bankAccountLastFourDigits = bankAccountLastFourDigits,
+            accountKind = effectiveAccountKind,
+            cardType = effectiveCardType,
+            cardLastFourDigits = cardLastFourDigits,
+        )
+
+        return ParsedScheduledTransaction(
+            amount = amount,
+            merchant = merchant,
+            scheduledForMillis = scheduledForMillis,
+            inferredCategory = TransactionCategory.BILLS,
+            accountLabel = accountLabel,
+            accountKind = effectiveAccountKind,
+            kind = ScheduledTransactionKind.BILL_REMINDER,
+            confidence = 0.95,
+            institutionName = resolvedInstitution,
+            bankAccountLastFourDigits = bankAccountLastFourDigits,
+            cardLastFourDigits = cardLastFourDigits,
+            cardType = effectiveCardType,
+            isUpiPayment = isUpiPayment,
+            isCardPayment = isCreditCard,
         )
     }
 
@@ -746,8 +893,6 @@ class SmsParser {
         hasCardSignal: Boolean,
     ): Boolean {
         val explicitCardRepayment = listOf(
-            "credit card bill",
-            "card bill",
             "towards credit card",
             "towards your credit card",
             "towards your card",
@@ -775,7 +920,7 @@ class SmsParser {
         ).any(normalized::contains)
 
         val hasPaymentSignal = explicitCardRepayment || (hasCardSignal && cardRepaymentKeywords.any(normalized::contains))
-        val isStatementReminder = statementOnlyKeywords.any(normalized::contains) && actualPaymentKeywords.none(normalized::contains)
+        val isStatementReminder = statementOnlyKeywords.any(normalized::contains) || billReminderKeywords.any(normalized::contains)
         return hasPaymentSignal && !isStatementReminder
     }
 
@@ -785,20 +930,19 @@ class SmsParser {
         isCardBillPayment: Boolean,
     ): Boolean {
         if (!hasCardSignal || isCardBillPayment) return false
-        return statementOnlyKeywords.any(normalized::contains) &&
-            actualPaymentKeywords.none(normalized::contains)
+        return (statementOnlyKeywords.any(normalized::contains) || billReminderKeywords.any(normalized::contains)) &&
+            billPaymentExecutedKeywords.none(normalized::contains)
     }
 
     private fun shouldIgnoreBillOrDueMessage(normalized: String): Boolean {
-        val looksExecuted = actualPaymentKeywords.any(normalized::contains) ||
-            listOf("paid", "debited", "successful", "processed").any(normalized::contains)
+        val looksExecuted = billPaymentExecutedKeywords.any(normalized::contains)
 
         if (looksExecuted) {
             return false
         }
 
-        if (billIgnoreKeywords.any(normalized::contains)) return true
-        return (normalized.contains("due date") || normalized.contains("due on")) &&
+        if (billReminderKeywords.any(normalized::contains) || billIgnoreKeywords.any(normalized::contains)) return true
+        return (normalized.contains("due date") || normalized.contains("due on") || normalized.contains("pay by")) &&
             (normalized.contains("bill") || normalized.contains("statement") || normalized.contains("credit card"))
     }
 

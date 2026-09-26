@@ -47,6 +47,7 @@ enum class SubscriptionState {
 
 enum class ScheduledTransactionKind(val label: String) {
     MANDATE("Mandate"),
+    BILL_REMINDER("Bill Reminder"),
 }
 
 enum class TransactionFilter(val label: String) {

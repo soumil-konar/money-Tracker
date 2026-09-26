@@ -140,6 +140,7 @@ fun MoneyTrackerRoot(
     val assistantMessages by viewModel.assistantMessages.collectAsStateWithLifecycle()
     val isAssistantThinking by viewModel.isAssistantThinking.collectAsStateWithLifecycle()
     val scheduledTransactions by viewModel.scheduledTransactions.collectAsStateWithLifecycle()
+    val pendingReminders by viewModel.pendingReminders.collectAsStateWithLifecycle()
     val activeSubscriptions by viewModel.activeSubscriptions.collectAsStateWithLifecycle()
     val suggestedSubscriptions by viewModel.suggestedSubscriptions.collectAsStateWithLifecycle()
     val isHapticEnabled by viewModel.isHapticEnabled.collectAsStateWithLifecycle()
@@ -370,6 +371,10 @@ fun MoneyTrackerRoot(
                                     onTransferToCashWallet = viewModel::transferToCashWallet,
                                     onDismissAtmPrompt = viewModel::dismissAtmPrompt,
                                     untransferredAtmTransactions = untransferredAtmTransactions,
+                                    pendingReminders = pendingReminders,
+                                    onMarkBillPaid = viewModel::markBillPaid,
+                                    onConfirmBillPayment = viewModel::confirmBillPayment,
+                                    onDeleteReminder = viewModel::deleteScheduledTransaction,
                                 )
                                 2 -> MoreScreen(
                                     accounts = accounts,

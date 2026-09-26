@@ -17,6 +17,7 @@ import com.moneytracker.app.data.model.AccountDraft
 import com.moneytracker.app.data.model.AccountKind
 import com.moneytracker.app.data.model.DashboardState
 import com.moneytracker.app.data.model.MonthBudgetSummary
+import com.moneytracker.app.data.model.ScheduledTransactionKind
 import com.moneytracker.app.data.model.SubscriptionDraft
 import com.moneytracker.app.data.model.SubscriptionState
 import com.moneytracker.app.data.model.TransactionCategory
@@ -148,6 +149,14 @@ class MainViewModel(
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = emptyList(),
     )
+
+    val pendingReminders: StateFlow<List<ScheduledTransactionRecord>> = repository.scheduledTransactions
+        .map { list -> list.filter { it.kind == ScheduledTransactionKind.BILL_REMINDER && !it.isPaid } }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList(),
+        )
 
     val filteredTransactions: StateFlow<List<TransactionRecord>> = combine(
         repository.transactions,
@@ -604,6 +613,46 @@ class MainViewModel(
                 emitMessage("Transaction removed.")
             }.onFailure {
                 emitMessage("Could not remove the transaction.")
+            }
+        }
+    }
+
+    fun markBillPaid(id: Long) {
+        viewModelScope.launch {
+            runCatching {
+                repository.markBillAsPaid(id)
+            }.onSuccess {
+                emitMessage("Bill marked as paid.")
+            }.onFailure {
+                emitMessage("Could not update bill status.")
+            }
+        }
+    }
+
+    fun confirmBillPayment(id: Long, confirmed: Boolean) {
+        viewModelScope.launch {
+            runCatching {
+                repository.confirmBillPayment(id, confirmed)
+            }.onSuccess {
+                if (confirmed) {
+                    emitMessage("Payment confirmed. Bill marked as paid.")
+                } else {
+                    emitMessage("Bill kept as unpaid.")
+                }
+            }.onFailure {
+                emitMessage("Could not update confirmation.")
+            }
+        }
+    }
+
+    fun deleteScheduledTransaction(id: Long) {
+        viewModelScope.launch {
+            runCatching {
+                repository.deleteScheduledTransaction(id)
+            }.onSuccess {
+                emitMessage("Reminder removed.")
+            }.onFailure {
+                emitMessage("Could not remove reminder.")
             }
         }
     }

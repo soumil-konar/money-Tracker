@@ -257,10 +257,11 @@ interface ScheduledTransactionDao {
     @Query(
         """
         SELECT s.id, s.merchant, s.amount, s.scheduledForMillis, s.category, s.kind, s.sourceSender,
+               s.smsBody, s.isPaid, s.paidAtMillis, s.matchedTransactionId, s.requiresConfirmation,
                a.name AS accountName, a.kind AS accountKind
         FROM scheduled_transactions s
         LEFT JOIN accounts a ON s.accountId = a.id
-        ORDER BY s.scheduledForMillis ASC, s.createdAtMillis DESC
+        ORDER BY s.isPaid ASC, s.scheduledForMillis ASC, s.createdAtMillis DESC
         """,
     )
     fun observeScheduledTransactions(): Flow<List<ScheduledTransactionRecord>>
@@ -270,6 +271,41 @@ interface ScheduledTransactionDao {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(transaction: ScheduledTransactionEntity): Long
+
+    @Update
+    suspend fun update(transaction: ScheduledTransactionEntity)
+
+    @Query("SELECT * FROM scheduled_transactions WHERE id = :id")
+    suspend fun getById(id: Long): ScheduledTransactionEntity?
+
+    @Query("UPDATE scheduled_transactions SET isPaid = 1, paidAtMillis = :paidAtMillis, requiresConfirmation = 0 WHERE id = :id")
+    suspend fun markAsPaid(id: Long, paidAtMillis: Long = System.currentTimeMillis())
+
+    @Query("UPDATE scheduled_transactions SET isPaid = :isPaid, requiresConfirmation = 0, matchedTransactionId = CASE WHEN :isPaid = 1 THEN matchedTransactionId ELSE NULL END WHERE id = :id")
+    suspend fun confirmPayment(id: Long, isPaid: Boolean)
+
+    @Query("UPDATE scheduled_transactions SET matchedTransactionId = :transactionId, requiresConfirmation = 1 WHERE id = :id AND isPaid = 0")
+    suspend fun linkMatchedTransaction(id: Long, transactionId: Long)
+
+    @Query("DELETE FROM scheduled_transactions WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
+    @Query("SELECT * FROM scheduled_transactions WHERE isPaid = 0 AND kind = 'BILL_REMINDER'")
+    suspend fun getUnpaidBillReminders(): List<ScheduledTransactionEntity>
+
+    @Query(
+        """
+        SELECT * FROM scheduled_transactions
+        WHERE kind = 'BILL_REMINDER'
+          AND ABS(amount - :amount) < 1.0
+          AND scheduledForMillis BETWEEN :minDueDate AND :maxDueDate
+        """,
+    )
+    suspend fun findSimilarBillReminders(
+        amount: Double,
+        minDueDate: Long,
+        maxDueDate: Long,
+    ): List<ScheduledTransactionEntity>
 
     @Query("SELECT * FROM scheduled_transactions")
     suspend fun getAll(): List<ScheduledTransactionEntity>

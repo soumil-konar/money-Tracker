@@ -98,6 +98,21 @@ class OnDeviceAiEngine(
             return Result.success(createNonTransaction())
         }
 
+        // Reject bill statement/due notices from being converted to executed transactions
+        val isBillReminder = listOf(
+            "total amount due", "total amt due", "minimum amount due", "min amt due",
+            "due date", "due on", "payment due", "bill generated", "statement generated",
+            "e-bill", "bill amount", "pay by", "pay before", "to avoid late",
+        ).any { it in lower }
+        val hasExecutedDebit = listOf(
+            "has been debited", "is debited", "was debited", "debited with", "debited by",
+            "debited for", "a/c debited", "account debited", "debited from", "debited successfully",
+            "payment received towards", "credited to your credit card", "successfully paid",
+        ).any { it in lower }
+        if (isBillReminder && !hasExecutedDebit) {
+            return Result.success(createNonTransaction())
+        }
+
         // 3. Direction
         val isCreditCardPayment = listOf(
             "received towards your",
@@ -112,8 +127,6 @@ class OnDeviceAiEngine(
             "credited to card",
             "credited to your sbi card",
             "credited to sbi card",
-            "card bill payment",
-            "credit card bill",
             "towards credit card",
             "towards your credit card",
             "towards your card",

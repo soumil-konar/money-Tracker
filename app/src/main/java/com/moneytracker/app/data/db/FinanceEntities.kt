@@ -181,6 +181,10 @@ data class ScheduledTransactionEntity(
     val smsBody: String?,
     val kind: ScheduledTransactionKind,
     val fingerprint: String,
+    val isPaid: Boolean = false,
+    val paidAtMillis: Long? = null,
+    val matchedTransactionId: Long? = null,
+    val requiresConfirmation: Boolean = false,
     val createdAtMillis: Long = System.currentTimeMillis(),
 )
 
@@ -228,6 +232,11 @@ data class ScheduledTransactionRecord(
     val sourceSender: String,
     val accountName: String?,
     val accountKind: AccountKind?,
+    val smsBody: String? = null,
+    val isPaid: Boolean = false,
+    val paidAtMillis: Long? = null,
+    val matchedTransactionId: Long? = null,
+    val requiresConfirmation: Boolean = false,
 )
 
 data class SubscriptionRecord(

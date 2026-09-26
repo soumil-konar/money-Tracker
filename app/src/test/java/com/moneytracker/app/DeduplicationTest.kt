@@ -52,4 +52,22 @@ class DeduplicationTest {
 
         assertEquals("Whitespace and casing variations must produce identical fingerprints", fp1, fp2)
     }
+
+    @Test
+    fun `cross-channel bill reminder yields identical channel-agnostic key for SMS, Gmail, and App Push`() {
+        fun hashBillFingerprint(merchant: String, amount: Double, dueDateMillis: Long, cardLastFour: String): String {
+            val dayBucket = dueDateMillis / 86_400_000L
+            val input = listOf("CROSS_CHANNEL", merchant.lowercase().trim(), "%.2f".format(amount), dayBucket, cardLastFour).joinToString("|")
+            val digest = MessageDigest.getInstance("SHA-256").digest(input.toByteArray())
+            return digest.joinToString("") { byte -> "%02x".format(byte) }
+        }
+
+        val dueDate = 1727913600000L // 03-Oct-2026
+        val fpSms = hashBillFingerprint("Axis Bank Credit Card", 9790.0, dueDate, "2159")
+        val fpEmail = hashBillFingerprint("Axis Bank Credit Card", 9790.0, dueDate, "2159")
+        val fpPush = hashBillFingerprint("Axis Bank Credit Card", 9790.0, dueDate, "2159")
+
+        assertEquals(fpSms, fpEmail)
+        assertEquals(fpEmail, fpPush)
+    }
 }

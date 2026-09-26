@@ -2,6 +2,7 @@ package com.moneytracker.app
 
 import com.moneytracker.app.data.model.AccountKind
 import com.moneytracker.app.data.model.CardType
+import com.moneytracker.app.data.model.ScheduledTransactionKind
 import com.moneytracker.app.data.model.TransactionCategory
 import com.moneytracker.app.data.model.TransactionDirection
 import com.moneytracker.app.parser.SmsParser
@@ -225,15 +226,18 @@ class SmsParserTest {
     }
 
     @Test
-    fun `ignores statement reminders for tracked cards`() {
+    fun `classifies statement reminders for tracked cards as bill reminders instead of transactions`() {
         val result = parser.parseMessage(
             sender = "HDFCBK",
             body = "Your HDFC Bank Card 2159 statement generated. Total amount due Rs.12450 due date 18-05-2026.",
         )
 
-        assertTrue(result.shouldIgnore)
+        assertFalse(result.shouldIgnore)
         assertNull(result.transaction)
-        assertNull(result.scheduledTransaction)
+        assertNotNull(result.scheduledTransaction)
+        assertEquals(ScheduledTransactionKind.BILL_REMINDER, result.scheduledTransaction?.kind)
+        assertEquals(12450.0, result.scheduledTransaction?.amount ?: 0.0, 0.0)
+        assertTrue(result.scheduledTransaction?.merchant?.contains("HDFC Bank") == true)
     }
 
     @Test
@@ -252,14 +256,32 @@ class SmsParserTest {
     }
 
     @Test
-    fun `still ignores pending bill due notices`() {
+    fun `classifies pending utility bill notices as bill reminders instead of transactions`() {
         val result = parser.parseMessage(
             sender = "BESCOM",
             body = "Your electricity bill for CA 10293847 is Rs 1,450. Due date is 25-05-2026. Pay now to avoid late fee.",
         )
 
-        assertTrue(result.shouldIgnore)
+        assertFalse(result.shouldIgnore)
         assertNull(result.transaction)
+        assertNotNull(result.scheduledTransaction)
+        assertEquals(ScheduledTransactionKind.BILL_REMINDER, result.scheduledTransaction?.kind)
+        assertEquals(1450.0, result.scheduledTransaction?.amount ?: 0.0, 0.0)
+    }
+
+    @Test
+    fun `correctly parses Axis Bank credit card bill reminder with total due and min due`() {
+        val result = parser.parseMessage(
+            sender = "AXISBK",
+            body = "Your Axis Bank Credit Card no. XX2159 statement for Sep 2026 is generated. Total Amt Due: Rs 9,790.00. Min Amt Due: Rs 500. Due Date: 03-Oct-2026.",
+        )
+
+        assertFalse(result.shouldIgnore)
+        assertNull(result.transaction) // Does NOT enter transactions ledger
+        assertNotNull(result.scheduledTransaction)
+        assertEquals(ScheduledTransactionKind.BILL_REMINDER, result.scheduledTransaction?.kind)
+        assertEquals(9790.0, result.scheduledTransaction?.amount ?: 0.0, 0.0) // Picks total due, not min due
+        assertEquals("Axis Bank Credit Card (..2159)", result.scheduledTransaction?.merchant)
     }
 
     @Test

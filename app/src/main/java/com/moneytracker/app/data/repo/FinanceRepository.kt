@@ -23,6 +23,7 @@ import com.moneytracker.app.data.model.DashboardState
 import com.moneytracker.app.data.model.ImportReport
 import com.moneytracker.app.data.model.MonthBudgetSummary
 import com.moneytracker.app.data.model.ParsedScheduledTransaction
+import com.moneytracker.app.data.model.ScheduledTransactionKind
 import com.moneytracker.app.data.model.SubscriptionDraft
 import com.moneytracker.app.data.model.SubscriptionState
 import com.moneytracker.app.data.model.TransactionCategory
@@ -1462,11 +1463,57 @@ class FinanceRepository(
             detectAndLinkTransferPair(inserted)
         }
 
+        matchAndLinkBillPayment(
+            transactionId = inserted,
+            amount = amount,
+            direction = direction,
+            merchant = resolvedMerchant,
+            occurredAtMillis = resolvedOccurredAt,
+        )
+
         return if (status == TransactionStatus.POSTED) {
             SmsIngestionOutcome.IMPORTED
         } else {
             SmsIngestionOutcome.REVIEW
         }
+    }
+
+    private suspend fun matchAndLinkBillPayment(
+        transactionId: Long,
+        amount: Double,
+        direction: TransactionDirection,
+        merchant: String,
+        occurredAtMillis: Long,
+    ) {
+        if (direction != TransactionDirection.DEBIT) return
+        val unpaidReminders = scheduledTransactionDao.getUnpaidBillReminders()
+        for (reminder in unpaidReminders) {
+            val amountMatches = kotlin.math.abs(reminder.amount - amount) < 1.0
+            val timeMatches = kotlin.math.abs(reminder.scheduledForMillis - occurredAtMillis) <= 15 * 86_400_000L
+            val remMerchant = reminder.merchant.lowercase()
+            val txMerchant = merchant.lowercase()
+            val merchantMatches = remMerchant.contains(txMerchant) ||
+                txMerchant.contains(remMerchant) ||
+                listOf("credit card", "card bill", "billdesk", "cred", "axis", "hdfc", "icici", "sbi", "kotak").any {
+                    remMerchant.contains(it) && txMerchant.contains(it)
+                }
+            if (amountMatches && timeMatches && merchantMatches) {
+                scheduledTransactionDao.linkMatchedTransaction(reminder.id, transactionId)
+                break
+            }
+        }
+    }
+
+    suspend fun markBillAsPaid(reminderId: Long) {
+        scheduledTransactionDao.markAsPaid(reminderId, System.currentTimeMillis())
+    }
+
+    suspend fun confirmBillPayment(reminderId: Long, isPaid: Boolean) {
+        scheduledTransactionDao.confirmPayment(reminderId, isPaid)
+    }
+
+    suspend fun deleteScheduledTransaction(id: Long) {
+        scheduledTransactionDao.deleteById(id)
     }
 
     private suspend fun storeScheduledTransaction(
@@ -1486,12 +1533,44 @@ class FinanceRepository(
             isCardBillPayment = false,
         )
         val merchant = parsed.merchant ?: fallbackScheduledMerchant(sender)
+
+        // For BILL_REMINDER, perform cross-channel deduplication across SMS, Gmail, and App Push
+        if (parsed.kind == ScheduledTransactionKind.BILL_REMINDER) {
+            val toleranceMillis = 4 * 86_400_000L // 4 days tolerance
+            val similarReminders = scheduledTransactionDao.findSimilarBillReminders(
+                amount = amount,
+                minDueDate = scheduledForMillis - toleranceMillis,
+                maxDueDate = scheduledForMillis + toleranceMillis,
+            )
+            val matchedExisting = similarReminders.firstOrNull { existing ->
+                val m1 = existing.merchant.lowercase()
+                val m2 = merchant.lowercase()
+                m1 == m2 || m1.contains(m2) || m2.contains(m1) ||
+                    (parsed.cardLastFourDigits != null && existing.smsBody?.contains(parsed.cardLastFourDigits) == true) ||
+                    (parsed.institutionName != null && existing.merchant.contains(parsed.institutionName, ignoreCase = true))
+            }
+            if (matchedExisting != null) {
+                // If the new one has a longer or richer body, enrich existing without creating duplicate
+                if (body.length > (matchedExisting.smsBody?.length ?: 0)) {
+                    scheduledTransactionDao.update(
+                        matchedExisting.copy(
+                            smsBody = body,
+                            accountId = accountId ?: matchedExisting.accountId,
+                        ),
+                    )
+                }
+                return SmsIngestionOutcome.DUPLICATE
+            }
+        }
+
+        val senderKey = if (parsed.kind == ScheduledTransactionKind.BILL_REMINDER) "CROSS_CHANNEL" else sender
+        val dateKey = if (parsed.kind == ScheduledTransactionKind.BILL_REMINDER) scheduledForMillis / (86_400_000L) else scheduledForMillis
         val fingerprint = hashScheduledFingerprint(
-            sender = sender,
+            sender = senderKey,
             merchant = merchant,
             amount = amount,
-            scheduledForMillis = scheduledForMillis,
-            accountLabel = parsed.accountLabel,
+            scheduledForMillis = dateKey,
+            accountLabel = parsed.cardLastFourDigits ?: parsed.accountLabel,
             kind = parsed.kind.name,
         )
         if (scheduledTransactionDao.fingerprintExists(fingerprint)) {
