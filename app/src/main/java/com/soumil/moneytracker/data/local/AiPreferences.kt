@@ -24,6 +24,8 @@ class AiPreferences(
 ) {
     private val preferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
+    private val secureHelper = SecurePreferencesHelper(context, PREFS_NAME)
+
     private val _engineMode = MutableStateFlow(
         runCatching {
             AiEngineMode.valueOf(preferences.getString(KEY_ENGINE_MODE, AiEngineMode.AUTO_PIXEL_FIRST.name) ?: AiEngineMode.AUTO_PIXEL_FIRST.name)
@@ -32,7 +34,7 @@ class AiPreferences(
     val engineMode: StateFlow<AiEngineMode> = _engineMode
 
     private val _apiKey = MutableStateFlow(
-        preferences.getString(KEY_API_KEY, DEFAULT_API_KEY).orEmpty(),
+        secureHelper.getSecureString(KEY_API_KEY, DEFAULT_API_KEY),
     )
     val apiKey: StateFlow<String> = _apiKey
 
@@ -48,7 +50,7 @@ class AiPreferences(
 
     fun setApiKey(key: String) {
         val trimmed = key.trim()
-        preferences.edit().putString(KEY_API_KEY, trimmed).apply()
+        secureHelper.putSecureString(KEY_API_KEY, trimmed)
         _apiKey.value = trimmed
     }
 

@@ -576,14 +576,9 @@ class SmsParser {
 
     private fun sanitizeMerchant(rawValue: String): String? {
         return rawValue
-            .replace(
-                Regex(
-                    "(?i)(?:\\bby\\s+upi\\b|\\bvia\\s+upi\\b|\\bupi\\b|\\bref(?:no)?\\b|\\binfo\\b|\\bavl\\b|\\bbal\\b|\\bavailable balance\\b|\\bdue date\\b|\\bscheduled on\\b|\\bscheduled for\\b|\\bpresented on\\b|\\bwill be debited\\b|\\bwill be presented\\b|\\bfrom a/c\\b|\\bfrom acct\\b|\\bfrom account\\b|\\bon date\\b|\\bon\\s+[0-9]{1,2}[/-][0-9]{1,2}(?:[/-][0-9]{2,4})?\\b|\\bon\\s+[0-9]{1,2}[A-Za-z]{3,9}[0-9]{2,4}\\b|\\bon\\s+[0-9]{1,2}[\\s-][A-Za-z]{3,9}(?:[\\s-][0-9]{2,4})?\\b).*",
-                ),
-                "",
-            )
-            .replace(Regex("(?i)\\bby\\b$"), "")
-            .replace(Regex("\\s+"), " ")
+            .replace(SANITIZE_MERCHANT_REGEX, "")
+            .replace(REPLACE_BY_REGEX, "")
+            .replace(WHITESPACE_REGEX, " ")
             .trim(' ', '.', ',', '-', ':')
             .takeIf { it.length >= 3 }
     }
@@ -608,8 +603,8 @@ class SmsParser {
     ): Long? {
         val cleaned = token
             .replace(",", " ")
-            .replace(Regex("(?i)(st|nd|rd|th)"), "")
-            .replace(Regex("\\s+"), " ")
+            .replace(ORDINAL_REGEX, "")
+            .replace(WHITESPACE_REGEX, " ")
             .trim()
 
         fullDatePatterns.forEach { pattern ->
@@ -632,7 +627,7 @@ class SmsParser {
         preferFuture: Boolean,
     ): LocalDate? {
         val today = LocalDate.now()
-        val compactAlpha = Regex("(?i)^([0-9]{1,2})([A-Za-z]{3,9})$")
+        val compactAlpha = COMPACT_ALPHA_DATE_REGEX
             .matchEntire(value)
         if (compactAlpha != null) {
             val day = compactAlpha.groupValues[1].toIntOrNull() ?: return null
@@ -640,14 +635,14 @@ class SmsParser {
             return candidateDate(day = day, month = month, today = today, preferFuture = preferFuture)
         }
 
-        val numericParts = value.split(Regex("[/-]"))
+        val numericParts = value.split(DATE_SPLIT_SLASH_HYPHEN)
         if (numericParts.size == 2 && numericParts.all { part -> part.all(Char::isDigit) }) {
             val day = numericParts[0].toIntOrNull() ?: return null
             val month = numericParts[1].toIntOrNull() ?: return null
             return candidateDate(day = day, month = month, today = today, preferFuture = preferFuture)
         }
 
-        val textParts = value.split(Regex("[\\s-]+"))
+        val textParts = value.split(DATE_SPLIT_WHITESPACE_HYPHEN)
         if (textParts.size == 2) {
             val day = textParts[0].toIntOrNull() ?: return null
             val month = parseMonth(textParts[1]) ?: return null
@@ -892,11 +887,21 @@ class SmsParser {
     }
 
     companion object {
+        private val SANITIZE_MERCHANT_REGEX = Regex("(?i)(?:\\bby\\s+upi\\b|\\bvia\\s+upi\\b|\\bupi\\b|\\bref(?:no)?\\b|\\binfo\\b|\\bavl\\b|\\bbal\\b|\\bavailable balance\\b|\\bdue date\\b|\\bscheduled on\\b|\\bscheduled for\\b|\\bpresented on\\b|\\bwill be debited\\b|\\bwill be presented\\b|\\bfrom a/c\\b|\\bfrom acct\\b|\\bfrom account\\b|\\bon date\\b|\\bon\\s+[0-9]{1,2}[/-][0-9]{1,2}(?:[/-][0-9]{2,4})?\\b|\\bon\\s+[0-9]{1,2}[A-Za-z]{3,9}[0-9]{2,4}\\b|\\bon\\s+[0-9]{1,2}[\\s-][A-Za-z]{3,9}(?:[\\s-][0-9]{2,4})?\\b).*")
+        private val REPLACE_BY_REGEX = Regex("(?i)\\bby\\b$")
+        private val WHITESPACE_REGEX = Regex("\\s+")
+        private val ORDINAL_REGEX = Regex("(?i)(st|nd|rd|th)")
+        private val COMPACT_ALPHA_DATE_REGEX = Regex("(?i)^([0-9]{1,2})([A-Za-z]{3,9})$")
+        private val DATE_SPLIT_SLASH_HYPHEN = Regex("[/-]")
+        private val DATE_SPLIT_WHITESPACE_HYPHEN = Regex("[\\s-]+")
+        private val ATM_BODY_REGEX = Regex("(?i)\\b(atm|cash wdl|cash withdrawal|atm wdl)\\b")
+        private val ATM_MERCHANT_REGEX = Regex("(?i)\\b(atm|cash withdrawal)\\b")
+
         fun isAtmWithdrawal(body: String, merchant: String? = null): Boolean {
             val norm = body.lowercase()
             val merchantNorm = merchant?.lowercase().orEmpty()
-            val hasAtmWord = Regex("(?i)\\b(atm|cash wdl|cash withdrawal|atm wdl)\\b").containsMatchIn(norm) ||
-                Regex("(?i)\\b(atm|cash withdrawal)\\b").containsMatchIn(merchantNorm)
+            val hasAtmWord = ATM_BODY_REGEX.containsMatchIn(norm) ||
+                ATM_MERCHANT_REGEX.containsMatchIn(merchantNorm)
             val hasWithdrawalSignal = listOf("withdrawn", "withdrawal", "debited", "paid", "spent", "cash", "txn").any { norm.contains(it) } ||
                 merchantNorm.contains("atm")
             return hasAtmWord && hasWithdrawalSignal

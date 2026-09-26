@@ -9,6 +9,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
@@ -43,8 +44,8 @@ class MainActivity : FragmentActivity() {
             )
             val isBiometricEnabled by container.securityPreferences.isBiometricEnabled.collectAsStateWithLifecycle()
             val biometricTimeout by container.securityPreferences.biometricTimeout.collectAsStateWithLifecycle()
-            var isAppLocked by remember { mutableStateOf(container.securityPreferences.isBiometricEnabled.value) }
-            var lastStopTimestamp by remember { mutableStateOf(0L) }
+            var isAppLocked by rememberSaveable { mutableStateOf(container.securityPreferences.isBiometricEnabled.value) }
+            var lastStopTimestamp by rememberSaveable { mutableStateOf(0L) }
 
             fun triggerUnlock() {
                 BiometricAuthHelper.authenticate(
@@ -73,15 +74,15 @@ class MainActivity : FragmentActivity() {
                     when (event) {
                         Lifecycle.Event.ON_RESUME -> {
                             if (isBiometricEnabled) {
-                                val elapsed = if (lastStopTimestamp > 0L) {
-                                    System.currentTimeMillis() - lastStopTimestamp
-                                } else {
-                                    Long.MAX_VALUE
-                                }
-                                val timeoutMillis = biometricTimeout.seconds * 1000L
-                                if (elapsed >= timeoutMillis) {
-                                    isAppLocked = true
+                                if (isAppLocked) {
                                     triggerUnlock()
+                                } else if (lastStopTimestamp > 0L) {
+                                    val elapsed = System.currentTimeMillis() - lastStopTimestamp
+                                    val timeoutMillis = biometricTimeout.seconds * 1000L
+                                    if (elapsed >= timeoutMillis) {
+                                        isAppLocked = true
+                                        triggerUnlock()
+                                    }
                                 }
                             }
                         }

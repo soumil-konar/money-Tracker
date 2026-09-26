@@ -435,26 +435,25 @@ fun TransactionsScreen(
                         )
                     }
                 }
-                itemsIndexed(monthTransactions, key = { _, transaction -> transaction.id }) { index, transaction ->
-                    MotionReveal(index = (index + 5).coerceAtMost(8)) {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(22.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            ),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-                        ) {
-                            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                                TransactionItem(
-                                    transaction = transaction,
-                                    onTransferToCash = if (transaction.canTransferToCash && onTransferToCashWallet != null) {
-                                        {
-                                            haptics.click()
-                                            onTransferToCashWallet(transaction.id)
-                                        }
-                                    } else null,
-                                )
+                items(monthTransactions, key = { it.id }) { transaction ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(22.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        ),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                    ) {
+                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                            TransactionItem(
+                                transaction = transaction,
+                                onTransferToCash = if (transaction.canTransferToCash && onTransferToCashWallet != null) {
+                                    {
+                                        haptics.click()
+                                        onTransferToCashWallet(transaction.id)
+                                    }
+                                } else null,
+                            )
                                 Spacer(modifier = Modifier.height(10.dp))
                             if (transaction.status == TransactionStatus.REVIEW) {
                                 Row(
@@ -514,7 +513,6 @@ fun TransactionsScreen(
             }
         }
     }
-}
 }
 
 @Composable

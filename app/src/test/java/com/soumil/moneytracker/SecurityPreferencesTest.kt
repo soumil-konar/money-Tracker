@@ -25,4 +25,16 @@ class SecurityPreferencesTest {
         assertTrue("Authenticators mask must include BIOMETRIC_STRONG", hasStrongBiometrics)
         assertTrue("Authenticators mask must include DEVICE_CREDENTIAL for PIN/pattern fallback", hasDeviceCredential)
     }
+
+    @Test
+    fun `biometric lock timeout entries are properly structured`() {
+        val entries = com.soumil.moneytracker.data.local.BiometricLockTimeout.entries
+        assertTrue(entries.contains(com.soumil.moneytracker.data.local.BiometricLockTimeout.IMMEDIATELY))
+        assertTrue(entries.contains(com.soumil.moneytracker.data.local.BiometricLockTimeout.ONE_MINUTE))
+        assertTrue(entries.contains(com.soumil.moneytracker.data.local.BiometricLockTimeout.FIVE_MINUTES))
+        assertEquals(0L, com.soumil.moneytracker.data.local.BiometricLockTimeout.IMMEDIATELY.seconds)
+        assertEquals(60L, com.soumil.moneytracker.data.local.BiometricLockTimeout.ONE_MINUTE.seconds)
+        assertEquals(300L, com.soumil.moneytracker.data.local.BiometricLockTimeout.FIVE_MINUTES.seconds)
+    }
 }
+

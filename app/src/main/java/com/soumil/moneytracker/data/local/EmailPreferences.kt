@@ -9,18 +9,20 @@ class EmailPreferences(
 ) {
     private val preferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
+    private val secureHelper = SecurePreferencesHelper(context, PREFS_NAME)
+
     private val _isEmailSyncEnabled = MutableStateFlow(
         preferences.getBoolean(KEY_EMAIL_SYNC_ENABLED, false),
     )
     val isEmailSyncEnabled: StateFlow<Boolean> = _isEmailSyncEnabled
 
     private val _emailAddress = MutableStateFlow(
-        preferences.getString(KEY_EMAIL_ADDRESS, "").orEmpty(),
+        secureHelper.getSecureString(KEY_EMAIL_ADDRESS, ""),
     )
     val emailAddress: StateFlow<String> = _emailAddress
 
     private val _appPassword = MutableStateFlow(
-        preferences.getString(KEY_APP_PASSWORD, "").orEmpty(),
+        secureHelper.getSecureString(KEY_APP_PASSWORD, ""),
     )
     val appPassword: StateFlow<String> = _appPassword
 
@@ -43,10 +45,8 @@ class EmailPreferences(
         val sanitizer = com.soumil.moneytracker.email.EmailSyncManager()
         val trimmedEmail = sanitizer.sanitizeEmail(email)
         val cleanedPassword = sanitizer.sanitizeAppPassword(appPassword)
-        preferences.edit()
-            .putString(KEY_EMAIL_ADDRESS, trimmedEmail)
-            .putString(KEY_APP_PASSWORD, cleanedPassword)
-            .apply()
+        secureHelper.putSecureString(KEY_EMAIL_ADDRESS, trimmedEmail)
+        secureHelper.putSecureString(KEY_APP_PASSWORD, cleanedPassword)
         _emailAddress.value = trimmedEmail
         _appPassword.value = cleanedPassword
     }
@@ -61,9 +61,9 @@ class EmailPreferences(
     }
 
     fun clearCredentials() {
+        secureHelper.remove(KEY_EMAIL_ADDRESS)
+        secureHelper.remove(KEY_APP_PASSWORD)
         preferences.edit()
-            .remove(KEY_EMAIL_ADDRESS)
-            .remove(KEY_APP_PASSWORD)
             .remove(KEY_LAST_SYNC_TIMESTAMP)
             .remove(KEY_LAST_SYNC_STATUS)
             .putBoolean(KEY_EMAIL_SYNC_ENABLED, false)
