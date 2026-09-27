@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import com.moneytracker.app.data.db.AccountEntity
 import com.moneytracker.app.data.model.CategorySlice
 import com.moneytracker.app.data.model.DashboardState
+import com.moneytracker.app.data.model.TransactionCategory
 import com.moneytracker.app.ui.asCurrency
 import com.moneytracker.app.ui.asMonthYear
 import com.moneytracker.app.ui.components.AccountBalanceCard
@@ -74,6 +75,8 @@ import com.moneytracker.app.ui.components.SectionCard
 import com.moneytracker.app.ui.components.SpendingPieChart
 import com.moneytracker.app.ui.components.TransactionItem
 import com.moneytracker.app.ui.haptics.LocalAppHaptics
+import com.moneytracker.app.ui.theme.CategoryThemeColors
+import com.moneytracker.app.ui.theme.LocalExpressiveTheme
 
 @Composable
 fun HomeScreen(
@@ -403,13 +406,39 @@ fun HomeScreen(
                         actionLabel = "Add transaction",
                     )
                 } else {
+                    val themeState = LocalExpressiveTheme.current
+                    val displayedSlices = remember(dashboard.categoryBreakdown) {
+                        if (dashboard.categoryBreakdown.size <= 7) {
+                            dashboard.categoryBreakdown
+                        } else {
+                            val top = dashboard.categoryBreakdown.take(6)
+                            val remaining = dashboard.categoryBreakdown.drop(6).sumOf { it.amount }
+                            top + com.moneytracker.app.data.model.CategorySlice(
+                                category = TransactionCategory.OTHER,
+                                amount = remaining,
+                            )
+                        }
+                    }
+                    val sliceColors = remember(displayedSlices, themeState) {
+                        CategoryThemeColors.getColorsForSlices(
+                            categories = displayedSlices.map { it.category },
+                            accent = themeState.accent,
+                            isDark = themeState.isDark,
+                        )
+                    }
+
                     SpendingPieChart(
-                        slices = dashboard.categoryBreakdown.take(5),
+                        slices = displayedSlices,
                         reloadKey = chartReloadKey,
+                        categoryColors = sliceColors,
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     CategoryLegend(
-                        slices = legendColors(dashboard.categoryBreakdown.take(5)),
+                        slices = displayedSlices.map { slice ->
+                            val color = sliceColors[slice.category]
+                                ?: CategoryThemeColors.getColor(slice.category, themeState.accent, themeState.isDark)
+                            color to "${slice.category.label} ${slice.amount.asCurrency()}"
+                        },
                     )
                 }
             }
@@ -497,18 +526,6 @@ private fun EmptyContent(
     }
 }
 
-private fun legendColors(slices: List<CategorySlice>): List<Pair<Color, String>> {
-    val palette = listOf(
-        Color(0xFFF16621),
-        Color(0xFFF2C661),
-        Color(0xFF2FA56A),
-        Color(0xFFD68846),
-        Color(0xFF8C5832),
-    )
-    return slices.mapIndexed { index, slice ->
-        palette[index % palette.size] to "${slice.category.label} ${slice.amount.asCurrency()}"
-    }
-}
 
 @Composable
 private fun FormattedInsightText(

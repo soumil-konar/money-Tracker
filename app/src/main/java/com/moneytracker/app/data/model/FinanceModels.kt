@@ -15,16 +15,114 @@ enum class TransactionStatus {
     REVIEW,
 }
 
-enum class TransactionCategory(val label: String) {
-    FOOD("Food"),
-    TRAVEL("Travel"),
-    BILLS("Bills"),
-    SHOPPING("Shopping"),
-    TRANSFER("Transfer"),
-    SALARY("Salary"),
-    SUBSCRIPTION("Subscription"),
-    HEALTH("Health"),
-    OTHER("Other"),
+data class TransactionCategory(
+    val name: String,
+    val label: String,
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is TransactionCategory) return false
+        return name.equals(other.name, ignoreCase = true)
+    }
+
+    override fun hashCode(): Int {
+        return name.uppercase().hashCode()
+    }
+
+    override fun toString(): String = label
+
+    companion object {
+        val FOOD = TransactionCategory("FOOD", "Food")
+        val TRAVEL = TransactionCategory("TRAVEL", "Travel")
+        val BILLS = TransactionCategory("BILLS", "Bills")
+        val SHOPPING = TransactionCategory("SHOPPING", "Shopping")
+        val TRANSFER = TransactionCategory("TRANSFER", "Transfer")
+        val SALARY = TransactionCategory("SALARY", "Salary")
+        val SUBSCRIPTION = TransactionCategory("SUBSCRIPTION", "Subscription")
+        val HEALTH = TransactionCategory("HEALTH", "Health")
+        val OTHER = TransactionCategory("OTHER", "Other")
+
+        val defaultCategories = listOf(
+            FOOD,
+            TRAVEL,
+            BILLS,
+            SHOPPING,
+            TRANSFER,
+            SALARY,
+            SUBSCRIPTION,
+            HEALTH,
+            OTHER,
+        )
+
+        val entries: List<TransactionCategory> get() = defaultCategories
+
+        private val customCategoriesMap = java.util.concurrent.ConcurrentHashMap<String, TransactionCategory>()
+        private val categoryPaletteIndices = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
+        fun register(category: TransactionCategory, paletteIndex: Int? = null) {
+            val key = category.name.uppercase()
+            if (defaultCategories.none { it.name.equals(category.name, ignoreCase = true) }) {
+                customCategoriesMap[key] = category
+            }
+            if (paletteIndex != null) {
+                categoryPaletteIndices[key] = paletteIndex
+            }
+        }
+
+        fun registerAll(categories: Collection<TransactionCategory>) {
+            categories.forEach { register(it) }
+        }
+
+        fun getRegisteredPaletteIndex(category: TransactionCategory): Int? {
+            return categoryPaletteIndices[category.name.uppercase()]
+        }
+
+        fun getRegisteredCustomCategories(): List<TransactionCategory> {
+            return customCategoriesMap.values.sortedBy { it.label }
+        }
+
+        fun allCategories(): List<TransactionCategory> {
+            return defaultCategories + getRegisteredCustomCategories()
+        }
+
+        fun valueOf(raw: String): TransactionCategory {
+            val trimmed = raw.trim()
+            if (trimmed.isEmpty()) return OTHER
+
+            defaultCategories.firstOrNull {
+                it.name.equals(trimmed, ignoreCase = true) || it.label.equals(trimmed, ignoreCase = true)
+            }?.let { return it }
+
+            customCategoriesMap[trimmed.uppercase()]?.let { return it }
+
+            val customCategory = custom(trimmed)
+            register(customCategory)
+            return customCategory
+        }
+
+        fun custom(input: String): TransactionCategory {
+            val trimmed = input.trim()
+            if (trimmed.isEmpty()) return OTHER
+
+            defaultCategories.firstOrNull {
+                it.name.equals(trimmed, ignoreCase = true) || it.label.equals(trimmed, ignoreCase = true)
+            }?.let { return it }
+
+            val formattedLabel = formatCategoryLabel(trimmed)
+            return TransactionCategory(name = formattedLabel, label = formattedLabel)
+        }
+
+        fun values(): Array<TransactionCategory> = defaultCategories.toTypedArray()
+
+        private fun formatCategoryLabel(raw: String): String {
+            val spaced = raw.replace('_', ' ').replace('-', ' ').trim()
+            return spaced.split(Regex("\\s+"))
+                .filter { it.isNotBlank() }
+                .joinToString(" ") { word ->
+                    word.lowercase().replaceFirstChar { char -> char.uppercase() }
+                }
+        }
+    }
 }
 
 enum class AccountKind {

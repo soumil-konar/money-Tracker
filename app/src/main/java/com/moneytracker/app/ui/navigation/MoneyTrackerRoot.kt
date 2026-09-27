@@ -169,6 +169,7 @@ fun MoneyTrackerRoot(
     val excludedKeywords by viewModel.excludedKeywords.collectAsStateWithLifecycle()
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
     val themeAccent by viewModel.themeAccent.collectAsStateWithLifecycle()
+    val categories by viewModel.categories.collectAsStateWithLifecycle()
     var notificationPermissionGranted by remember { mutableStateOf(viewModel.isNotificationPermissionGranted(context)) }
 
     val haptics = LocalAppHaptics.current
@@ -753,6 +754,10 @@ fun MoneyTrackerRoot(
                 val transactionToEdit = editingTransaction ?: activeEditingTransaction.takeIf { isSpatialEdit }
                 AddTransactionDialog(
                     accounts = accounts,
+                    categories = categories,
+                    onAddCategory = { name, paletteIndex ->
+                        viewModel.addCategory(name, paletteIndex)
+                    },
                     onDismiss = {
                         showAddTransactionDialog = false
                         editingTransaction = null

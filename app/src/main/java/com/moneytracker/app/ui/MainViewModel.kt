@@ -120,6 +120,30 @@ class MainViewModel(
         initialValue = emptyList(),
     )
 
+    val categories: StateFlow<List<TransactionCategory>> = combine(
+        repository.transactions,
+        repository.categoryPreferences?.customCategories ?: MutableStateFlow(emptyList()),
+    ) { txs, customCats ->
+        val fromTransactions = txs.map { it.category }
+        val all = TransactionCategory.defaultCategories + customCats + fromTransactions
+        val distinct = all.distinctBy { it.name.uppercase() }.sortedBy { it.label }
+        TransactionCategory.registerAll(distinct)
+        distinct
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = TransactionCategory.allCategories(),
+    )
+
+    fun addCategory(label: String, paletteIndex: Int? = null): TransactionCategory {
+        return repository.categoryPreferences?.addCategory(label, paletteIndex)
+            ?: run {
+                val cat = TransactionCategory.custom(label)
+                TransactionCategory.register(cat, paletteIndex)
+                cat
+            }
+    }
+
     val currentBudget: StateFlow<BudgetEntity?> = repository.currentBudget.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),

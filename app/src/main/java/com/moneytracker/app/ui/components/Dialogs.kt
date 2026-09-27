@@ -78,16 +78,23 @@ import com.moneytracker.app.data.model.TransactionCategory
 import com.moneytracker.app.data.model.TransactionDirection
 import com.moneytracker.app.data.model.TransactionDraft
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountBalance
+import androidx.compose.material.icons.outlined.AddCircleOutline
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.ui.graphics.Color
+import com.moneytracker.app.data.local.ThemeAccent
+import com.moneytracker.app.ui.theme.CategoryThemeColors
+import com.moneytracker.app.ui.theme.LocalExpressiveTheme
 import com.moneytracker.app.ui.asCurrency
 import com.moneytracker.app.ui.asDateTime
 import com.moneytracker.app.ui.asFullDate
@@ -144,6 +151,242 @@ fun BudgetDialog(
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun CreateCategoryDialog(
+    existingCategories: List<TransactionCategory>,
+    accent: ThemeAccent,
+    isDark: Boolean,
+    onDismiss: () -> Unit,
+    onCreateCategory: (String, Int?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val haptics = LocalAppHaptics.current
+    var categoryName by remember { mutableStateOf("") }
+    val palette = remember(accent, isDark) { CategoryThemeColors.getPalette(accent, isDark) }
+
+    var selectedPaletteIndex by remember { mutableStateOf<Int?>(null) }
+    val trimmed = categoryName.trim()
+    val isDuplicate = remember(trimmed, existingCategories) {
+        trimmed.isNotBlank() && existingCategories.any {
+            it.name.equals(trimmed, ignoreCase = true) || it.label.equals(trimmed, ignoreCase = true)
+        }
+    }
+    val isValid = trimmed.isNotBlank() && !isDuplicate
+
+    val activeIndex = selectedPaletteIndex ?: run {
+        if (trimmed.isEmpty()) 0
+        else CategoryThemeColors.getCategoryPaletteIndex(TransactionCategory.custom(trimmed), palette.size)
+    }
+    val previewColor = palette[activeIndex % palette.size]
+    val previewCategory = remember(trimmed) {
+        if (trimmed.isNotBlank()) TransactionCategory.custom(trimmed) else TransactionCategory("NEW", "Category name")
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            modifier = modifier
+                .fillMaxWidth(0.92f)
+                .widthIn(max = 420.dp)
+                .padding(16.dp),
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 12.dp,
+            shadowElevation = 18.dp,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "New Category",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            text = "Color is dynamically harmonized with your theme.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            haptics.click()
+                            onDismiss()
+                        },
+                        modifier = Modifier.size(32.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Close,
+                            contentDescription = "Close",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
+
+                // Name Input
+                OutlinedTextField(
+                    value = categoryName,
+                    onValueChange = { categoryName = it },
+                    label = { Text("Category name") },
+                    placeholder = { Text("e.g. Fitness, Rent, Groceries") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                    isError = isDuplicate,
+                    supportingText = {
+                        if (isDuplicate) {
+                            Text("A category with this name already exists.")
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                // Live Preview Chip
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "Preview",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(999.dp),
+                        color = previewColor.copy(alpha = 0.16f),
+                        border = BorderStroke(1.dp, previewColor.copy(alpha = 0.45f)),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(10.dp)
+                                    .clip(CircleShape)
+                                    .background(previewColor),
+                            )
+                            Text(
+                                text = previewCategory.label,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
+                }
+
+                // Theme Palette Swatches
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "Theme color tone",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        if (selectedPaletteIndex != null) {
+                            TextButton(
+                                onClick = { selectedPaletteIndex = null },
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+                            ) {
+                                Text(
+                                    text = "Auto-assign",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        }
+                    }
+
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        palette.forEachIndexed { index, color ->
+                            val isSelected = activeIndex == index
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(CircleShape)
+                                    .background(color)
+                                    .clickable {
+                                        haptics.tick()
+                                        selectedPaletteIndex = index
+                                    }
+                                    .then(
+                                        if (isSelected) {
+                                            Modifier.border(
+                                                width = 2.5.dp,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                shape = CircleShape,
+                                            )
+                                        } else Modifier
+                                    ),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (isSelected) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Check,
+                                        contentDescription = "Selected",
+                                        tint = if (isDark) Color.Black else Color.White,
+                                        modifier = Modifier.size(14.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Actions
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            haptics.click()
+                            onDismiss()
+                        },
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("Cancel")
+                    }
+                    Button(
+                        onClick = {
+                            if (isValid) {
+                                haptics.success()
+                                onCreateCategory(trimmed, selectedPaletteIndex)
+                            }
+                        },
+                        enabled = isValid,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("Add")
+                    }
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddTransactionDialog(
@@ -155,8 +398,11 @@ fun AddTransactionDialog(
     confirmLabel: String = "Save",
     initialDraft: TransactionDraft? = null,
     dialogKey: Int = 0,
+    categories: List<TransactionCategory> = TransactionCategory.allCategories(),
+    onAddCategory: ((String, Int?) -> TransactionCategory)? = null,
 ) {
     val haptics = LocalAppHaptics.current
+    val themeState = LocalExpressiveTheme.current
     var merchant by rememberSaveable(dialogKey) { mutableStateOf(initialDraft?.merchant.orEmpty()) }
     var amount by rememberSaveable(dialogKey) { mutableStateOf(initialDraft?.amount?.toInputAmount().orEmpty()) }
     var note by rememberSaveable(dialogKey) { mutableStateOf(initialDraft?.note.orEmpty()) }
@@ -179,7 +425,31 @@ fun AddTransactionDialog(
     var showTimePicker by remember { mutableStateOf(false) }
     var accountExpanded by remember { mutableStateOf(false) }
     var categoryExpanded by remember { mutableStateOf(false) }
+    var availableCategories by remember(categories) { mutableStateOf(categories) }
+    var showNewCategoryDialog by remember { mutableStateOf(false) }
     val selectedAccount = accounts.firstOrNull { it.id == selectedAccountId } ?: accounts.firstOrNull()
+
+    if (showNewCategoryDialog) {
+        CreateCategoryDialog(
+            existingCategories = availableCategories,
+            accent = themeState.accent,
+            isDark = themeState.isDark,
+            onDismiss = { showNewCategoryDialog = false },
+            onCreateCategory = { name, paletteIndex ->
+                val newCat = onAddCategory?.invoke(name, paletteIndex)
+                    ?: run {
+                        val c = TransactionCategory.custom(name)
+                        TransactionCategory.register(c, paletteIndex)
+                        c
+                    }
+                if (availableCategories.none { it.name.equals(newCat.name, ignoreCase = true) }) {
+                    availableCategories = (availableCategories + newCat).sortedBy { it.label }
+                }
+                selectedCategory = newCat
+                showNewCategoryDialog = false
+            },
+        )
+    }
 
     if (showDatePicker) {
         val initialPickerMillis = remember(occurredAtMillis) {
@@ -532,6 +802,11 @@ fun AddTransactionDialog(
                     expanded = categoryExpanded,
                     onExpandedChange = { categoryExpanded = !categoryExpanded },
                 ) {
+                    val selectedCategoryColor = CategoryThemeColors.getColor(
+                        selectedCategory,
+                        themeState.accent,
+                        themeState.isDark,
+                    )
                     OutlinedTextField(
                         modifier = Modifier
                             .menuAnchor(MenuAnchorType.PrimaryNotEditable)
@@ -541,15 +816,53 @@ fun AddTransactionDialog(
                         onValueChange = {},
                         shape = RoundedCornerShape(16.dp),
                         label = { Text("Category") },
+                        leadingIcon = {
+                            Box(
+                                modifier = Modifier
+                                    .size(12.dp)
+                                    .clip(CircleShape)
+                                    .background(selectedCategoryColor),
+                            )
+                        },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = categoryExpanded) },
                     )
                     DropdownMenu(
                         expanded = categoryExpanded,
                         onDismissRequest = { categoryExpanded = false },
+                        modifier = Modifier.heightIn(max = 340.dp),
                     ) {
-                        TransactionCategory.entries.forEach { category ->
+                        availableCategories.forEach { category ->
+                            val catColor = CategoryThemeColors.getColor(
+                                category,
+                                themeState.accent,
+                                themeState.isDark,
+                            )
+                            val isSelected = category == selectedCategory
                             DropdownMenuItem(
-                                text = { Text(category.label) },
+                                leadingIcon = {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(10.dp)
+                                            .clip(CircleShape)
+                                            .background(catColor),
+                                    )
+                                },
+                                text = {
+                                    Text(
+                                        text = category.label,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    )
+                                },
+                                trailingIcon = {
+                                    if (isSelected) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Check,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                    }
+                                },
                                 onClick = {
                                     haptics.tick()
                                     selectedCategory = category
@@ -557,6 +870,34 @@ fun AddTransactionDialog(
                                 },
                             )
                         }
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 4.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        )
+
+                        DropdownMenuItem(
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Outlined.AddCircleOutline,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            },
+                            text = {
+                                Text(
+                                    text = "Create new category...",
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            },
+                            onClick = {
+                                haptics.click()
+                                categoryExpanded = false
+                                showNewCategoryDialog = true
+                            },
+                        )
                     }
                 }
 

@@ -42,8 +42,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.moneytracker.app.data.model.CategorySlice
+import com.moneytracker.app.data.model.TransactionCategory
 import com.moneytracker.app.data.model.TrendPoint
 import com.moneytracker.app.ui.asCurrency
+import com.moneytracker.app.ui.theme.CategoryThemeColors
+import com.moneytracker.app.ui.theme.LocalExpressiveTheme
 import kotlin.math.max
 
 @Composable
@@ -189,19 +192,15 @@ fun SpendingPieChart(
     slices: List<CategorySlice>,
     modifier: Modifier = Modifier,
     reloadKey: Int = 0,
+    categoryColors: Map<TransactionCategory, Color>? = null,
 ) {
+    val themeState = LocalExpressiveTheme.current
     val surfaceColor = MaterialTheme.colorScheme.surface
-    val primaryColor = MaterialTheme.colorScheme.primary
-    val tertiaryColor = MaterialTheme.colorScheme.tertiary
-    val secondaryColor = MaterialTheme.colorScheme.secondary
-    val colors = remember(primaryColor, tertiaryColor, secondaryColor) {
-        listOf(
-            primaryColor,
-            tertiaryColor,
-            secondaryColor,
-            Color(0xFF38BDF8),
-            Color(0xFFA78BFA),
-            Color(0xFFF472B6),
+    val colorsMap = remember(slices, themeState, categoryColors) {
+        categoryColors ?: CategoryThemeColors.getColorsForSlices(
+            categories = slices.map { it.category },
+            accent = themeState.accent,
+            isDark = themeState.isDark,
         )
     }
     val total = remember(slices) { slices.sumOf { it.amount } }
@@ -228,10 +227,12 @@ fun SpendingPieChart(
         var startAngle = -90f
         val diameter = size.minDimension * 0.75f
         val topLeft = Offset((size.width - diameter) / 2, (size.height - diameter) / 2)
-        slices.forEachIndexed { index, slice ->
+        slices.forEach { slice ->
             val sweep = ((slice.amount / total) * 360f * progress).toFloat()
+            val sliceColor = colorsMap[slice.category]
+                ?: CategoryThemeColors.getColor(slice.category, themeState.accent, themeState.isDark)
             drawArc(
-                color = colors[index % colors.size],
+                color = sliceColor,
                 startAngle = startAngle,
                 sweepAngle = sweep,
                 useCenter = true,

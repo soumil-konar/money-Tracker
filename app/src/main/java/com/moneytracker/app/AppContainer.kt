@@ -25,6 +25,7 @@ class AppContainer(context: Context) {
     val exclusionPreferences by lazy { com.moneytracker.app.data.local.ExclusionPreferences(context) }
     val notificationPreferences by lazy { com.moneytracker.app.data.local.NotificationPreferences(context) }
     val themePreferences by lazy { com.moneytracker.app.data.local.ThemePreferences(context) }
+    val categoryPreferences by lazy { com.moneytracker.app.data.local.CategoryPreferences(context) }
     val hapticManager by lazy { HapticFeedbackManager(context, hapticPreferences) }
     val geminiApiClient by lazy { GeminiApiClient() }
     val onDeviceAiEngine by lazy { OnDeviceAiEngine(context) }
@@ -60,6 +61,7 @@ class AppContainer(context: Context) {
             geminiApiClient = geminiApiClient,
             onDeviceAiEngine = onDeviceAiEngine,
             context = context.applicationContext,
+            categoryPreferences = categoryPreferences,
         )
     }
 }

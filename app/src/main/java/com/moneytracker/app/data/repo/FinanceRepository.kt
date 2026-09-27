@@ -91,6 +91,7 @@ class FinanceRepository(
     val geminiApiClient: GeminiApiClient,
     val onDeviceAiEngine: OnDeviceAiEngine,
     private val context: android.content.Context? = null,
+    val categoryPreferences: com.moneytracker.app.data.local.CategoryPreferences? = null,
 ) {
 
     private fun notifyWidgetUpdate() {
