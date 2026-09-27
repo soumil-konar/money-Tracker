@@ -668,14 +668,15 @@ fun TransactionItem(
                     )
                 }
             }
-            if (!transaction.note.isNullOrBlank()) {
+            val noteText = transaction.note
+            if (!noteText.isNullOrBlank()) {
                 Spacer(modifier = Modifier.height(2.dp))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     val isLocation = listOf("branch", "road", "street", "layout", "nagar", "indiranagar", "koramangala", "mall", "outlet", "airport")
-                        .any { transaction.note.contains(it, ignoreCase = true) }
+                        .any { noteText.contains(it, ignoreCase = true) }
                     val noteIcon = when {
                         isLocation -> Icons.Outlined.Place
                         transaction.confidence >= 0.90 -> Icons.Outlined.AutoAwesome
@@ -688,7 +689,7 @@ fun TransactionItem(
                         modifier = Modifier.size(12.dp),
                     )
                     Text(
-                        text = transaction.note,
+                        text = noteText,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,

@@ -56,12 +56,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.clip
 import java.time.YearMonth
@@ -676,11 +679,40 @@ private fun DynamicContextualNudgesBanner(
         activeNudge.tag.contains("anomaly", ignoreCase = true)
     val accentColor = if (isAlert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
 
+    var totalDragAmount by remember { mutableFloatStateOf(0f) }
+
     Surface(
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .pointerInput(nudges, safeIndex) {
+                detectHorizontalDragGestures(
+                    onDragStart = {
+                        totalDragAmount = 0f
+                    },
+                    onDragEnd = {
+                        if (nudges.size > 1) {
+                            if (totalDragAmount < -40f) {
+                                haptics.click()
+                                currentIndex = if (safeIndex < nudges.size - 1) safeIndex + 1 else 0
+                            } else if (totalDragAmount > 40f) {
+                                haptics.click()
+                                currentIndex = if (safeIndex > 0) safeIndex - 1 else nudges.size - 1
+                            }
+                        }
+                        totalDragAmount = 0f
+                    },
+                    onDragCancel = {
+                        totalDragAmount = 0f
+                    },
+                    onHorizontalDrag = { change, dragAmount ->
+                        change.consume()
+                        totalDragAmount += dragAmount
+                    },
+                )
+            },
     ) {
         Column(
             modifier = Modifier
@@ -748,7 +780,7 @@ private fun DynamicContextualNudgesBanner(
                                 .clip(RoundedCornerShape(8.dp))
                                 .clickable {
                                     haptics.click()
-                                    currentIndex = if (currentIndex > 0) currentIndex - 1 else nudges.size - 1
+                                    currentIndex = if (safeIndex > 0) safeIndex - 1 else nudges.size - 1
                                 }
                                 .padding(horizontal = 6.dp, vertical = 2.dp),
                         ) {
@@ -773,7 +805,7 @@ private fun DynamicContextualNudgesBanner(
                                 .clip(RoundedCornerShape(8.dp))
                                 .clickable {
                                     haptics.click()
-                                    currentIndex = if (currentIndex < nudges.size - 1) currentIndex + 1 else 0
+                                    currentIndex = if (safeIndex < nudges.size - 1) safeIndex + 1 else 0
                                 }
                                 .padding(horizontal = 6.dp, vertical = 2.dp),
                         ) {
@@ -831,12 +863,15 @@ private fun DynamicContextualNudgesBanner(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
-                                Text(
-                                    text = nudge.actionLabel,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = accentColor,
-                                    fontWeight = FontWeight.Bold,
-                                )
+                                val actionLbl = nudge.actionLabel
+                                if (!actionLbl.isNullOrBlank()) {
+                                    Text(
+                                        text = actionLbl,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = accentColor,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                }
                                 Text(
                                     text = "→",
                                     style = MaterialTheme.typography.labelSmall,

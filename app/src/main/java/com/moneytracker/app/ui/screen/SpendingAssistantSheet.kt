@@ -636,7 +636,8 @@ fun CitedTransactionCard(
                 }
             }
 
-            if (!transaction.note.isNullOrBlank()) {
+            val noteText = transaction.note
+            if (!noteText.isNullOrBlank()) {
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -649,7 +650,7 @@ fun CitedTransactionCard(
                         modifier = Modifier.size(12.dp),
                     )
                     Text(
-                        text = transaction.note,
+                        text = noteText,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,

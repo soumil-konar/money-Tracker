@@ -71,9 +71,10 @@ object TimeOfDayGreetingProvider {
 
         return when (timeOfDay) {
             TimeOfDay.MORNING -> {
+                val budget = dashboard.budgetLimit
                 when {
-                    dashboard.budgetLimit != null && dashboard.monthSpent > dashboard.budgetLimit -> {
-                        val over = (dashboard.monthSpent - dashboard.budgetLimit).asCurrency()
+                    budget != null && dashboard.monthSpent > budget -> {
+                        val over = (dashboard.monthSpent - budget).asCurrency()
                         ContextualGreetingMessage(
                             message = "Budget notice: You're $over over target. Plan a low-spend morning.",
                             icon = Icons.Outlined.Speed,
@@ -180,7 +181,7 @@ object TimeOfDayGreetingProvider {
                             tag = "Night Queue",
                         )
                     }
-                    dashboard.budgetLimit != null && dashboard.monthSpent > dashboard.budgetLimit -> {
+                    dashboard.budgetLimit != null && dashboard.monthSpent > (dashboard.budgetLimit ?: 0.0) -> {
                         ContextualGreetingMessage(
                             message = "Night summary: Monthly outflow is at ${dashboard.monthSpent.asCurrency()}. Tomorrow brings a fresh reset.",
                             icon = Icons.Outlined.Bedtime,
@@ -268,7 +269,8 @@ object TimeOfDayGreetingProvider {
             TimeOfDay.EVENING -> "Evening Wrap-up"
             TimeOfDay.NIGHT -> "Night Summary"
         }
-        val isOverBudget = dashboard.budgetLimit != null && dashboard.monthSpent > dashboard.budgetLimit
+        val budget = dashboard.budgetLimit
+        val isOverBudget = budget != null && dashboard.monthSpent > budget
         nudges.add(
             ContextualNudge(
                 id = "time_of_day_nudge",
