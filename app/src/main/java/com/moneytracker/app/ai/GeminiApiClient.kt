@@ -351,8 +351,11 @@ class GeminiApiClient {
 
             2. isTransaction MUST BE FALSE for:
                - MARKETING OFFERS & DISCOUNTS: e.g. "Up to ₹30,000 off on electronics with ICICI Bank Credit card", "Save up to ₹30,000", "Get flat ₹500 cashback", "10% off on your next purchase", "Use code DIWALI".
+               - PRODUCT ADS & E-COMMERCE DEALS: e.g. "Wireless Earbuds @ ₹199 - Hear clearly! Grab earbuds for just ₹199. Shop now!", "T-shirts starting @ ₹299", "Smartwatch for just ₹999".
+               - CASHBACK & INCENTIVE CAMPAIGNS: e.g. "Assured Cashback till 11 PM", "Make any 2 UPI Lite payments of ₹20+ on BHIM today and get up to ₹20 cashback on each", "Send ₹1 and win up to ₹500 cashback", "Recharge now and get flat ₹50 cashback".
                - LOANS & CREDIT OFFERS: e.g. "Pre-approved personal loan of ₹5,00,000", "Credit limit enhanced to ₹3,00,000", "Apply now for Lifetime Free card".
                - EMI PROMOTIONS: e.g. "Up to ₹30,000 on EMI purchases", "Convert purchases to EMI".
+               - GAMIFICATION & REWARDS: e.g. "Scratch card waiting", "Spin the wheel to win ₹1,000", "Refer and earn ₹100".
                - INFORMATIONAL / REGISTRATION NOTICES: e.g. "Mandate will be recorded by AMC", "Mutual fund application received", "Statement generated", "Total amount due".
                - OTPs & SECURITY: e.g. "OTP for login is 123456", "Do not share OTP".
                - PAYMENT REQUESTS: e.g. "XYZ has requested ₹500 from you".
@@ -373,7 +376,7 @@ class GeminiApiClient {
             put("properties", JSONObject().apply {
                 put("isTransaction", JSONObject().apply {
                     put("type", "BOOLEAN")
-                    put("description", "True ONLY if this message confirms an actual past or present debit, credit, or bill payment. Strictly FALSE for promotional offers (e.g. 'Up to ₹30,000 off'), discount deals, EMI promotions, pre-approved loans, credit limit upgrades, AMC mandate notices, or OTPs.")
+                    put("description", "True ONLY if this message confirms an actual past or present debit, credit, or bill payment. Strictly FALSE for promotional offers (e.g. 'Earbuds @ ₹199', 'Shop now'), cashback incentive campaigns (e.g. 'Make 2 payments and get ₹20 cashback', 'Assured Cashback till 11 PM'), discount deals, EMI promotions, pre-approved loans, credit limit upgrades, scratch cards, referral rewards, or OTPs.")
                 })
                 put("amount", JSONObject().apply {
                     put("type", "NUMBER")

@@ -174,7 +174,7 @@ fun NotificationListenerSection(
                                 )
                                 Text(
                                     text = if (isNotificationPermissionGranted) {
-                                        "Listening for financial push alerts securely on-device with zero network latency."
+                                        "Listening for financial push alerts securely on-device with zero network latency. Marketing offers, shopping ads, and cashback campaigns are automatically filtered out."
                                     } else {
                                         "Tap below to grant Money Tracker permission to read notifications in Android Settings."
                                     },

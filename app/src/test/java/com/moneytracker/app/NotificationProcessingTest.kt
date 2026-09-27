@@ -20,6 +20,9 @@ class NotificationProcessingTest {
         title: String,
         text: String,
     ): Boolean {
+        if (com.moneytracker.app.parser.PromotionalDetector.isPromotional(title, text)) {
+            return false
+        }
         val isGmail = packageName == NotificationPreferences.PACKAGE_GMAIL
         val isPaymentApp = NotificationPreferences.PAYMENT_APP_PACKAGES.contains(packageName)
         val isBankApp = NotificationPreferences.BANK_APP_PACKAGES.contains(packageName)
@@ -31,11 +34,7 @@ class NotificationProcessingTest {
             "sent", "transfer", "successful", "purchase", "bill payment", "alert", "vpa",
         ).any { it in combined }
 
-        return if (isGmail || (!isPaymentApp && !isBankApp)) {
-            hasMoneyIndicator && hasTransactionVerb
-        } else {
-            hasMoneyIndicator || hasTransactionVerb
-        }
+        return hasMoneyIndicator && hasTransactionVerb
     }
 
     @Test
@@ -134,6 +133,51 @@ class NotificationProcessingTest {
         assertEquals(TransactionDirection.DEBIT, parsed.direction)
         assertEquals("Chai Point", parsed.merchant)
         assertEquals(TransactionCategory.FOOD, parsed.category)
+    }
+
+    @Test
+    fun `bhim marketing push notification for earbuds is rejected without adding transaction`() {
+        val pkg = NotificationPreferences.PACKAGE_BHIM
+        val title = "🎧 Wireless Earbuds @ ₹199"
+        val text = "Hear clearly, live fully! Grab ultra-light wireless earbuds for just ₹199. Shop now!"
+
+        assertFalse(isEligibleNotification(pkg, title, text))
+    }
+
+    @Test
+    fun `bhim marketing push notification for assured cashback is rejected without adding transaction`() {
+        val pkg = NotificationPreferences.PACKAGE_BHIM
+        val title = "Assured Cashback till 11 PM 🔥"
+        val text = "Make any 2 UPI Lite payments of ₹20+ on BHIM today and get up to ₹20 cashback on each. Only till 11 PM."
+
+        assertFalse(isEligibleNotification(pkg, title, text))
+    }
+
+    @Test
+    fun `gpay marketing scratch card notification is rejected`() {
+        val pkg = NotificationPreferences.PACKAGE_GPAY
+        val title = "Scratch & Win up to ₹500"
+        val text = "Send money to 3 friends to unlock your exclusive scratch card!"
+
+        assertFalse(isEligibleNotification(pkg, title, text))
+    }
+
+    @Test
+    fun `phonepe marketing coupon notification is rejected`() {
+        val pkg = NotificationPreferences.PACKAGE_PHONEPE
+        val title = "Special offer"
+        val text = "Get flat 20% off up to ₹150 on your medicine orders with code PHARMEASY. Shop now!"
+
+        assertFalse(isEligibleNotification(pkg, title, text))
+    }
+
+    @Test
+    fun `paytm loan marketing push notification is rejected`() {
+        val pkg = NotificationPreferences.PACKAGE_PAYTM
+        val title = "Pre-approved Loan"
+        val text = "Instant personal loan of ₹2,50,000 at zero processing fee. Apply now!"
+
+        assertFalse(isEligibleNotification(pkg, title, text))
     }
 
     @Test

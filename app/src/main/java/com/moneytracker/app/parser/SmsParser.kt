@@ -374,7 +374,7 @@ class SmsParser {
             "credited", "withdrawn", "deposited", "payment of", "a/c debited", "account debited"
         ).any(normalized::contains)
 
-        if (promotionalKeywords.any(normalized::contains) && !hasExecutionSignal) {
+        if (PromotionalDetector.isPromotional(body) || (promotionalKeywords.any(normalized::contains) && !hasExecutionSignal)) {
             return ParsedSmsMessage(shouldIgnore = true)
         }
 

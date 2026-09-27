@@ -35,6 +35,7 @@ import com.moneytracker.app.bank.BalanceProofVerifier
 import com.moneytracker.app.bank.BankDetector
 import com.moneytracker.app.backup.BackupManager
 import com.moneytracker.app.backup.BackupRestoreResult
+import com.moneytracker.app.parser.PromotionalDetector
 import com.moneytracker.app.parser.SmsParser
 import com.moneytracker.app.sms.SmsImportManager
 import java.security.MessageDigest
@@ -853,6 +854,13 @@ class FinanceRepository(
             return false
         }
 
+        // Check dynamic promotional & marketing suppression filter
+        val promotionalReason = PromotionalDetector.findPromotionalReason(title, text, subText)
+        if (promotionalReason != null) {
+            android.util.Log.i("FinanceRepository", "Notification from $packageName skipped: detected promotional/marketing content ($promotionalReason)")
+            return false
+        }
+
         val isGmail = packageName == NotificationPreferences.PACKAGE_GMAIL
         val isPaymentApp = NotificationPreferences.PAYMENT_APP_PACKAGES.contains(packageName)
         val isBankApp = NotificationPreferences.BANK_APP_PACKAGES.contains(packageName)
@@ -885,14 +893,8 @@ class FinanceRepository(
             "sent", "transfer", "successful", "purchase", "bill payment", "alert", "vpa",
         ).any { it in lower }
 
-        if (isGmail) {
-            if (!hasMoneyIndicator || !hasTransactionVerb) {
-                return false
-            }
-        } else if (!isPaymentApp && !isBankApp) {
-            if (!hasMoneyIndicator || !hasTransactionVerb) {
-                return false
-            }
+        if (!hasMoneyIndicator || !hasTransactionVerb) {
+            return false
         }
 
         val resolvedSender = when {
@@ -1308,17 +1310,9 @@ class FinanceRepository(
         }
 
         // Strict promotional marketing check
-        val isExplicitPromotional = listOf(
-            "off on", "save up to", "save upto", "up to ₹", "upto ₹", "cashback up to",
-            "pre-approved", "loan approved", "reward points", "deal of the day", "use code", "coupon",
-            "on emi purchases", "convert to emi",
-        ).any { body.contains(it, ignoreCase = true) }
-        val hasStrongDebitSignal = listOf(
-            "has been debited", "is debited", "was debited", "debited with", "debited by", "debited for", "a/c debited", "account debited",
-        ).any { body.contains(it, ignoreCase = true) }
-
-        if (isExplicitPromotional && !hasStrongDebitSignal) {
-            android.util.Log.i("FinanceRepository", "Ingestion skipped for sender '$sender': detected promotional marketing offer.")
+        val promotionalReason = PromotionalDetector.findPromotionalReason(sender, body)
+        if (promotionalReason != null) {
+            android.util.Log.i("FinanceRepository", "Ingestion skipped for sender '$sender': detected promotional marketing ($promotionalReason)")
             return SmsIngestionOutcome.IGNORED
         }
 

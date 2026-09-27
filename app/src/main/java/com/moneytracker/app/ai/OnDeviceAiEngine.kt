@@ -14,6 +14,7 @@ import java.util.Locale
 import kotlin.math.sqrt
 import com.moneytracker.app.bank.BalanceProofVerifier
 import com.moneytracker.app.bank.BankDetector
+import com.moneytracker.app.parser.PromotionalDetector
 
 class OnDeviceAiEngine(
     private val context: Context? = null,
@@ -68,7 +69,11 @@ class OnDeviceAiEngine(
             return Result.success(createNonTransaction())
         }
 
-        // Promotional marketing offers, discount banners, pre-approved loans, and EMI ads are NOT transactions
+        // Promotional marketing offers, merchandise ads, cashback campaigns, and EMI ads are NOT transactions
+        if (PromotionalDetector.isPromotional(smsBody)) {
+            return Result.success(createNonTransaction())
+        }
+
         val isPromotionalOrMarketing = listOf(
             "up to ₹", "upto ₹", "up to rs", "upto rs", "up to inr", "upto inr",
             "save up to", "save upto", "off on", "discount on", "cashback up to",
