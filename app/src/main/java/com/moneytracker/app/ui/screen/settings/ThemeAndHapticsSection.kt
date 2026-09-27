@@ -42,12 +42,17 @@ import com.moneytracker.app.data.local.ThemeMode
 import com.moneytracker.app.ui.components.SectionCard
 import com.moneytracker.app.ui.haptics.LocalAppHaptics
 
+import android.os.Build
+import androidx.compose.ui.text.style.TextOverflow
+
 @Composable
 fun ThemeAndHapticsSection(
     themeMode: ThemeMode,
     themeAccent: ThemeAccent,
     onSelectThemeMode: (ThemeMode) -> Unit,
     onSelectThemeAccent: (ThemeAccent) -> Unit,
+    isDynamicColorEnabled: Boolean = false,
+    onToggleDynamicColor: (Boolean) -> Unit = {},
     isHapticEnabled: Boolean,
     hapticIntensity: HapticIntensity,
     onToggleHapticEnabled: (Boolean) -> Unit,
@@ -125,6 +130,42 @@ fun ThemeAndHapticsSection(
                     }
                 }
 
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                haptics.click()
+                                onToggleDynamicColor(!isDynamicColorEnabled)
+                            },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Dynamic Wallpaper Color",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Extract color scheme from your device wallpaper (Material You)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(
+                            checked = isDynamicColorEnabled,
+                            onCheckedChange = {
+                                haptics.click()
+                                onToggleDynamicColor(it)
+                            },
+                        )
+                    }
+                }
+
                 // Material 3 Expressive Status Banner
                 Surface(
                     shape = RoundedCornerShape(16.dp),
@@ -162,29 +203,39 @@ fun ThemeAndHapticsSection(
                         }
                         Column(modifier = Modifier.weight(1f)) {
                             Row(
+                                modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
                                 Text(
-                                    text = if (themeAccent.isExpressive) "Material 3 Expressive Active" else "Curated Accent Active",
+                                    text = if (themeAccent.isExpressive) "Material 3 Expressive" else "Curated Accent",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f, fill = false),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
+                                Spacer(modifier = Modifier.height(0.dp))
                                 Surface(
-                                    shape = RoundedCornerShape(6.dp),
+                                    shape = RoundedCornerShape(8.dp),
                                     color = if (themeAccent.isExpressive) Color(0xFF10B981).copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant,
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (themeAccent.isExpressive) Color(0xFF10B981).copy(alpha = 0.35f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                                    ),
                                 ) {
                                     Text(
-                                        text = if (themeAccent.isExpressive) "M3 Expressive" else "M3 Expressive Disabled",
+                                        text = if (themeAccent.isExpressive) "Active" else "Disabled",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = if (themeAccent.isExpressive) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant,
                                         fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                        maxLines = 1,
                                     )
                                 }
                             }
-                            Spacer(modifier = Modifier.height(2.dp))
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = if (themeAccent.isExpressive) {
                                     "Expressive springy shape scales, high-chroma tonal dynamics, and vibrant container surfaces enabled."

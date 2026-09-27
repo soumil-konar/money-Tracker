@@ -16,3 +16,6 @@ secrets.properties
 *.apk
 *.aab
 *.mtbackup
+PRODUCT_ROADMAP.md
+.kotlin/
+.kotlin

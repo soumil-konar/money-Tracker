@@ -67,22 +67,25 @@ class BalanceWidgetProvider : AppWidgetProvider() {
     ) {
         val database = FinanceDatabase.create(context)
         val accounts = database.accountDao().getAccounts()
-        val totalBankBalance = accounts.filter { it.kind != AccountKind.CARD }.sumOf { it.currentBalance }
+        val totalBankBalance = accounts.asSequence()
+            .filter { it.kind != AccountKind.CARD }
+            .sumOf { it.currentBalance }
 
         val timeFormatter = SimpleDateFormat("hh:mm a", Locale.getDefault())
         val updateTime = timeFormatter.format(Date())
+        val activeAccountText = "${accounts.size} active account${if (accounts.size == 1) "" else "s"}"
 
         for (widgetId in appWidgetIds) {
             val views = RemoteViews(context.packageName, R.layout.widget_balance)
 
-            // Total tracked balance
+            // Total tracked balance & status
             views.setTextViewText(R.id.tv_widget_total_balance, totalBankBalance.asCurrency())
             views.setTextViewText(
                 R.id.tv_widget_status,
-                "Updated $updateTime • ${accounts.size} active account${if (accounts.size == 1) "" else "s"}",
+                "Updated $updateTime • $activeAccountText",
             )
 
-            // Setup Main App open click
+            // Main App click
             val openAppIntent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             }
@@ -94,7 +97,7 @@ class BalanceWidgetProvider : AppWidgetProvider() {
             )
             views.setOnClickPendingIntent(R.id.widget_root, openAppPendingIntent)
 
-            // Setup Refresh Button
+            // Refresh Button click
             val refreshIntent = Intent(context, BalanceWidgetProvider::class.java).apply {
                 action = ACTION_REFRESH_WIDGET
             }
@@ -106,7 +109,7 @@ class BalanceWidgetProvider : AppWidgetProvider() {
             )
             views.setOnClickPendingIntent(R.id.btn_widget_refresh, refreshPendingIntent)
 
-            // Setup Add Transaction Button
+            // Quick Add Transaction Button click
             val addTxIntent = Intent(context, MainActivity::class.java).apply {
                 action = ACTION_ADD_TRANSACTION
                 putExtra(EXTRA_OPEN_ADD_TRANSACTION, true)
@@ -120,7 +123,7 @@ class BalanceWidgetProvider : AppWidgetProvider() {
             )
             views.setOnClickPendingIntent(R.id.btn_widget_add, addTxPendingIntent)
 
-            // Populate top accounts
+            // Populate top account rows
             populateAccountRows(views, accounts)
 
             appWidgetManager.updateAppWidget(widgetId, views)
@@ -138,13 +141,14 @@ class BalanceWidgetProvider : AppWidgetProvider() {
 
         views.setViewVisibility(R.id.tv_widget_empty, View.GONE)
 
-        // Sort: bank accounts with non-zero balances first, then cards
+        // Priority sorting: Bank accounts first, then highest balance
         val sortedAccounts = accounts.sortedWith(
             compareByDescending<AccountEntity> { it.kind != AccountKind.CARD }
-                .thenByDescending { it.currentBalance }
+                .thenByDescending { it.currentBalance },
         )
 
         val rowLayouts = listOf(R.id.layout_account_1, R.id.layout_account_2, R.id.layout_account_3)
+        val iconViews = listOf(R.id.iv_acc_icon_1, R.id.iv_acc_icon_2, R.id.iv_acc_icon_3)
         val nameViews = listOf(R.id.tv_acc_name_1, R.id.tv_acc_name_2, R.id.tv_acc_name_3)
         val balanceViews = listOf(R.id.tv_acc_balance_1, R.id.tv_acc_balance_2, R.id.tv_acc_balance_3)
 
@@ -156,7 +160,15 @@ class BalanceWidgetProvider : AppWidgetProvider() {
                 } else {
                     acc.name
                 }
+
+                val iconRes = when (acc.kind) {
+                    AccountKind.CARD -> R.drawable.ic_widget_card
+                    AccountKind.CASH, AccountKind.WALLET -> R.drawable.ic_widget_wallet
+                    else -> R.drawable.ic_widget_bank
+                }
+
                 views.setViewVisibility(rowLayouts[i], View.VISIBLE)
+                views.setImageViewResource(iconViews[i], iconRes)
                 views.setTextViewText(nameViews[i], formattedName)
                 views.setTextViewText(balanceViews[i], acc.currentBalance.asCurrency())
             } else {

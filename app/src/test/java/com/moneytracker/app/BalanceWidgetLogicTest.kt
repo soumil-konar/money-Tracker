@@ -42,6 +42,23 @@ class BalanceWidgetLogicTest {
         assertEquals("ICICI Card", sorted[3].name)
     }
 
+    private fun getAccountIconRes(kind: AccountKind): Int {
+        return when (kind) {
+            AccountKind.CARD -> R.drawable.ic_widget_card
+            AccountKind.CASH, AccountKind.WALLET -> R.drawable.ic_widget_wallet
+            else -> R.drawable.ic_widget_bank
+        }
+    }
+
+    @Test
+    fun `test account icon selection maps kind to correct drawable resource`() {
+        assertEquals(R.drawable.ic_widget_bank, getAccountIconRes(AccountKind.BANK))
+        assertEquals(R.drawable.ic_widget_card, getAccountIconRes(AccountKind.CARD))
+        assertEquals(R.drawable.ic_widget_wallet, getAccountIconRes(AccountKind.WALLET))
+        assertEquals(R.drawable.ic_widget_wallet, getAccountIconRes(AccountKind.CASH))
+        assertEquals(R.drawable.ic_widget_bank, getAccountIconRes(AccountKind.UPI))
+    }
+
     @Test
     fun `test account name display formats with last four digits when available`() {
         val accWithDigits = AccountEntity(id = 1, name = "HDFC Bank", kind = AccountKind.BANK, lastFourDigits = "4128")

@@ -6,9 +6,9 @@
     android:background="@drawable/widget_background"
     android:gravity="center_vertical"
     android:orientation="vertical"
-    android:padding="12dp">
+    android:padding="@dimen/widget_padding_inner">
 
-    <!-- Header: Icon, Label, and Action Buttons -->
+    <!-- Header: Icon, Section Title, and Action Buttons -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -16,17 +16,17 @@
         android:orientation="horizontal">
 
         <ImageView
-            android:layout_width="16dp"
-            android:layout_height="16dp"
+            android:layout_width="18dp"
+            android:layout_height="18dp"
             android:contentDescription="@string/app_name"
-            android:src="@drawable/ic_widget_wallet" />
+            android:src="@drawable/ic_widget_chart" />
 
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginStart="6dp"
             android:layout_weight="1"
-            android:letterSpacing="0.05"
+            android:letterSpacing="0.06"
             android:text="BUDGET GAUGE"
             android:textColor="@color/widget_text_secondary"
             android:textSize="10sp"
@@ -35,8 +35,8 @@
         <!-- Refresh Button -->
         <ImageButton
             android:id="@+id/btn_widget_budget_refresh"
-            android:layout_width="26dp"
-            android:layout_height="26dp"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
             android:background="@drawable/widget_button_bg"
             android:contentDescription="Refresh Budget"
             android:padding="5dp"
@@ -46,8 +46,8 @@
         <!-- Quick Add Transaction Button -->
         <ImageButton
             android:id="@+id/btn_widget_budget_add"
-            android:layout_width="26dp"
-            android:layout_height="26dp"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
             android:layout_marginStart="6dp"
             android:background="@drawable/widget_button_bg"
             android:contentDescription="Add Transaction"
@@ -56,11 +56,26 @@
             android:src="@drawable/ic_widget_add" />
     </LinearLayout>
 
+    <!-- Dynamic Expressive Status Health Pill Badge -->
+    <TextView
+        android:id="@+id/tv_widget_budget_status_pill"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:background="@drawable/widget_status_pill_bg"
+        android:letterSpacing="0.04"
+        android:paddingHorizontal="8dp"
+        android:paddingVertical="3dp"
+        android:text="SAFE SPEND"
+        android:textColor="@color/widget_status_safe_text"
+        android:textSize="9sp"
+        android:textStyle="bold" />
+
     <!-- Safe Daily Spend Amount & Days Left -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="4dp"
         android:gravity="bottom"
         android:orientation="horizontal">
 
@@ -71,7 +86,7 @@
             android:includeFontPadding="false"
             android:text="₹0"
             android:textColor="@color/widget_text_primary"
-            android:textSize="22sp"
+            android:textSize="24sp"
             android:textStyle="bold" />
 
         <TextView
@@ -83,7 +98,7 @@
             android:layout_weight="1"
             android:ellipsize="end"
             android:maxLines="1"
-            android:text="/ day • Safe spend"
+            android:text="/ day • 15 days left"
             android:textColor="@color/widget_text_tertiary"
             android:textSize="11sp" />
     </LinearLayout>
@@ -93,8 +108,8 @@
         android:id="@+id/pb_widget_budget"
         style="?android:attr/progressBarStyleHorizontal"
         android:layout_width="match_parent"
-        android:layout_height="6dp"
-        android:layout_marginTop="6dp"
+        android:layout_height="8dp"
+        android:layout_marginTop="8dp"
         android:max="100"
         android:progress="0"
         android:progressDrawable="@drawable/widget_progress_bar" />
@@ -103,7 +118,7 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
+        android:layout_marginTop="6dp"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
@@ -114,7 +129,7 @@
             android:layout_weight="1"
             android:ellipsize="end"
             android:maxLines="1"
-            android:text="Spent ₹0 / ₹0"
+            android:text="Spent ₹0 of ₹0"
             android:textColor="@color/widget_text_secondary"
             android:textSize="11sp" />
 

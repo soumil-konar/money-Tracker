@@ -71,6 +71,11 @@ class ThemePreferences(
     )
     val themeAccent: StateFlow<ThemeAccent> = _themeAccent
 
+    private val _isDynamicColorEnabled = MutableStateFlow(
+        preferences.getBoolean(KEY_DYNAMIC_COLOR, false),
+    )
+    val isDynamicColorEnabled: StateFlow<Boolean> = _isDynamicColorEnabled
+
     fun setThemeMode(mode: ThemeMode) {
         preferences.edit().putString(KEY_THEME_MODE, mode.name).apply()
         _themeMode.value = mode
@@ -81,9 +86,15 @@ class ThemePreferences(
         _themeAccent.value = accent
     }
 
+    fun setDynamicColorEnabled(enabled: Boolean) {
+        preferences.edit().putBoolean(KEY_DYNAMIC_COLOR, enabled).apply()
+        _isDynamicColorEnabled.value = enabled
+    }
+
     companion object {
         private const val PREFS_NAME = "money_tracker_theme"
         private const val KEY_THEME_MODE = "theme_mode"
         private const val KEY_THEME_ACCENT = "theme_accent"
+        private const val KEY_DYNAMIC_COLOR = "dynamic_color"
     }
 }

@@ -7,6 +7,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.widget.RemoteViews
+import androidx.core.content.ContextCompat
 import com.moneytracker.app.MainActivity
 import com.moneytracker.app.R
 import com.moneytracker.app.data.db.FinanceDatabase
@@ -70,12 +71,13 @@ class BudgetWidgetProvider : AppWidgetProvider() {
         val currentMonthKey = SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(Date())
         val budget = database.budgetDao().getOverallBudget(currentMonthKey)
 
-        val calendar = Calendar.getInstance()
-        calendar.set(Calendar.DAY_OF_MONTH, 1)
-        calendar.set(Calendar.HOUR_OF_DAY, 0)
-        calendar.set(Calendar.MINUTE, 0)
-        calendar.set(Calendar.SECOND, 0)
-        calendar.set(Calendar.MILLISECOND, 0)
+        val calendar = Calendar.getInstance().apply {
+            set(Calendar.DAY_OF_MONTH, 1)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
         val startOfMonthMillis = calendar.timeInMillis
 
         calendar.add(Calendar.MONTH, 1)
@@ -84,12 +86,14 @@ class BudgetWidgetProvider : AppWidgetProvider() {
 
         val monthTransactions = database.transactionDao().getTransactionsBetween(startOfMonthMillis, endOfMonthMillis)
 
-        val monthSpent = monthTransactions.filter {
-            it.status == TransactionStatus.POSTED &&
-                it.direction == TransactionDirection.DEBIT &&
-                it.category != TransactionCategory.TRANSFER &&
-                it.countsTowardBudget
-        }.sumOf { it.amount }
+        val monthSpent = monthTransactions.asSequence()
+            .filter {
+                (it.status == TransactionStatus.POSTED) &&
+                    (it.direction == TransactionDirection.DEBIT) &&
+                    (it.category != TransactionCategory.TRANSFER) &&
+                    it.countsTowardBudget
+            }
+            .sumOf { it.amount }
 
         val budgetLimit = budget?.amountLimit ?: 0.0
         val today = Calendar.getInstance()
@@ -110,12 +114,24 @@ class BudgetWidgetProvider : AppWidgetProvider() {
                 views.setProgressBar(R.id.pb_widget_budget, 100, percentUsed, false)
                 views.setTextViewText(R.id.tv_widget_budget_spent, "${monthSpent.asCurrency()} of ${budgetLimit.asCurrency()}")
                 views.setTextViewText(R.id.tv_widget_budget_percent, "$percentUsed%")
+
+                // Dynamic Health Pill
+                val (statusText, statusTextColorRes) = when {
+                    monthSpent > budgetLimit -> "EXCEEDED • OVER BUDGET" to R.color.widget_status_alert_text
+                    percentUsed >= 80 -> "NEAR LIMIT • $percentUsed% SPENT" to R.color.widget_status_warning_text
+                    else -> "ON TRACK • $daysRemaining DAYS LEFT" to R.color.widget_status_safe_text
+                }
+                views.setTextViewText(R.id.tv_widget_budget_status_pill, statusText)
+                views.setTextColor(R.id.tv_widget_budget_status_pill, ContextCompat.getColor(context, statusTextColorRes))
             } else {
                 views.setTextViewText(R.id.tv_widget_budget_daily, monthSpent.asCurrency())
                 views.setTextViewText(R.id.tv_widget_budget_days_left, "Spent • No budget set")
                 views.setProgressBar(R.id.pb_widget_budget, 100, 0, false)
                 views.setTextViewText(R.id.tv_widget_budget_spent, "Tap to set monthly budget")
                 views.setTextViewText(R.id.tv_widget_budget_percent, "--")
+
+                views.setTextViewText(R.id.tv_widget_budget_status_pill, "TAP TO SET BUDGET")
+                views.setTextColor(R.id.tv_widget_budget_status_pill, ContextCompat.getColor(context, R.color.widget_status_neutral_text))
             }
 
             // Open app click

@@ -7,6 +7,18 @@ import org.junit.Test
 
 class BudgetWidgetLogicTest {
 
+    private fun getBudgetStatusText(monthSpent: Double, budgetLimit: Double, percentUsed: Int, daysRemaining: Int): String {
+        return if (budgetLimit > 0) {
+            when {
+                monthSpent > budgetLimit -> "EXCEEDED • OVER BUDGET"
+                percentUsed >= 80 -> "NEAR LIMIT • $percentUsed% SPENT"
+                else -> "ON TRACK • $daysRemaining DAYS LEFT"
+            }
+        } else {
+            "TAP TO SET BUDGET"
+        }
+    }
+
     @Test
     fun `test safe daily spend calculation with normal budget`() {
         val budgetLimit = 30000.0
@@ -17,9 +29,25 @@ class BudgetWidgetLogicTest {
         val safeDailySpend = if (budgetLimit > 0) remainingBudget / daysRemaining else 0.0
         val percentUsed = if (budgetLimit > 0) ((monthSpent / budgetLimit) * 100).toInt().coerceIn(0, 100) else 0
 
+        val statusText = getBudgetStatusText(monthSpent, budgetLimit, percentUsed, daysRemaining)
+
         assertEquals(18000.0, remainingBudget, 0.001)
         assertEquals(1200.0, safeDailySpend, 0.001)
         assertEquals(40, percentUsed)
+        assertEquals("ON TRACK • 15 DAYS LEFT", statusText)
+    }
+
+    @Test
+    fun `test budget status when near budget limit`() {
+        val budgetLimit = 30000.0
+        val monthSpent = 25500.0 // 85% spent
+        val daysRemaining = 8
+        val percentUsed = ((monthSpent / budgetLimit) * 100).toInt().coerceIn(0, 100)
+
+        val statusText = getBudgetStatusText(monthSpent, budgetLimit, percentUsed, daysRemaining)
+
+        assertEquals(85, percentUsed)
+        assertEquals("NEAR LIMIT • 85% SPENT", statusText)
     }
 
     @Test
@@ -32,9 +60,12 @@ class BudgetWidgetLogicTest {
         val safeDailySpend = if (budgetLimit > 0) remainingBudget / daysRemaining else 0.0
         val percentUsed = if (budgetLimit > 0) ((monthSpent / budgetLimit) * 100).toInt().coerceIn(0, 100) else 0
 
+        val statusText = getBudgetStatusText(monthSpent, budgetLimit, percentUsed, daysRemaining)
+
         assertEquals(0.0, remainingBudget, 0.001)
         assertEquals(0.0, safeDailySpend, 0.001)
         assertEquals(100, percentUsed)
+        assertEquals("EXCEEDED • OVER BUDGET", statusText)
     }
 
     @Test
@@ -71,8 +102,11 @@ class BudgetWidgetLogicTest {
         val safeDailySpend = if (budgetLimit > 0) remainingBudget / daysRemaining else 0.0
         val percentUsed = if (budgetLimit > 0) ((monthSpent / budgetLimit) * 100).toInt().coerceIn(0, 100) else 0
 
+        val statusText = getBudgetStatusText(monthSpent, budgetLimit, percentUsed, daysRemaining)
+
         assertEquals(0.0, remainingBudget, 0.001)
         assertEquals(0.0, safeDailySpend, 0.001)
         assertEquals(0, percentUsed)
+        assertEquals("TAP TO SET BUDGET", statusText)
     }
 }

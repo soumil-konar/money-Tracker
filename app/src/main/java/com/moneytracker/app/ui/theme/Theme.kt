@@ -1,17 +1,21 @@
 package com.moneytracker.app.ui.theme
 
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.moneytracker.app.data.local.ThemeAccent
 import com.moneytracker.app.data.local.ThemeMode
@@ -386,16 +390,24 @@ fun resolveColorScheme(
 fun MoneyTrackerTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
     themeAccent: ThemeAccent = ThemeAccent.EXPRESSIVE,
+    isDynamicColorEnabled: Boolean = false,
     content: @Composable () -> Unit,
 ) {
+    val context = LocalContext.current
     val isDark = when (themeMode) {
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
         ThemeMode.DARK -> true
         ThemeMode.LIGHT -> false
     }
 
-    val isExpressive = themeAccent.isExpressive
-    val colorScheme = resolveColorScheme(themeAccent, isDark)
+    val colorScheme = when {
+        isDynamicColorEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+            if (isDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        }
+        else -> resolveColorScheme(themeAccent, isDark)
+    }
+
+    val isExpressive = themeAccent.isExpressive || isDynamicColorEnabled
     val shapes = if (isExpressive) AppExpressiveShapes else AppStandardShapes
 
     val themeState = ExpressiveThemeState(

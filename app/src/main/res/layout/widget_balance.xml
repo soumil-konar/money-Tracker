@@ -5,9 +5,9 @@
     android:layout_height="match_parent"
     android:background="@drawable/widget_background"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:padding="@dimen/widget_padding_outer">
 
-    <!-- Header: Logo, Title, and Action Buttons -->
+    <!-- Header: App Brand Badge & Quick Action Buttons -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -15,59 +15,61 @@
         android:orientation="horizontal">
 
         <ImageView
-            android:layout_width="20dp"
-            android:layout_height="20dp"
-            android:src="@drawable/ic_widget_wallet"
-            android:contentDescription="@string/app_name" />
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:contentDescription="@string/app_name"
+            android:src="@drawable/ic_widget_wallet" />
 
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
             android:layout_weight="1"
-            android:text="Money Tracker"
+            android:letterSpacing="0.06"
+            android:text="MONEY TRACKER"
             android:textColor="@color/widget_text_secondary"
-            android:textSize="12sp"
+            android:textSize="11sp"
             android:textStyle="bold" />
 
-        <!-- Refresh Button -->
+        <!-- Refresh Action Button -->
         <ImageButton
             android:id="@+id/btn_widget_refresh"
             android:layout_width="32dp"
             android:layout_height="32dp"
             android:background="@drawable/widget_button_bg"
+            android:contentDescription="Refresh Balances"
             android:padding="6dp"
             android:scaleType="fitCenter"
-            android:src="@drawable/ic_widget_refresh"
-            android:contentDescription="Refresh Balances" />
+            android:src="@drawable/ic_widget_refresh" />
 
-        <!-- Quick Add Transaction Button -->
+        <!-- Quick Add Transaction Action Button -->
         <ImageButton
             android:id="@+id/btn_widget_add"
             android:layout_width="32dp"
             android:layout_height="32dp"
             android:layout_marginStart="8dp"
             android:background="@drawable/widget_button_bg"
+            android:contentDescription="Add Transaction"
             android:padding="6dp"
             android:scaleType="fitCenter"
-            android:src="@drawable/ic_widget_add"
-            android:contentDescription="Add Transaction" />
+            android:src="@drawable/ic_widget_add" />
     </LinearLayout>
 
-    <!-- Main Balance Display -->
+    <!-- Hero Balance Display -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="10dp"
         android:orientation="vertical">
 
         <TextView
             android:id="@+id/tv_widget_total_balance"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:includeFontPadding="false"
             android:text="₹0"
             android:textColor="@color/widget_text_primary"
-            android:textSize="24sp"
+            android:textSize="28sp"
             android:textStyle="bold" />
 
         <TextView
@@ -85,7 +87,7 @@
         android:id="@+id/layout_accounts_container"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
+        android:layout_marginTop="12dp"
         android:orientation="vertical">
 
         <!-- Account Row 1 -->
@@ -96,14 +98,22 @@
             android:background="@drawable/widget_row_bg"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingHorizontal="10dp"
-            android:paddingVertical="6dp"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="8dp"
             android:visibility="gone">
+
+            <ImageView
+                android:id="@+id/iv_acc_icon_1"
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:contentDescription="@string/app_name"
+                android:src="@drawable/ic_widget_bank" />
 
             <TextView
                 android:id="@+id/tv_acc_name_1"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
                 android:layout_weight="1"
                 android:ellipsize="end"
                 android:maxLines="1"
@@ -127,18 +137,26 @@
             android:id="@+id/layout_account_2"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="6dp"
             android:background="@drawable/widget_row_bg"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingHorizontal="10dp"
-            android:paddingVertical="6dp"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="8dp"
             android:visibility="gone">
+
+            <ImageView
+                android:id="@+id/iv_acc_icon_2"
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:contentDescription="@string/app_name"
+                android:src="@drawable/ic_widget_bank" />
 
             <TextView
                 android:id="@+id/tv_acc_name_2"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
                 android:layout_weight="1"
                 android:ellipsize="end"
                 android:maxLines="1"
@@ -162,18 +180,26 @@
             android:id="@+id/layout_account_3"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="6dp"
             android:background="@drawable/widget_row_bg"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingHorizontal="10dp"
-            android:paddingVertical="6dp"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="8dp"
             android:visibility="gone">
+
+            <ImageView
+                android:id="@+id/iv_acc_icon_3"
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:contentDescription="@string/app_name"
+                android:src="@drawable/ic_widget_bank" />
 
             <TextView
                 android:id="@+id/tv_acc_name_3"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
                 android:layout_weight="1"
                 android:ellipsize="end"
                 android:maxLines="1"
@@ -197,9 +223,10 @@
             android:id="@+id/tv_widget_empty"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:background="@drawable/widget_row_bg"
             android:gravity="center"
-            android:paddingVertical="10dp"
-            android:text="Tap to track and configure accounts"
+            android:paddingVertical="12dp"
+            android:text="Tap to configure tracked accounts"
             android:textColor="@color/widget_text_tertiary"
             android:textSize="12sp"
             android:visibility="gone" />
