@@ -20,7 +20,11 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.style.TextOverflow
+import com.moneytracker.app.ui.greeting.TimeOfDayGreetingProvider
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.AssignmentTurnedIn
@@ -63,6 +67,7 @@ import com.moneytracker.app.data.db.AccountEntity
 import com.moneytracker.app.data.model.CategorySlice
 import com.moneytracker.app.data.model.DashboardState
 import com.moneytracker.app.data.model.TransactionCategory
+import com.moneytracker.app.data.db.TransactionRecord
 import com.moneytracker.app.ui.asCurrency
 import com.moneytracker.app.ui.asMonthYear
 import com.moneytracker.app.ui.components.AccountBalanceCard
@@ -81,11 +86,13 @@ import com.moneytracker.app.ui.theme.LocalExpressiveTheme
 @Composable
 fun HomeScreen(
     dashboard: DashboardState,
+    userName: String = "",
     smsPermissionGranted: Boolean = false,
     onRequestPermissions: () -> Unit = {},
     onImportRecentSms: () -> Unit = {},
     onSetBudgetClick: () -> Unit,
     onAddTransactionClick: (Rect?) -> Unit = {},
+    onEditTransaction: ((TransactionRecord, Rect?) -> Unit)? = null,
     onBudgetClick: () -> Unit,
     onSelectMonth: (YearMonth) -> Unit = {},
     onRefreshAiInsights: () -> Unit = {},
@@ -98,6 +105,12 @@ fun HomeScreen(
 ) {
     val haptics = LocalAppHaptics.current
     var showMonthPicker by remember { mutableStateOf(false) }
+    val topGreeting = remember(userName) {
+        TimeOfDayGreetingProvider.getTopGreeting(userName)
+    }
+    val contextualGreeting = remember(dashboard, userName) {
+        TimeOfDayGreetingProvider.getContextualMessage(dashboard, userName)
+    }
     val statusBarInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
@@ -120,7 +133,7 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = "Welcome back",
+                        text = topGreeting,
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = FontWeight.Medium,
@@ -174,6 +187,52 @@ fun HomeScreen(
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground,
                 )
+                Spacer(modifier = Modifier.height(10.dp))
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                            modifier = Modifier.size(28.dp),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = contextualGreeting.icon,
+                                    contentDescription = contextualGreeting.tag,
+                                    modifier = Modifier.size(15.dp),
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = contextualGreeting.tag.uppercase(Locale.getDefault()),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = contextualGreeting.message,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
             }
         }
 
@@ -480,7 +539,22 @@ fun HomeScreen(
                 } else {
                     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         dashboard.recentTransactions.forEach { transaction ->
-                            TransactionItem(transaction = transaction)
+                            var itemCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+                            TransactionItem(
+                                transaction = transaction,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .onGloballyPositioned { itemCoords = it }
+                                    .then(
+                                        if (onEditTransaction != null) {
+                                            Modifier.clickable {
+                                                haptics.click()
+                                                val bounds = itemCoords?.takeIf { it.isAttached }?.boundsInRoot()
+                                                onEditTransaction(transaction, bounds)
+                                            }
+                                        } else Modifier
+                                    ),
+                            )
                         }
                     }
                 }

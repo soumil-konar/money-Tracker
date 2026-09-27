@@ -18,7 +18,7 @@ enum class TransactionStatus {
 data class TransactionCategory(
     val name: String,
     val label: String,
-) {
+) : java.io.Serializable {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is TransactionCategory) return false

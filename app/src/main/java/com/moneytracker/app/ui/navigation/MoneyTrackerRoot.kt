@@ -105,6 +105,7 @@ import com.moneytracker.app.ui.components.DeleteTransactionDialog
 import com.moneytracker.app.ui.components.ExportBackupPassphraseDialog
 import com.moneytracker.app.ui.components.RestoreBackupPassphraseDialog
 import com.moneytracker.app.ui.components.TrueUpBalanceDialog
+import com.moneytracker.app.ui.components.UserNamePromptDialog
 import com.moneytracker.app.ui.screen.BudgetHistoryScreen
 import com.moneytracker.app.ui.screen.HomeScreen
 import com.moneytracker.app.ui.screen.MoreScreen
@@ -169,6 +170,8 @@ fun MoneyTrackerRoot(
     val excludedKeywords by viewModel.excludedKeywords.collectAsStateWithLifecycle()
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
     val themeAccent by viewModel.themeAccent.collectAsStateWithLifecycle()
+    val userName by viewModel.userName.collectAsStateWithLifecycle()
+    val hasPromptedForName by viewModel.hasPromptedForName.collectAsStateWithLifecycle()
     val categories by viewModel.categories.collectAsStateWithLifecycle()
     var notificationPermissionGranted by remember { mutableStateOf(viewModel.isNotificationPermissionGranted(context)) }
 
@@ -309,6 +312,7 @@ fun MoneyTrackerRoot(
                             when (page) {
                                 0 -> HomeScreen(
                                     dashboard = dashboard,
+                                    userName = userName,
                                     smsPermissionGranted = smsPermissionGranted,
                                     listState = homeListState,
                                     chartReloadKey = chartReloadKey,
@@ -340,6 +344,14 @@ fun MoneyTrackerRoot(
                                         }
                                     },
                                     onAccountClick = { viewingBalanceProofAccount = it },
+                                    onEditTransaction = { transaction, bounds ->
+                                        transactionAnchorBounds = bounds
+                                        lastOpenedWasEditing = true
+                                        activeEditingTransaction = transaction
+                                        showAddTransactionDialog = false
+                                        editingTransaction = transaction
+                                        transactionDialogKey += 1
+                                    },
                                 )
                                 1 -> TransactionsScreen(
                                     filter = filter,
@@ -423,6 +435,8 @@ fun MoneyTrackerRoot(
                                     onAccountClick = { viewingBalanceProofAccount = it },
                                 )
                                 3 -> SettingsScreen(
+                                    userName = userName,
+                                    onUpdateUserName = viewModel::setUserName,
                                     smsPermissionGranted = smsPermissionGranted,
                                     onRequestPermissions = { permissionLauncher.launch(context.smsPermissionArray()) },
                                     onImportRecentSms = { viewModel.importRecentSms(context.contentResolver) },
@@ -891,6 +905,14 @@ fun MoneyTrackerRoot(
             showAddTransactionDialog = false
             editingTransaction = null
         }
+    }
+
+    if (userName.isBlank() && !hasPromptedForName) {
+        UserNamePromptDialog(
+            initialName = userName,
+            onConfirm = { name -> viewModel.setUserName(name) },
+            onDismiss = { viewModel.markPromptedForName() },
+        )
     }
 
     if (showBudgetDialog) {

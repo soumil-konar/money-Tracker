@@ -36,7 +36,22 @@ import com.moneytracker.app.data.local.BiometricLockTimeout
 import com.moneytracker.app.data.local.HapticIntensity
 import com.moneytracker.app.data.local.ThemeAccent
 import com.moneytracker.app.data.local.ThemeMode
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material3.Surface
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import com.moneytracker.app.ui.components.AddExclusionKeywordDialog
+import com.moneytracker.app.ui.components.EditNameDialog
 import com.moneytracker.app.ui.components.MotionReveal
 import com.moneytracker.app.ui.haptics.LocalAppHaptics
 import com.moneytracker.app.ui.screen.settings.AboutDeviceSection
@@ -55,6 +70,8 @@ typealias SettingsCategory = com.moneytracker.app.ui.screen.settings.SettingsCat
 
 @Composable
 fun SettingsScreen(
+    userName: String = "",
+    onUpdateUserName: (String) -> Unit = {},
     smsPermissionGranted: Boolean,
     onRequestPermissions: () -> Unit,
     onImportRecentSms: () -> Unit,
@@ -121,6 +138,7 @@ fun SettingsScreen(
     val haptics = LocalAppHaptics.current
     var selectedCategory by rememberSaveable { mutableStateOf(SettingsCategory.ALL) }
     var showAddKeywordDialog by rememberSaveable { mutableStateOf(false) }
+    var showEditNameDialog by rememberSaveable { mutableStateOf(false) }
 
     if (showAddKeywordDialog) {
         AddExclusionKeywordDialog(
@@ -128,6 +146,17 @@ fun SettingsScreen(
             onConfirm = { keyword ->
                 onAddExclusionKeyword(keyword)
                 showAddKeywordDialog = false
+            },
+        )
+    }
+
+    if (showEditNameDialog) {
+        EditNameDialog(
+            currentName = userName,
+            onDismiss = { showEditNameDialog = false },
+            onConfirm = { newName ->
+                onUpdateUserName(newName)
+                showEditNameDialog = false
             },
         )
     }
@@ -160,6 +189,67 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+
+                    // Profile & Personalization Card
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(20.dp))
+                            .clickable {
+                                haptics.click()
+                                showEditNameDialog = true
+                            },
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(42.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Person,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                }
+                                Column {
+                                    Text(
+                                        text = if (userName.isNotBlank()) userName else "Set Your Name",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    Text(
+                                        text = if (userName.isNotBlank()) "Personalized greetings & dashboard active" else "Tap to personalize your app greetings",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                            Icon(
+                                imageVector = Icons.Outlined.Edit,
+                                contentDescription = "Edit Name",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    }
 
                     // Hero At-A-Glance Status Strip
                     Row(

@@ -92,6 +92,7 @@ class FinanceRepository(
     val onDeviceAiEngine: OnDeviceAiEngine,
     private val context: android.content.Context? = null,
     val categoryPreferences: com.moneytracker.app.data.local.CategoryPreferences? = null,
+    val userPreferences: com.moneytracker.app.data.local.UserPreferences? = null,
 ) {
 
     private fun notifyWidgetUpdate() {
@@ -99,6 +100,17 @@ class FinanceRepository(
             com.moneytracker.app.widget.BalanceWidgetProvider.updateAllWidgets(it)
             com.moneytracker.app.widget.BudgetWidgetProvider.updateAllWidgets(it)
         }
+    }
+
+    val userName: StateFlow<String> = userPreferences?.userName ?: MutableStateFlow("")
+    val hasPromptedForName: StateFlow<Boolean> = userPreferences?.hasPromptedForName ?: MutableStateFlow(true)
+
+    fun setUserName(name: String) {
+        userPreferences?.setUserName(name)
+    }
+
+    fun markPromptedForName() {
+        userPreferences?.markPromptedForName()
     }
 
     val accounts: Flow<List<AccountEntity>> = accountDao.observeAccounts()

@@ -102,6 +102,9 @@ class MainViewModel(
     val isExclusionFilterEnabled: StateFlow<Boolean> = repository.exclusionPreferences.isExclusionFilterEnabled
     val excludedKeywords: StateFlow<Set<String>> = repository.exclusionPreferences.excludedKeywords
 
+    val userName: StateFlow<String> = repository.userName
+    val hasPromptedForName: StateFlow<Boolean> = repository.hasPromptedForName
+
     val dashboard: StateFlow<DashboardState> = repository.dashboard.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
@@ -576,6 +579,18 @@ class MainViewModel(
     fun markInitialSetupComplete() {
         repository.markInitialSetupComplete()
         emitMessage("Bank and card setup saved.")
+    }
+
+    fun setUserName(name: String) {
+        val trimmed = name.trim()
+        repository.setUserName(trimmed)
+        if (trimmed.isNotBlank()) {
+            emitMessage("Welcome, $trimmed!")
+        }
+    }
+
+    fun markPromptedForName() {
+        repository.markPromptedForName()
     }
 
     fun updateTransaction(transactionId: Long, draft: TransactionDraft) {

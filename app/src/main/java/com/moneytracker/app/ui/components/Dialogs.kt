@@ -88,9 +88,14 @@ import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.MoneyOff
+import androidx.compose.material.icons.outlined.Savings
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.ui.graphics.Color
 import com.moneytracker.app.data.local.ThemeAccent
 import com.moneytracker.app.ui.theme.CategoryThemeColors
@@ -403,13 +408,22 @@ fun AddTransactionDialog(
 ) {
     val haptics = LocalAppHaptics.current
     val themeState = LocalExpressiveTheme.current
+    val categorySaver = remember {
+        Saver<TransactionCategory, String>(
+            save = { it.name },
+            restore = { TransactionCategory.valueOf(it) },
+        )
+    }
+    var isEditing by rememberSaveable(dialogKey) {
+        mutableStateOf(initialDraft == null)
+    }
     var merchant by rememberSaveable(dialogKey) { mutableStateOf(initialDraft?.merchant.orEmpty()) }
     var amount by rememberSaveable(dialogKey) { mutableStateOf(initialDraft?.amount?.toInputAmount().orEmpty()) }
     var note by rememberSaveable(dialogKey) { mutableStateOf(initialDraft?.note.orEmpty()) }
     var selectedDirection by rememberSaveable(dialogKey) {
         mutableStateOf(initialDraft?.direction ?: TransactionDirection.DEBIT)
     }
-    var selectedCategory by rememberSaveable(dialogKey) {
+    var selectedCategory by rememberSaveable(dialogKey, stateSaver = categorySaver) {
         mutableStateOf(initialDraft?.category ?: TransactionCategory.OTHER)
     }
     var selectedAccountId by rememberSaveable(dialogKey) {
@@ -575,7 +589,11 @@ fun AddTransactionDialog(
                     color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.18f),
                 ) {
                     Text(
-                        text = if (initialDraft == null) "Manual Entry" else "Ledger Correction",
+                        text = when {
+                            !isEditing -> "Transaction Details"
+                            initialDraft == null -> "Manual Entry"
+                            else -> "Ledger Correction"
+                        },
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
@@ -598,23 +616,193 @@ fun AddTransactionDialog(
             }
 
             Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = title,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                text = if (initialDraft == null) {
-                    "Capture a transaction in the same ledger style as imported SMS entries."
-                } else {
-                    "Adjust the merchant, amount, direction, account, date, or note."
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-            )
 
-            Spacer(modifier = Modifier.height(14.dp))
+            if (!isEditing) {
+                Text(
+                    text = merchant.ifBlank { "Untitled Transaction" },
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                val parsedAmount = amount.replace(",", "").toDoubleOrNull() ?: initialDraft?.amount ?: 0.0
+                val isCredit = selectedDirection == TransactionDirection.CREDIT
+                val accentColor = if (isCredit) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary
+
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = accentColor.copy(alpha = 0.12f),
+                    border = BorderStroke(1.dp, accentColor.copy(alpha = 0.25f)),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column {
+                            Text(
+                                text = "Amount",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                text = (if (isCredit) "+ " else "- ") + parsedAmount.asCurrency(),
+                                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.ExtraBold),
+                                color = accentColor,
+                            )
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = accentColor.copy(alpha = 0.2f),
+                        ) {
+                            Text(
+                                text = if (isCredit) "CREDIT" else "DEBIT",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = accentColor,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Column(
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    val selectedCategoryColor = CategoryThemeColors.getColor(
+                        selectedCategory,
+                        themeState.accent,
+                        themeState.isDark,
+                    )
+                    TransactionDetailItem(
+                        icon = {
+                            Box(
+                                modifier = Modifier
+                                    .size(14.dp)
+                                    .clip(CircleShape)
+                                    .background(selectedCategoryColor),
+                            )
+                        },
+                        title = "Category",
+                        value = selectedCategory.label,
+                    )
+
+                    TransactionDetailItem(
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Outlined.CalendarMonth,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        },
+                        title = "Date & Time",
+                        value = "${occurredAtMillis.asFullDate()} at ${occurredAtMillis.asTime()}",
+                    )
+
+                    TransactionDetailItem(
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Outlined.AccountBalance,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        },
+                        title = "Account",
+                        value = selectedAccount?.name ?: "Default Account",
+                    )
+
+                    TransactionDetailItem(
+                        icon = {
+                            Icon(
+                                imageVector = if (countsTowardBudget) Icons.Outlined.Savings else Icons.Outlined.MoneyOff,
+                                contentDescription = null,
+                                tint = if (countsTowardBudget) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        },
+                        title = "Budget Status",
+                        value = if (countsTowardBudget) "Counts toward monthly budget" else "Excluded from budget",
+                    )
+
+                    if (note.isNotBlank()) {
+                        TransactionDetailItem(
+                            icon = {
+                                Icon(
+                                    imageVector = Icons.Outlined.Info,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            },
+                            title = "Note",
+                            value = note,
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            haptics.click()
+                            onDismiss()
+                        },
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("Close")
+                    }
+                    Button(
+                        onClick = {
+                            haptics.click()
+                            isEditing = true
+                        },
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Edit,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(modifier = Modifier.size(6.dp))
+                        Text("Edit")
+                    }
+                }
+            } else {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = if (initialDraft == null) {
+                        "Capture a transaction in the same ledger style as imported SMS entries."
+                    } else {
+                        "Adjust the merchant, amount, direction, account, date, or note."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
 
             // 2. Dedicated Scrollable Form Section
             Column(
@@ -981,7 +1169,19 @@ fun AddTransactionDialog(
                 OutlinedButton(
                     onClick = {
                         haptics.click()
-                        onDismiss()
+                        if (initialDraft != null) {
+                            merchant = initialDraft.merchant
+                            amount = initialDraft.amount.toInputAmount()
+                            note = initialDraft.note.orEmpty()
+                            selectedDirection = initialDraft.direction
+                            selectedCategory = initialDraft.category
+                            selectedAccountId = initialDraft.accountId ?: accounts.firstOrNull()?.id
+                            countsTowardBudget = initialDraft.countsTowardBudget
+                            occurredAtMillis = initialDraft.occurredAtMillis
+                            isEditing = false
+                        } else {
+                            onDismiss()
+                        }
                     },
                     shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.weight(1f),
@@ -1011,6 +1211,52 @@ fun AddTransactionDialog(
                 ) {
                     Text(confirmLabel)
                 }
+            }
+        }
+        }
+    }
+}
+
+@Composable
+private fun TransactionDetailItem(
+    icon: @Composable () -> Unit,
+    title: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                icon()
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
             }
         }
     }
@@ -2739,6 +2985,151 @@ fun MonthPickerDialog(
                 haptics.click()
                 onDismiss()
             }) {
+                Text("Cancel")
+            }
+        },
+    )
+}
+
+@Composable
+fun UserNamePromptDialog(
+    initialName: String = "",
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val haptics = LocalAppHaptics.current
+    var name by rememberSaveable { mutableStateOf(initialName) }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .widthIn(max = 440.dp)
+                .imePadding()
+                .padding(vertical = 16.dp),
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 8.dp,
+            shadowElevation = 8.dp,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                ) {
+                    Text(
+                        text = "Welcome",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
+                }
+                Text(
+                    text = "What should we call you?",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = "Personalize your financial dashboard, greetings, and daily recommendations with your name.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Your Name") },
+                    placeholder = { Text("e.g. Soumil") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(
+                        onClick = {
+                            haptics.click()
+                            onDismiss()
+                        },
+                    ) {
+                        Text("Skip")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            haptics.click()
+                            onConfirm(name.trim())
+                        },
+                        shape = RoundedCornerShape(14.dp),
+                    ) {
+                        Text(if (name.isBlank()) "Continue" else "Get Started")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun EditNameDialog(
+    currentName: String,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val haptics = LocalAppHaptics.current
+    var name by rememberSaveable { mutableStateOf(currentName) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Update Name") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Change the name displayed on your dashboard and greetings.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Your Name") },
+                    placeholder = { Text("e.g. Soumil") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    haptics.click()
+                    onConfirm(name.trim())
+                },
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = {
+                    haptics.click()
+                    onDismiss()
+                },
+            ) {
                 Text("Cancel")
             }
         },

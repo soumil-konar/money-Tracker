@@ -338,4 +338,43 @@ class OnDeviceAiEngineTest {
         assertFalse(insights.isEmpty())
         assertTrue(insights.any { it.contains("No debits", ignoreCase = true) })
     }
+
+    @Test
+    fun `generateNeuralRecommendations identifies weekend surges and pacing anomalies`() {
+        val foodDebit = TransactionRecord(
+            id = 10L,
+            amount = 1200.0,
+            direction = TransactionDirection.DEBIT,
+            merchant = "Swiggy",
+            category = TransactionCategory.FOOD,
+            accountId = 1L,
+            accountName = "HDFC Bank",
+            sourceSender = "HDFCBK",
+            smsBody = null,
+            confidence = 0.95,
+            note = null,
+            occurredAtMillis = System.currentTimeMillis(),
+            status = TransactionStatus.POSTED,
+            countsTowardBudget = true,
+            accountKind = AccountKind.BANK,
+        )
+
+        // Test on Saturday evening early in month (day 12 of 30)
+        val saturdayEvening = java.time.LocalTime.of(20, 0)
+        val saturdayDate = java.time.LocalDate.of(2026, 9, 12) // Saturday (day 12 of 30)
+
+        val recs = engine.generateNeuralRecommendations(
+            transactions = listOf(foodDebit),
+            budgetLimit = 10000.0,
+            monthSpent = 8500.0, // High spend early in month
+            monthIncome = 30000.0,
+            currentTime = saturdayEvening,
+            currentDate = saturdayDate,
+        )
+
+        assertFalse(recs.isEmpty())
+        assertTrue(recs.any { it.title.contains("Weekend", ignoreCase = true) })
+        assertTrue(recs.any { it.title.contains("Pacing", ignoreCase = true) })
+    }
 }
+

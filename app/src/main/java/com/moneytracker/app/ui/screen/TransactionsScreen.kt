@@ -613,8 +613,16 @@ fun TransactionsScreen(
                     }
                 }
                 items(monthTransactions, key = { it.id }) { transaction ->
+                    var cardCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
                     Card(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onGloballyPositioned { coords -> cardCoordinates = coords }
+                            .clickable {
+                                haptics.click()
+                                val bounds = cardCoordinates?.takeIf { it.isAttached }?.boundsInRoot()
+                                onEditTransaction(transaction, bounds)
+                            },
                         shape = RoundedCornerShape(22.dp),
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
@@ -666,7 +674,6 @@ fun TransactionsScreen(
                                     }
                                     TransactionCardActions(
                                         transaction = transaction,
-                                        onEdit = { bounds -> onEditTransaction(transaction, bounds) },
                                         onDelete = { onDeleteTransaction(transaction) },
                                         onToggleBudgetInclusion = { onToggleBudgetInclusion(transaction) },
                                     )
@@ -678,7 +685,6 @@ fun TransactionsScreen(
                                 ) {
                                     TransactionCardActions(
                                         transaction = transaction,
-                                        onEdit = { bounds -> onEditTransaction(transaction, bounds) },
                                         onDelete = { onDeleteTransaction(transaction) },
                                         onToggleBudgetInclusion = { onToggleBudgetInclusion(transaction) },
                                     )
@@ -742,14 +748,12 @@ private fun List<TransactionRecord>.signedTotal(): Double = sumOf { record ->
 @Composable
 private fun TransactionCardActions(
     transaction: TransactionRecord,
-    onEdit: (Rect?) -> Unit,
     onDelete: () -> Unit,
     onToggleBudgetInclusion: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val haptics = LocalAppHaptics.current
     val countsTowardBudget = transaction.countsTowardBudget
-    var editButtonCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -774,20 +778,6 @@ private fun TransactionCardActions(
             onClick = {
                 haptics.toggle()
                 onToggleBudgetInclusion()
-            },
-        )
-        TransactionActionButton(
-            icon = Icons.Outlined.Edit,
-            contentDescription = "Edit transaction",
-            tint = MaterialTheme.colorScheme.onBackground,
-            containerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.22f),
-            modifier = Modifier.onGloballyPositioned { coords ->
-                editButtonCoordinates = coords
-            },
-            onClick = {
-                haptics.click()
-                val bounds = editButtonCoordinates?.takeIf { it.isAttached }?.boundsInRoot()
-                onEdit(bounds)
             },
         )
         TransactionActionButton(
