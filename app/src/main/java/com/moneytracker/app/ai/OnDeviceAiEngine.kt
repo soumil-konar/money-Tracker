@@ -49,15 +49,9 @@ class OnDeviceAiEngine(
     }
 
     fun getDeviceStatus(): String {
-        val isPixel = isPixelDevice()
-        val isTensor = isTensorSoc()
         val model = Build.MODEL ?: "Device"
-
-        return when {
-            isPixel && isTensor -> "$model • Google Tensor G4 TPU Ready"
-            isPixel -> "$model • Google Pixel Device"
-            else -> "$model • On-Device Engine Active"
-        }
+        val accelerator = getHardwareAcceleratorName()
+        return "$model • $accelerator Active"
     }
 
     fun parseSmsOnDevice(smsBody: String, sender: String): Result<AiParsedTransaction> {
@@ -560,8 +554,24 @@ class OnDeviceAiEngine(
     }
 
     fun getHardwareAcceleratorName(): String {
+        val hardware = Build.HARDWARE?.lowercase(Locale.getDefault()).orEmpty()
+        val board = Build.BOARD?.lowercase(Locale.getDefault()).orEmpty()
+        val soc = runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                Build.SOC_MODEL?.lowercase(Locale.getDefault()).orEmpty()
+            } else ""
+        }.getOrDefault("")
+        val socManuf = runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                Build.SOC_MANUFACTURER?.lowercase(Locale.getDefault()).orEmpty()
+            } else ""
+        }.getOrDefault("")
+
         return when {
             isTensorSoc() -> "Google Tensor TPU"
+            socManuf.contains("qualcomm") || hardware.contains("qcom") || board.contains("qcom") || soc.contains("sm") || soc.contains("snapdragon") -> "Snapdragon NPU"
+            socManuf.contains("samsung") || hardware.contains("exynos") || board.contains("universal") || soc.contains("exynos") -> "Exynos NPU"
+            socManuf.contains("mediatek") || hardware.contains("mt") || board.contains("mt") || soc.contains("dimensity") -> "MediaTek APU"
             isAiCoreAvailable() -> "Android AICore NPU"
             else -> "On-Device Neural Engine"
         }
