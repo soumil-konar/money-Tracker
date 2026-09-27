@@ -1,6 +1,6 @@
 # Money Tracker
 
-An enterprise-grade, privacy-first automated personal finance management platform engineered for Android 15. Built with a multi-channel ingestion architecture combining Google Tensor G4 hardware acceleration on Pixel 9 devices, real-time Android Notification Access, 100% on-device direct TLS Google Email sync, automated SMS bank alert ingestion, dynamic exclusion filtering, intelligent transaction description synthesis, real-time bank balance reconciliation with balance proof verification, manual balance true-ups, automated transfer-pair detection, AES-256-GCM encrypted database backups, an interactive Android home screen balance app widget, 3-tier Retrieval-Augmented Generation (RAG), and a modern Expressive Material 3 fintech design system.
+An enterprise-grade, privacy-first automated personal finance management platform engineered for Android 15. Built with a multi-channel ingestion architecture combining multi-vendor NPU silicon acceleration (Snapdragon Hexagon/QNN, Tensor TPU, Dimensity APU, Exynos NPU), real-time Android Notification Access, 100% on-device direct TLS Google Email sync, automated SMS bank alert ingestion, dynamic exclusion filtering, interactive contextual spending nudges, personalized time-of-day greetings, custom category creation, real-time bank balance reconciliation with balance proof verification, manual balance true-ups, automated transfer-pair detection, AES-256-GCM encrypted database backups, an interactive Android home screen balance app widget, 3-tier Retrieval-Augmented Generation (RAG), and a modern Expressive Material 3 fintech design system.
 
 ---
 
@@ -26,9 +26,9 @@ An enterprise-grade, privacy-first automated personal finance management platfor
                     ┌──────────────────────────────┴──────────────────────────────┐
                     ▼                                                             ▼
              [ SmsParser ]                                              [ OnDeviceAiEngine ]
-       • Context & regex extraction                                (Tensor G4 TPU Accelerated Parsing)
+       • Context & regex extraction                                (Multi-Vendor NPU / TPU Acceleration)
        • Real debit/credit verification                            • Promotional offer & spam rejection
-       • Credit card bill transfer logic                           • Detailed description synthesis
+       • Credit card bill transfer logic                           • Contextual nudge synthesis
        • Authoritative balance ("Avl bal")                         • Unicode Rupee (₹/INR) regexes
                     │                                                             │
                     └──────────────────────────────┬──────────────────────────────┘
@@ -63,10 +63,12 @@ An enterprise-grade, privacy-first automated personal finance management platfor
      • Live Bank Balance Carousel & Balance Proof Verification
      • Manual Balance "True-Up" / Baseline Reconciliation
      • Multi-Account Internal Transfer Pair Reconciliation
+     • Dynamic Contextual Spending Nudges & Personalized Greetings
+     • Custom Categories with Dynamic Theme Palette Colors
      • Dynamic Exclusion Filters & Password Visibility Controls
-     • SpendingAssistantSheet (Auto Pixel-First / On-Device / Cloud)
+     • SpendingAssistantSheet (Auto Silicon-First / On-Device / Cloud)
      • Biometric App Lock & Custom Tactile Haptic Actuators
-     • Categorized Settings with Live Service Status Strip
+     • Categorized Settings with AI Studio Key Guide & Status Strip
 ```
 
 ---
@@ -74,7 +76,7 @@ An enterprise-grade, privacy-first automated personal finance management platfor
 ## Key Features
 
 ### 1. Tri-Channel On-Device Ingestion Pipeline (Notifications + SMS + Gmail)
-- **Real-Time Notification Access (`NotificationListenerService`):** Captures incoming status bar notifications from Gmail (`com.google.android.gm`), UPI apps (Google Pay, PhonePe, Paytm, CRED, BHIM, Navi, Amazon Pay), and banking apps. Operates with **zero passwords**, zero OAuth friction, and zero background polling.
+- **Real-Time Notification Access (`NotificationListenerService`):** Captures incoming status bar notifications from Gmail (`com.google.android.gm`), UPI apps (Google Pay, PhonePe, Paytm, CRED, BHIM, Navi, Tata Neu, Amazon Pay), and banking apps with cross-channel deduplication against incoming SMS. Operates with **zero passwords**, zero OAuth friction, and zero background polling.
 - **Real-Time SMS Ingestion:** Intercepts incoming transactional SMS across Indian financial institutions (HDFC, SBI, ICICI, Axis, Kotak, PNB, Bank of Baroda, IndusInd) and payment gateways. Protected with `goAsync()` and an 8-second watchdog timer to eliminate ANRs.
 - **100% On-Device Direct TLS Gmail IMAP:** Native socket client (`imap.gmail.com:993`) that connects directly to Google via TLS, supporting 16-letter Google App Passwords with automated Unicode whitespace and delimiter normalization.
 - **Unified Pipeline:** All three channels pass through identical deduplication, exclusion matching, entity extraction, categorization, and account balance adjustment routines.
@@ -94,12 +96,21 @@ An enterprise-grade, privacy-first automated personal finance management platfor
 - **Temporal & Reference Matching:** Correlates simultaneous transactions occurring within a 5-minute temporal window sharing UPI, RRN, or UTR reference numbers.
 - **Zero Budget Skew:** Categorizes detected transfer pairs as `TRANSFER` and marks `countsTowardBudget = false`, preventing internal transfers from artificially inflating monthly expense figures.
 
-### 5. Encrypted Database Backup & Restore (`.mtbackup`)
+### 5. Dynamic Contextual Nudges & Personalized User Experience
+- **Interactive On-Device Nudges:** Detects spending anomalies, high-volume spend velocity, and recurring budget pacing via `OnDeviceAiEngine` with swipeable gesture banners.
+- **Time-of-Day Greetings & Onboarding:** Personalized user greeting system adapting dynamically across morning, afternoon, evening, and late night with initial name onboarding dialogs.
+- **Accurate Transaction Time:** Preserves exact transaction hours and minutes with interactive time pickers in manual entry and transaction editing dialogs.
+
+### 6. Custom Categories & Adaptive Tonal Palette
+- **User-Defined Categories:** Create, edit, and assign custom transaction categories with custom icon selection.
+- **Dynamic Spend Mix:** Spend breakdown charts dynamically assign curated tonal colors per custom category respecting the active theme mode.
+
+### 7. Encrypted Database Backup & Restore (`.mtbackup`)
 - **Military-Grade Encryption:** Utilizes **AES-256-GCM** authenticated encryption paired with **PBKDF2WithHmacSHA256** key derivation (10,000 iterations, 16-byte cryptographic salt, 12-byte initialization vector, and 128-bit authentication tag).
 - **Storage Access Framework (SAF):** Exports and imports backups to Google Drive, SD cards, or local Downloads without requiring legacy storage permissions.
 - **Relational Integrity:** Restores Accounts, Transactions, Budgets, and Subscriptions while automatically remapping foreign key account IDs (`oldAccountId -> newAccountId`).
 
-### 6. Interactive Home Screen Account Balance App Widget
+### 8. Interactive Home Screen Account Balance App Widget
 - **At-a-Glance Net Worth:** 4x2 Android home screen widget displaying total tracked liquid balance in Indian Rupees (`₹`).
 - **Top Accounts Breakdown:** Shows up to 3 primary bank accounts with masked last-4 digits (e.g., `HDFC •••• 4128`) and individual balances.
 - **Interactive Controls:**
@@ -107,27 +118,29 @@ An enterprise-grade, privacy-first automated personal finance management platfor
   - **Quick Add (+):** Launches directly into the quick transaction logger dialog in the app.
   - **Auto-Sync:** Updates automatically whenever transactions are ingested or balances are reconciled.
 
-### 7. Decluttered & Categorized Settings Screen
+### 9. Decluttered & Categorized Settings Screen
 - **Clean Category Tabs:** Organizes settings into 4 intuitive categories: **Ingestion**, **Intelligence**, **Personalization**, and **Security & System**.
 - **Live Service Status Strip:** Glanceable header showing real-time operational status (Notification Listener Active/Inactive, SMS Ingestion Ready, Last Email Sync Timestamp).
+- **Google AI Studio Key Guide:** In-app visual step-by-step guide for generating and configuring API keys with auto-hiding capability.
 - **Dynamic Exclusion Engine:** Configure custom keywords (e.g., `Steam`, `Epic Games`, `OTP`, `Refund`) to automatically suppress unwanted transactions.
 - **Password Visibility Toggles:** Eye icon toggle for seamless input verification when configuring Gmail App Passwords.
 
-### 8. Google Pixel 9 On-Device AI Engine & Cloud Augmentation
-- **Tensor G4 TPU Acceleration:** Automatically detects Google Pixel hardware (`Build.HARDWARE` / `SOC_MODEL` tensor detection) to execute sub-millisecond on-device transaction classification.
+### 10. Multi-Vendor On-Device NPU Acceleration & Cloud Augmentation
+- **Multi-Vendor Silicon Detection:** Automatically detects hardware accelerators across Qualcomm Snapdragon (Hexagon/QNN), Google Tensor (TPU), MediaTek Dimensity (APU), and Samsung Exynos (NPU) for sub-millisecond local processing.
 - **Three Configurable AI Modes:**
-  1. **Auto (Pixel-First) [Recommended]:** Runs transactional parsing locally on-device and leverages Gemini Flash Lite only for deep semantic conversational synthesis when an API key is configured.
+  1. **Auto (Silicon-First) [Recommended]:** Runs transactional parsing locally on-device and leverages Gemini Flash Lite only for deep semantic conversational synthesis when an API key is configured.
   2. **On-Device Only (Air-Gapped):** 100% offline. Zero network calls. All analytics and assistant queries run via local heuristics.
   3. **Cloud Only:** Routes complex queries and synthesis via Google AI Studio's `gemini-3.5-flash-lite`.
 
-### 9. Biometric App Lock & Device Security
+### 11. Biometric App Lock & Device Security
 - **BiometricPrompt Integration:** Protects sensitive financial ledgers using fingerprint, face unlock, or device PIN/password (`BIOMETRIC_STRONG` with `DEVICE_CREDENTIAL` fallback).
 - **Lifecycle Auto-Lock:** Automatically locks the application when placed in the background (`ON_STOP`) and prompts for authentication upon returning (`ON_RESUME`).
 - **Expressive AppLockScreen:** Full-screen Material 3 lock screen overlay with an explicit unlock trigger.
 
-### 10. Material 3 Expressive Theming & Curated Accent System
+### 12. Material 3 Expressive Theming & Curated Accent System
 - **Full Material 3 Expressive Implementation:** Native dynamic theming with high-chroma tonal scales, springy shape curvature, vibrant container surfaces, and tailored tokens in both **Light** and **Dark** modes.
 - **Theme Mode Selector:** Seamless runtime toggle between `System Default`, `Dark Mode`, and `Light Mode`.
+- **Dynamic Wallpaper Color (Material You):** Android 12+ (API 31+) system wallpaper color extraction toggle for system-wide personalization.
 - **Prebuilt Accent Section:** Instant selection between 5 handcrafted bespoke accent palettes:
   - **Black & White (Monochrome):** Minimalist grayscale, deep onyx, and stark zinc white styling.
   - **Crimson:** Bold ruby crimson and rosewood tones.
@@ -152,7 +165,7 @@ An enterprise-grade, privacy-first automated personal finance management platfor
 | **System Services** | `NotificationListenerService` | Android 8.0 - 15 |
 | **TLS & Protocols** | Native Java/Kotlin SSLSocket (IMAP TLS) | TLSv1.2 / TLSv1.3 |
 | **Target SDK** | Android 15 (API 35) | Min SDK 26 (Android 8.0) |
-| **Hardware Target** | Google Tensor G4 (Pixel 9) + Fallback Heuristics | |
+| **Hardware Target** | Multi-Vendor NPU (Snapdragon, Tensor, Exynos, Dimensity) + Heuristics | |
 
 ---
 
@@ -166,23 +179,25 @@ app/src/main/java/com/moneytracker/app/
 ├── ai/
 │   ├── FinanceRagEngine.kt      # 3-tier hybrid RAG retrieval pipeline
 │   ├── GeminiApiClient.kt       # Google AI Studio Gemini API client with strict financial prompts
-│   └── OnDeviceAiEngine.kt      # Tensor G4 TPU detector, spam filter & offline heuristics
+│   └── OnDeviceAiEngine.kt      # Multi-vendor NPU detector, spam filter & offline heuristics
 ├── backup/
 │   └── BackupManager.kt         # AES-256-GCM authenticated encryption & database restore
 ├── data/
 │   ├── db/
 │   │   ├── FinanceDao.kt        # Room DAOs (AccountDao, TransactionDao, BudgetDao, FTS4)
-│   │   ├── FinanceDatabase.kt   # Room database & schema migrations (v1 through v8)
+│   │   ├── FinanceDatabase.kt   # Room database & schema migrations (v1 through v10)
 │   │   └── FinanceEntities.kt   # Entity definitions, FTS virtual tables & indices
 │   ├── local/
 │   │   ├── AiPreferences.kt     # Encrypted preferences for AI engine and API key
+│   │   ├── CategoryPreferences.kt # Custom categories persistence & icon mapping
 │   │   ├── EmailPreferences.kt  # On-device storage for Gmail credentials and sync state
 │   │   ├── ExclusionPreferences.kt # Persistent dynamic keyword exclusion engine
 │   │   ├── HapticPreferences.kt # Tactile vibration toggle and intensity settings
 │   │   ├── NotificationPreferences.kt # Managed packages & notification listener state
 │   │   ├── SecurityPreferences.kt # Biometric app lock toggle
 │   │   ├── SetupPreferences.kt  # Onboarding & initial setup tracking
-│   │   └── ThemePreferences.kt  # Material 3 Expressive mode & prebuilt accents
+│   │   ├── ThemePreferences.kt  # Material 3 Expressive mode, dynamic colors & accents
+│   │   └── UserPreferences.kt   # User profile name and onboarding preferences
 │   ├── model/
 │   │   └── FinanceModels.kt     # Domain models, parsed transactions, and UI states
 │   └── repo/
@@ -198,11 +213,12 @@ app/src/main/java/com/moneytracker/app/
 │   └── SmsImportManager.kt      # Historical SMS batch import scanner
 ├── ui/
 │   ├── components/              # Expressive UI cards, charts, and dialogs
+│   ├── greeting/                # Dynamic time-of-day greetings & contextual nudges
 │   ├── haptics/                 # HapticFeedbackManager & Compose CompositionLocal
 │   ├── navigation/              # Navigation host, bottom bar & route destinations
 │   ├── screen/                  # Home, Transactions, BudgetHistory, More, Settings, Assistant
 │   ├── security/                # BiometricAuthHelper & AppLockScreen
-│   ├── theme/                   # Fintech color palette, Material 3 Expressive tokens & accents
+│   ├── theme/                   # Fintech color palette, tokens, dynamic accents & CategoryThemeColors
 │   └── MainViewModel.kt         # Primary ViewModel coordinating UI states and flows
 ├── widget/
 │   └── BalanceWidgetProvider.kt # Home screen 4x2 balance widget with refresh & quick add
