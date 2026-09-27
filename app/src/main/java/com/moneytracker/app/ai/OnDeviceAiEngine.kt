@@ -683,7 +683,8 @@ class OnDeviceAiEngine(
             listOf("salary", "payroll", "stipend").any { it in text } -> TransactionCategory.SALARY
             listOf("netflix", "spotify", "prime", "hotstar", "youtube", "subscription").any { it in text } -> TransactionCategory.SUBSCRIPTION
             listOf("pharmacy", "apollo", "medplus", "hospital", "clinic", "health", "doctor", "1mg").any { it in text } -> TransactionCategory.HEALTH
-            listOf("transfer", "sent to", "neft", "rtgs", "imps", "card payment").any { it in text } -> TransactionCategory.TRANSFER
+            listOf("neft", "rtgs", "imps", "card payment", "bank transfer").any { it in text } ||
+                (listOf("transfer", "sent to").any { it in text } && !merchant.startsWith("UPI Transfer", ignoreCase = true)) -> TransactionCategory.TRANSFER
             else -> TransactionCategory.OTHER
         }
     }

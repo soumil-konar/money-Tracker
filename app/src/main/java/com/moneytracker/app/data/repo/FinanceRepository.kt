@@ -820,10 +820,14 @@ class FinanceRepository(
         body: String,
         receivedAtMillis: Long,
     ): Boolean {
-        return when (ingestMessage(sender = sender, body = body, receivedAtMillis = receivedAtMillis)) {
+        val outcome = ingestMessage(sender = sender, body = body, receivedAtMillis = receivedAtMillis)
+        return when (outcome) {
             SmsIngestionOutcome.IMPORTED,
             SmsIngestionOutcome.REVIEW,
-            SmsIngestionOutcome.SCHEDULED -> true
+            SmsIngestionOutcome.SCHEDULED -> {
+                deduplicateTransactions()
+                true
+            }
 
             SmsIngestionOutcome.DUPLICATE,
             SmsIngestionOutcome.IGNORED -> false
@@ -916,7 +920,10 @@ class FinanceRepository(
         val succeeded = when (outcome) {
             SmsIngestionOutcome.IMPORTED,
             SmsIngestionOutcome.REVIEW,
-            SmsIngestionOutcome.SCHEDULED -> true
+            SmsIngestionOutcome.SCHEDULED -> {
+                deduplicateTransactions()
+                true
+            }
             SmsIngestionOutcome.DUPLICATE,
             SmsIngestionOutcome.IGNORED -> false
         }
@@ -1276,6 +1283,18 @@ class FinanceRepository(
         return merchant.lowercase().replace(Regex("[^a-z0-9]"), "")
     }
 
+    private fun isGenericMerchant(merchant: String): Boolean {
+        val lower = merchant.trim().lowercase(java.util.Locale.getDefault())
+        return lower == "merchant" ||
+            lower.startsWith("upi transfer") ||
+            lower.startsWith("spent via") ||
+            lower.startsWith("incoming via") ||
+            lower == "bank alert" ||
+            lower == "payment" ||
+            lower.matches(Regex("""^(?:upi transfer|transfer)\s*\(?\.\.[0-9]{4}\)?$""")) ||
+            lower.matches(Regex("""^(?:\+?91)?[0-9]{10,12}$"""))
+    }
+
     private suspend fun ingestMessage(
         sender: String,
         body: String,
@@ -1479,33 +1498,63 @@ class FinanceRepository(
         }
 
         if (existingSimilar != null) {
+            val existingRef = extractTransactionReference(existingSimilar.smsBody)
+            val incomingRef = extractTransactionReference(body)
+            val hasDistinctRefs = !existingRef.isNullOrBlank() && !incomingRef.isNullOrBlank() && !existingRef.equals(incomingRef, ignoreCase = true)
+
+            val sameRefMatch = !existingRef.isNullOrBlank() && existingRef.equals(incomingRef, ignoreCase = true)
             val merchantMatch = existingSimilar.merchant.equals(resolvedMerchant, ignoreCase = true) ||
                 existingSimilar.merchant.contains(resolvedMerchant, ignoreCase = true) ||
                 resolvedMerchant.contains(existingSimilar.merchant, ignoreCase = true)
             val senderMatch = existingSimilar.sourceSender.equals(sender, ignoreCase = true)
+            val sameAccount = accountId != null && existingSimilar.accountId != null && accountId == existingSimilar.accountId
+            val isExistingGeneric = isGenericMerchant(existingSimilar.merchant)
+            val isIncomingGeneric = isGenericMerchant(resolvedMerchant)
+            val hasGenericPlaceholder = isExistingGeneric || isIncomingGeneric
 
-            if (merchantMatch || senderMatch) {
+            val isDuplicate = !hasDistinctRefs && (
+                sameRefMatch ||
+                merchantMatch ||
+                (hasGenericPlaceholder && (sameAccount || accountId == null || existingSimilar.accountId == null || senderMatch))
+            )
+
+            if (isDuplicate) {
                 val targetAccountId = accountId ?: existingSimilar.accountId
                 val newAvailableBal = if (balanceProof.isVerified) balanceProof.balance else (availableBalance ?: existingSimilar.availableBalance)
+                val targetMerchant = if (isExistingGeneric && !isIncomingGeneric) resolvedMerchant else existingSimilar.merchant
+                val targetCategory = if (isExistingGeneric && !isIncomingGeneric) category else existingSimilar.category
+                val targetNote = if (isExistingGeneric && !isIncomingGeneric) (note ?: existingSimilar.note) else existingSimilar.note
+                val targetCountsTowardBudget = if (isExistingGeneric && !isIncomingGeneric) {
+                    if (isCardBillPayment || targetCategory == TransactionCategory.TRANSFER) false else (parsed?.countsTowardBudget ?: true)
+                } else {
+                    existingSimilar.countsTowardBudget
+                }
+                val targetBody = if (isExistingGeneric && !isIncomingGeneric) body else existingSimilar.smsBody
+                val targetSender = if (isExistingGeneric && !isIncomingGeneric) sender else existingSimilar.sourceSender
 
-                if (targetAccountId != existingSimilar.accountId || newAvailableBal != existingSimilar.availableBalance) {
-                    val updated = existingSimilar.copy(
+                val updated = existingSimilar.copy(
+                    merchant = targetMerchant,
+                    category = targetCategory,
+                    note = targetNote,
+                    countsTowardBudget = targetCountsTowardBudget,
+                    smsBody = targetBody,
+                    sourceSender = targetSender,
+                    accountId = targetAccountId,
+                    availableBalance = newAvailableBal,
+                    confidence = maxOf(existingSimilar.confidence, confidence),
+                )
+                transactionDao.update(updated)
+
+                if (targetAccountId != null && balanceProof.isVerified && balanceProof.balance != null) {
+                    accountDao.updateVerifiedBalance(
                         accountId = targetAccountId,
-                        availableBalance = newAvailableBal,
+                        balance = balanceProof.balance,
+                        updatedAt = resolvedOccurredAt,
+                        proofSnippet = balanceProof.proofSnippet,
+                        proofSource = "SMS (${sender.substringAfter("-")})",
+                        isVerified = true,
                     )
-                    transactionDao.update(updated)
-
-                    if (targetAccountId != null && balanceProof.isVerified && balanceProof.balance != null) {
-                        accountDao.updateVerifiedBalance(
-                            accountId = targetAccountId,
-                            balance = balanceProof.balance,
-                            updatedAt = resolvedOccurredAt,
-                            proofSnippet = balanceProof.proofSnippet,
-                            proofSource = "SMS (${sender.substringAfter("-")})",
-                            isVerified = true,
-                        )
-                        reconcileSingleAccount(targetAccountId)
-                    }
+                    reconcileSingleAccount(targetAccountId)
                 }
                 return SmsIngestionOutcome.DUPLICATE
             }
@@ -2006,15 +2055,48 @@ class FinanceRepository(
                 continue
             }
 
-            val isDuplicate = seen.any { existing ->
-                existing.amount == tx.amount &&
-                    existing.direction == tx.direction &&
-                    kotlin.math.abs(existing.occurredAtMillis - tx.occurredAtMillis) <= 300_000L &&
-                    (existing.merchant.equals(tx.merchant, ignoreCase = true) ||
-                        (existing.accountId != null && existing.accountId == tx.accountId) ||
-                        existing.sourceSender.equals(tx.sourceSender, ignoreCase = true))
+            val matchingExisting = seen.firstOrNull { existing ->
+                if (existing.amount != tx.amount || existing.direction != tx.direction) return@firstOrNull false
+                if (kotlin.math.abs(existing.occurredAtMillis - tx.occurredAtMillis) > 900_000L) return@firstOrNull false
+
+                val existingRef = extractTransactionReference(existing.smsBody)
+                val txRef = extractTransactionReference(tx.smsBody)
+                val hasDistinctRefs = !existingRef.isNullOrBlank() && !txRef.isNullOrBlank() && !existingRef.equals(txRef, ignoreCase = true)
+                if (hasDistinctRefs) return@firstOrNull false
+
+                val sameRefMatch = !existingRef.isNullOrBlank() && existingRef.equals(txRef, ignoreCase = true)
+                val merchantMatch = existing.merchant.equals(tx.merchant, ignoreCase = true) ||
+                    existing.merchant.contains(tx.merchant, ignoreCase = true) ||
+                    tx.merchant.contains(existing.merchant, ignoreCase = true)
+                val senderMatch = existing.sourceSender.equals(tx.sourceSender, ignoreCase = true)
+                val sameAccount = existing.accountId != null && tx.accountId != null && existing.accountId == tx.accountId
+                val isExistingGeneric = isGenericMerchant(existing.merchant)
+                val isTxGeneric = isGenericMerchant(tx.merchant)
+                val hasGenericPlaceholder = isExistingGeneric || isTxGeneric
+
+                sameRefMatch ||
+                    merchantMatch ||
+                    (hasGenericPlaceholder && (sameAccount || existing.accountId == null || tx.accountId == null || senderMatch))
             }
-            if (isDuplicate) {
+
+            if (matchingExisting != null) {
+                // If existing has a generic merchant name and tx has a specific one, upgrade existing!
+                if (isGenericMerchant(matchingExisting.merchant) && !isGenericMerchant(tx.merchant)) {
+                    val upgraded = matchingExisting.copy(
+                        merchant = tx.merchant,
+                        category = tx.category,
+                        note = tx.note ?: matchingExisting.note,
+                        countsTowardBudget = tx.countsTowardBudget,
+                        accountId = tx.accountId ?: matchingExisting.accountId,
+                        availableBalance = tx.availableBalance ?: matchingExisting.availableBalance,
+                        confidence = maxOf(matchingExisting.confidence, tx.confidence),
+                        smsBody = tx.smsBody ?: matchingExisting.smsBody,
+                        sourceSender = if (tx.sourceSender.contains("BK", ignoreCase = true) || tx.sourceSender.contains("BANK", ignoreCase = true)) tx.sourceSender else matchingExisting.sourceSender,
+                    )
+                    transactionDao.update(upgraded)
+                    seen.remove(matchingExisting)
+                    seen.add(upgraded)
+                }
                 duplicatesToDelete.add(tx.id)
             } else {
                 seen.add(tx)

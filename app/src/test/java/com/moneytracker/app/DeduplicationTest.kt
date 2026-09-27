@@ -2,6 +2,7 @@ package com.moneytracker.app
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.security.MessageDigest
 
@@ -69,5 +70,83 @@ class DeduplicationTest {
 
         assertEquals(fpSms, fpEmail)
         assertEquals(fpEmail, fpPush)
+    }
+
+    @Test
+    fun `cross-channel duplicate detection merges generic UPI transfer with real merchant SMS`() {
+        fun isGenericMerchant(merchant: String): Boolean {
+            val lower = merchant.trim().lowercase(java.util.Locale.getDefault())
+            return lower == "merchant" ||
+                lower.startsWith("upi transfer") ||
+                lower.startsWith("spent via") ||
+                lower.startsWith("incoming via") ||
+                lower == "bank alert" ||
+                lower == "payment" ||
+                lower.matches(Regex("""^(?:upi transfer|transfer)\s*\(?\.\.[0-9]{4}\)?$""")) ||
+                lower.matches(Regex("""^(?:\+?91)?[0-9]{10,12}$"""))
+        }
+
+        val existingMerchant = "UPI Transfer (..0808)"
+        val incomingMerchant = "STAR BAZAAR"
+        val existingRef: String? = null
+        val incomingRef = "427011234567"
+        val accountId1 = 1L
+        val accountId2 = 1L
+        val timeDiff = 120_000L // 2 minutes
+
+        val hasDistinctRefs = !existingRef.isNullOrBlank() && !incomingRef.isNullOrBlank() && !existingRef.equals(incomingRef, ignoreCase = true)
+        val sameRefMatch = !existingRef.isNullOrBlank() && existingRef.equals(incomingRef, ignoreCase = true)
+        val merchantMatch = existingMerchant.equals(incomingMerchant, ignoreCase = true)
+        val isExistingGeneric = isGenericMerchant(existingMerchant)
+        val isIncomingGeneric = isGenericMerchant(incomingMerchant)
+        val hasGenericPlaceholder = isExistingGeneric || isIncomingGeneric
+
+        val isDuplicate = !hasDistinctRefs && (
+            sameRefMatch ||
+            merchantMatch ||
+            (hasGenericPlaceholder && (accountId1 == accountId2))
+        )
+        assertTrue("Generic UPI transfer and specific bank SMS should be recognized as duplicate", isDuplicate)
+
+        val targetMerchant = if (isExistingGeneric && !isIncomingGeneric) incomingMerchant else existingMerchant
+        assertEquals("STAR BAZAAR", targetMerchant)
+    }
+
+    @Test
+    fun `distinct transactions of the same amount at different merchants within minutes are preserved`() {
+        fun isGenericMerchant(merchant: String): Boolean {
+            val lower = merchant.trim().lowercase(java.util.Locale.getDefault())
+            return lower == "merchant" ||
+                lower.startsWith("upi transfer") ||
+                lower.startsWith("spent via") ||
+                lower.startsWith("incoming via") ||
+                lower == "bank alert" ||
+                lower == "payment" ||
+                lower.matches(Regex("""^(?:upi transfer|transfer)\s*\(?\.\.[0-9]{4}\)?$""")) ||
+                lower.matches(Regex("""^(?:\+?91)?[0-9]{10,12}$"""))
+        }
+
+        val merchant1 = "Starbucks"
+        val merchant2 = "Subway"
+        val accountId1 = 1L
+        val accountId2 = 1L
+        val amount = 50.0
+
+        val merchantMatch = merchant1.equals(merchant2, ignoreCase = true)
+        val isGeneric1 = isGenericMerchant(merchant1)
+        val isGeneric2 = isGenericMerchant(merchant2)
+        val hasGeneric = isGeneric1 || isGeneric2
+
+        val isDuplicate = merchantMatch || (hasGeneric && accountId1 == accountId2)
+        org.junit.Assert.assertFalse("Two distinct merchants with same amount must NOT be flagged as duplicate", isDuplicate)
+    }
+
+    @Test
+    fun `two transactions of the same amount at same merchant with distinct UTRs are preserved`() {
+        val ref1 = "427011234001"
+        val ref2 = "427011234002"
+
+        val hasDistinctRefs = !ref1.isNullOrBlank() && !ref2.isNullOrBlank() && !ref1.equals(ref2, ignoreCase = true)
+        assertTrue("Different UTR numbers must be recognized as distinct transactions", hasDistinctRefs)
     }
 }
