@@ -129,4 +129,44 @@ class TimeOfDayGreetingProviderTest {
         assertTrue(nightMsg.message.contains("Good night", ignoreCase = true) || nightMsg.message.contains("secured", ignoreCase = true))
         assertEquals("Peace of Mind", nightMsg.tag)
     }
+
+    @Test
+    fun `getContextualNudges generates prioritized dynamic nudges with actions`() {
+        val aiEngine = com.moneytracker.app.ai.OnDeviceAiEngine()
+        val dashboard = DashboardState(
+            budgetLimit = 10000.0,
+            monthSpent = 15000.0,
+            reviewCount = 2,
+            cardSpendThisMonth = 12000.0,
+        )
+
+        val nudges = TimeOfDayGreetingProvider.getContextualNudges(
+            dashboard = dashboard,
+            userName = "Soumil",
+            aiEngine = aiEngine,
+            time = LocalTime.of(23, 0),
+            date = java.time.LocalDate.of(2026, 9, 28),
+        )
+
+        assertTrue("Expected at least 2 nudges", nudges.size >= 2)
+        // High priority review queue should be present with NAVIGATE_REVIEW action
+        val reviewNudge = nudges.firstOrNull { it.tag == "Review Queue" }
+        org.junit.Assert.assertNotNull(reviewNudge)
+        assertEquals(com.moneytracker.app.data.model.NudgeActionType.NAVIGATE_REVIEW, reviewNudge?.actionType)
+        assertEquals("Review Items", reviewNudge?.actionLabel)
+
+        // Burn velocity anomaly should have OPEN_BUDGET action
+        val burnNudge = nudges.firstOrNull { it.tag == "Burn Velocity" }
+        org.junit.Assert.assertNotNull(burnNudge)
+        assertEquals(com.moneytracker.app.data.model.NudgeActionType.OPEN_BUDGET, burnNudge?.actionType)
+        assertEquals("Adjust Budget", burnNudge?.actionLabel)
+        org.junit.Assert.assertNotNull(burnNudge?.acceleratorBadge)
+
+        // Card spend nudge should be present
+        val cardNudge = nudges.firstOrNull { it.tag == "Card Spends" }
+        org.junit.Assert.assertNotNull(cardNudge)
+
+        // High priority nudges should appear first
+        assertTrue(nudges.first().priority == com.moneytracker.app.data.model.NudgePriority.HIGH)
+    }
 }

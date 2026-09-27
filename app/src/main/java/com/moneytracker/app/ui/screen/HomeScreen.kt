@@ -22,17 +22,33 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.style.TextOverflow
 import com.moneytracker.app.ui.greeting.TimeOfDayGreetingProvider
+import com.moneytracker.app.data.model.ContextualNudge
+import com.moneytracker.app.data.model.NudgeActionType
+import com.moneytracker.app.data.model.NudgePriority
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.AssignmentTurnedIn
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Bedtime
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.ChevronLeft
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.CreditCard
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.LightMode
+import androidx.compose.material.icons.outlined.NightsStay
+import androidx.compose.material.icons.outlined.Receipt
 import androidx.compose.material.icons.outlined.Savings
+import androidx.compose.material.icons.automirrored.outlined.TrendingUp
+import androidx.compose.material.icons.outlined.Speed
+import androidx.compose.material.icons.outlined.WbSunny
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -42,6 +58,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -63,6 +80,7 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.moneytracker.app.data.db.AccountEntity
 import com.moneytracker.app.data.model.CategorySlice
 import com.moneytracker.app.data.model.DashboardState
@@ -99,6 +117,7 @@ fun HomeScreen(
     onOpenAssistant: ((Rect?) -> Unit)? = null,
     onAccountsClick: () -> Unit = {},
     onAccountClick: (AccountEntity) -> Unit = {},
+    onNavigateToReview: () -> Unit = {},
     listState: LazyListState = rememberLazyListState(),
     chartReloadKey: Int = 0,
     modifier: Modifier = Modifier,
@@ -110,6 +129,20 @@ fun HomeScreen(
     }
     val contextualGreeting = remember(dashboard, userName) {
         TimeOfDayGreetingProvider.getContextualMessage(dashboard, userName)
+    }
+    val nudges = remember(dashboard.contextualNudges, contextualGreeting) {
+        dashboard.contextualNudges.ifEmpty {
+            listOf(
+                ContextualNudge(
+                    id = "fallback",
+                    title = contextualGreeting.tag,
+                    message = contextualGreeting.message,
+                    tag = contextualGreeting.tag,
+                    priority = NudgePriority.LOW,
+                    iconType = "time_of_day",
+                ),
+            )
+        }
     }
     val statusBarInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -188,51 +221,12 @@ fun HomeScreen(
                     color = MaterialTheme.colorScheme.onBackground,
                 )
                 Spacer(modifier = Modifier.height(10.dp))
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                            modifier = Modifier.size(28.dp),
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = contextualGreeting.icon,
-                                    contentDescription = contextualGreeting.tag,
-                                    modifier = Modifier.size(15.dp),
-                                    tint = MaterialTheme.colorScheme.primary,
-                                )
-                            }
-                        }
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = contextualGreeting.tag.uppercase(Locale.getDefault()),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold,
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = contextualGreeting.message,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
-                }
+                DynamicContextualNudgesBanner(
+                    nudges = nudges,
+                    onSetBudgetClick = onSetBudgetClick,
+                    onNavigateToReview = onNavigateToReview,
+                    onOpenAssistant = onOpenAssistant,
+                )
             }
         }
 
@@ -646,4 +640,214 @@ private fun FormattedInsightText(
         color = MaterialTheme.colorScheme.onBackground,
         modifier = modifier,
     )
+}
+
+@Composable
+private fun DynamicContextualNudgesBanner(
+    nudges: List<ContextualNudge>,
+    onSetBudgetClick: () -> Unit,
+    onNavigateToReview: () -> Unit,
+    onOpenAssistant: ((Rect?) -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
+    if (nudges.isEmpty()) return
+    val haptics = LocalAppHaptics.current
+    var currentIndex by remember(nudges) { mutableIntStateOf(0) }
+    val safeIndex = currentIndex.coerceIn(0, nudges.size - 1)
+    val activeNudge = nudges[safeIndex]
+
+    val iconVector = when (activeNudge.iconType) {
+        "speed" -> Icons.Outlined.Speed
+        "trending_up" -> Icons.AutoMirrored.Outlined.TrendingUp
+        "receipt" -> Icons.Outlined.Receipt
+        "credit_card" -> Icons.Outlined.CreditCard
+        "review" -> Icons.Outlined.AssignmentTurnedIn
+        "time_of_day" -> when {
+            activeNudge.tag.contains("night", ignoreCase = true) -> Icons.Outlined.Bedtime
+            activeNudge.tag.contains("morning", ignoreCase = true) -> Icons.Outlined.WbSunny
+            activeNudge.tag.contains("midday", ignoreCase = true) || activeNudge.tag.contains("pace", ignoreCase = true) -> Icons.Outlined.LightMode
+            else -> Icons.Outlined.NightsStay
+        }
+        else -> Icons.Outlined.AutoAwesome
+    }
+
+    val isAlert = activeNudge.priority == NudgePriority.HIGH ||
+        activeNudge.tag.contains("burn", ignoreCase = true) ||
+        activeNudge.tag.contains("anomaly", ignoreCase = true)
+    val accentColor = if (isAlert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f, fill = false),
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = accentColor.copy(alpha = 0.15f),
+                        modifier = Modifier.size(28.dp),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = iconVector,
+                                contentDescription = activeNudge.tag,
+                                modifier = Modifier.size(16.dp),
+                                tint = accentColor,
+                            )
+                        }
+                    }
+                    Text(
+                        text = activeNudge.tag.uppercase(Locale.getDefault()),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = accentColor,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (!activeNudge.acceleratorBadge.isNullOrBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                        ) {
+                            Text(
+                                text = "✨ ${activeNudge.acceleratorBadge}",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            )
+                        }
+                    }
+                }
+
+                if (nudges.size > 1) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    haptics.click()
+                                    currentIndex = if (currentIndex > 0) currentIndex - 1 else nudges.size - 1
+                                }
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.ChevronLeft,
+                                contentDescription = "Previous Nudge",
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Text(
+                            text = "${safeIndex + 1}/${nudges.size}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(horizontal = 4.dp),
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    haptics.click()
+                                    currentIndex = if (currentIndex < nudges.size - 1) currentIndex + 1 else 0
+                                }
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.ChevronRight,
+                                contentDescription = "Next Nudge",
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+
+            AnimatedContent(
+                targetState = activeNudge,
+                transitionSpec = { fadeIn() togetherWith fadeOut() },
+                label = "nudgeContent",
+            ) { nudge ->
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (nudge.title.isNotBlank() && !nudge.title.equals(nudge.tag, ignoreCase = true)) {
+                        Text(
+                            text = nudge.title,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    Text(
+                        text = nudge.message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (!nudge.actionLabel.isNullOrBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = accentColor.copy(alpha = 0.12f),
+                            border = BorderStroke(1.dp, accentColor.copy(alpha = 0.3f)),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    haptics.click()
+                                    when (nudge.actionType) {
+                                        NudgeActionType.OPEN_BUDGET -> onSetBudgetClick()
+                                        NudgeActionType.NAVIGATE_REVIEW -> onNavigateToReview()
+                                        NudgeActionType.OPEN_ASSISTANT -> onOpenAssistant?.invoke(null)
+                                        else -> Unit
+                                    }
+                                },
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Text(
+                                    text = nudge.actionLabel,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = accentColor,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                Text(
+                                    text = "→",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = accentColor,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

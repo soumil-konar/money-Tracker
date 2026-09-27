@@ -5,6 +5,7 @@ import android.os.Build
 import com.moneytracker.app.data.db.TransactionRecord
 import com.moneytracker.app.data.model.AccountKind
 import com.moneytracker.app.data.model.CardType
+import com.moneytracker.app.data.model.NudgeActionType
 import com.moneytracker.app.data.model.TransactionCategory
 import com.moneytracker.app.data.model.TransactionDirection
 import java.security.MessageDigest
@@ -571,6 +572,8 @@ class OnDeviceAiEngine(
         budgetLimit: Double?,
         monthSpent: Double,
         monthIncome: Double,
+        cardSpendThisMonth: Double = 0.0,
+        safeDailySpend: Double = 0.0,
         currentTime: java.time.LocalTime = java.time.LocalTime.now(),
         currentDate: java.time.LocalDate = java.time.LocalDate.now(),
     ): List<NeuralRecommendation> {
@@ -595,6 +598,8 @@ class OnDeviceAiEngine(
                         actionableNudge = "Consider setting a weekend dining cap to preserve remaining safe burn.",
                         confidence = 0.92f,
                         accelerator = accelerator,
+                        tag = "Weekend Surge",
+                        iconType = "trending_up",
                     ),
                 )
             }
@@ -615,6 +620,10 @@ class OnDeviceAiEngine(
                         actionableNudge = "Throttle discretionary spends over the next 48 hours to bring burn rate back on track.",
                         confidence = 0.95f,
                         accelerator = accelerator,
+                        tag = "Burn Velocity",
+                        actionType = NudgeActionType.OPEN_BUDGET,
+                        actionLabel = "Adjust Budget",
+                        iconType = "speed",
                     ),
                 )
             }
@@ -631,6 +640,23 @@ class OnDeviceAiEngine(
                     actionableNudge = "Consolidate small UPI payments to prevent phantom budget leakage.",
                     confidence = 0.88f,
                     accelerator = accelerator,
+                    tag = "Micro-Spends",
+                    iconType = "receipt",
+                ),
+            )
+        }
+
+        // 4. Card Outflow Concentration
+        if (cardSpendThisMonth >= 10000.0) {
+            recommendations.add(
+                NeuralRecommendation(
+                    title = "High Card Outflow",
+                    observation = "Credit card spend stands at ₹${cardSpendThisMonth.toInt()} this month.",
+                    actionableNudge = "Keep tabs on billing cycles to ensure seamless on-time settlement.",
+                    confidence = 0.85f,
+                    accelerator = accelerator,
+                    tag = "Card Spends",
+                    iconType = "credit_card",
                 ),
             )
         }
@@ -819,4 +845,8 @@ data class NeuralRecommendation(
     val actionableNudge: String,
     val confidence: Float,
     val accelerator: String,
+    val tag: String = "Neural Pattern",
+    val actionType: NudgeActionType = NudgeActionType.NONE,
+    val actionLabel: String? = null,
+    val iconType: String = "auto_awesome",
 )

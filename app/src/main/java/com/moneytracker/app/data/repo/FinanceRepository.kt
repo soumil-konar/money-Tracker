@@ -68,6 +68,7 @@ import com.moneytracker.app.data.local.ThemePreferences
 import com.moneytracker.app.email.EmailSyncManager
 import com.moneytracker.app.data.model.AssistantMessage
 import com.moneytracker.app.data.model.AssistantSender
+import com.moneytracker.app.ui.greeting.TimeOfDayGreetingProvider
 import kotlinx.coroutines.flow.asStateFlow
 
 class FinanceRepository(
@@ -1205,7 +1206,18 @@ class FinanceRepository(
             YearMonth.from(it.toLocalDate()) == currentMonth
         }
 
-        return DashboardState(
+        val resolvedInsights = if (insights.isEmpty() && monthAllTransactions.isNotEmpty()) {
+            onDeviceAiEngine.generateSpendingInsightsOnDevice(
+                transactions = monthAllTransactions,
+                budgetLimit = budget,
+                monthSpent = monthSpent,
+                monthIncome = monthIncome,
+            )
+        } else {
+            insights
+        }
+
+        val baseDashboard = DashboardState(
             trackedBalance = if (totalBankBalance != 0.0) totalBankBalance else monthNetCashflow,
             monthSpent = monthSpent,
             monthIncome = monthIncome,
@@ -1220,11 +1232,19 @@ class FinanceRepository(
             categoryBreakdown = categoryBreakdown,
             trendPoints = trendPoints,
             recentTransactions = monthAllTransactions.take(6),
-            spendingInsights = insights,
+            spendingInsights = resolvedInsights,
             isAiLoading = isAiLoading,
             accounts = accountsList,
             selectedYearMonth = currentMonth,
         )
+
+        val nudges = TimeOfDayGreetingProvider.getContextualNudges(
+            dashboard = baseDashboard,
+            userName = userPreferences?.userName?.value.orEmpty(),
+            aiEngine = onDeviceAiEngine,
+        )
+
+        return baseDashboard.copy(contextualNudges = nudges)
     }
 
     private fun currentMonthKey(): String = YearMonth.now().toString()

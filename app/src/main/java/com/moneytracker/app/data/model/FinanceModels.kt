@@ -213,6 +213,32 @@ data class ParsedSmsMessage(
     val shouldIgnore: Boolean = false,
 )
 
+enum class NudgePriority {
+    CRITICAL,
+    HIGH,
+    MEDIUM,
+    LOW,
+}
+
+enum class NudgeActionType {
+    NONE,
+    NAVIGATE_REVIEW,
+    OPEN_BUDGET,
+    OPEN_ASSISTANT,
+}
+
+data class ContextualNudge(
+    val id: String,
+    val title: String,
+    val message: String,
+    val tag: String,
+    val priority: NudgePriority = NudgePriority.MEDIUM,
+    val actionType: NudgeActionType = NudgeActionType.NONE,
+    val actionLabel: String? = null,
+    val acceleratorBadge: String? = null,
+    val iconType: String = "info",
+) : java.io.Serializable
+
 data class DashboardState(
     val trackedBalance: Double = 0.0,
     val monthSpent: Double = 0.0,
@@ -229,6 +255,7 @@ data class DashboardState(
     val trendPoints: List<TrendPoint> = emptyList(),
     val recentTransactions: List<TransactionRecord> = emptyList(),
     val spendingInsights: List<String> = emptyList(),
+    val contextualNudges: List<ContextualNudge> = emptyList(),
     val isAiLoading: Boolean = false,
     val accounts: List<AccountEntity> = emptyList(),
     val selectedYearMonth: YearMonth = YearMonth.now(),

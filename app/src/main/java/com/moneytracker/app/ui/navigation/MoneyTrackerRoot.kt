@@ -344,6 +344,12 @@ fun MoneyTrackerRoot(
                                         }
                                     },
                                     onAccountClick = { viewingBalanceProofAccount = it },
+                                    onNavigateToReview = {
+                                        coroutineScope.launch {
+                                            viewModel.setFilter(com.moneytracker.app.data.model.TransactionFilter.REVIEW)
+                                            pagerState.animateScrollToPage(1)
+                                        }
+                                    },
                                     onEditTransaction = { transaction, bounds ->
                                         transactionAnchorBounds = bounds
                                         lastOpenedWasEditing = true

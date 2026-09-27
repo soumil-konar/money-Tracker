@@ -11,8 +11,13 @@ import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.WbSunny
 import androidx.compose.material.icons.outlined.WbTwilight
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.moneytracker.app.ai.OnDeviceAiEngine
+import com.moneytracker.app.data.model.ContextualNudge
 import com.moneytracker.app.data.model.DashboardState
+import com.moneytracker.app.data.model.NudgeActionType
+import com.moneytracker.app.data.model.NudgePriority
 import com.moneytracker.app.ui.asCurrency
+import java.time.LocalDate
 import java.time.LocalTime
 
 enum class TimeOfDay {
@@ -193,5 +198,91 @@ object TimeOfDayGreetingProvider {
                 }
             }
         }
+    }
+
+    fun getContextualNudges(
+        dashboard: DashboardState,
+        userName: String,
+        aiEngine: OnDeviceAiEngine? = null,
+        time: LocalTime = LocalTime.now(),
+        date: LocalDate = LocalDate.now(),
+    ): List<ContextualNudge> {
+        val nudges = mutableListOf<ContextualNudge>()
+
+        // 1. High Priority: Pending reviews
+        if (dashboard.reviewCount > 0) {
+            val plural = if (dashboard.reviewCount > 1) "s" else ""
+            nudges.add(
+                ContextualNudge(
+                    id = "review_queue",
+                    title = "Pending Review Queue",
+                    message = "${dashboard.reviewCount} transaction$plural waiting for your verification in the ledger.",
+                    tag = "Review Queue",
+                    priority = NudgePriority.HIGH,
+                    actionType = NudgeActionType.NAVIGATE_REVIEW,
+                    actionLabel = "Review Items",
+                    iconType = "review",
+                ),
+            )
+        }
+
+        // 2. Neural Recommendations (burn pacing, weekend surge, micro-transactions, card concentration)
+        if (aiEngine != null) {
+            val neuralRecs = aiEngine.generateNeuralRecommendations(
+                transactions = dashboard.recentTransactions,
+                budgetLimit = dashboard.budgetLimit,
+                monthSpent = dashboard.monthSpent,
+                monthIncome = dashboard.monthIncome,
+                cardSpendThisMonth = dashboard.cardSpendThisMonth,
+                safeDailySpend = dashboard.safeDailySpend,
+                currentTime = time,
+                currentDate = date,
+            )
+            neuralRecs.forEachIndexed { index, rec ->
+                val priority = when {
+                    rec.title.contains("Anomaly", ignoreCase = true) -> NudgePriority.HIGH
+                    rec.title.contains("Card", ignoreCase = true) -> NudgePriority.MEDIUM
+                    else -> NudgePriority.MEDIUM
+                }
+                nudges.add(
+                    ContextualNudge(
+                        id = "neural_${index}_${rec.tag.lowercase().replace(" ", "_")}",
+                        title = rec.title,
+                        message = "${rec.observation} ${rec.actionableNudge}",
+                        tag = rec.tag,
+                        priority = priority,
+                        actionType = rec.actionType,
+                        actionLabel = rec.actionLabel,
+                        acceleratorBadge = rec.accelerator,
+                        iconType = rec.iconType,
+                    ),
+                )
+            }
+        }
+
+        // 3. Time of day contextual message
+        val timeGreeting = getContextualMessage(dashboard, userName, time)
+        val timeOfDayTitle = when (getTimeOfDay(time)) {
+            TimeOfDay.MORNING -> "Morning Focus"
+            TimeOfDay.AFTERNOON -> "Midday Pulse"
+            TimeOfDay.EVENING -> "Evening Wrap-up"
+            TimeOfDay.NIGHT -> "Night Summary"
+        }
+        val isOverBudget = dashboard.budgetLimit != null && dashboard.monthSpent > dashboard.budgetLimit
+        nudges.add(
+            ContextualNudge(
+                id = "time_of_day_nudge",
+                title = timeOfDayTitle,
+                message = timeGreeting.message,
+                tag = timeGreeting.tag,
+                priority = if (isOverBudget && nudges.none { it.tag == "Burn Velocity" }) NudgePriority.HIGH else NudgePriority.LOW,
+                actionType = if (isOverBudget) NudgeActionType.OPEN_BUDGET else NudgeActionType.NONE,
+                actionLabel = if (isOverBudget) "Adjust Budget" else null,
+                iconType = "time_of_day",
+            ),
+        )
+
+        return nudges.distinctBy { it.message }
+            .sortedBy { it.priority.ordinal }
     }
 }
