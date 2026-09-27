@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import com.moneytracker.app.ui.asFullDate
+import com.moneytracker.app.ui.asTime
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -1059,11 +1060,12 @@ private fun android.content.Context.smsPermissionArray(): Array<String> {
 }
 
 private fun exportTransactionsToCsv(context: Context, transactions: List<TransactionRecord>) {
-    val header = "ID,Date,Merchant,Amount,Direction,Category,Account,Note,Status\n"
+    val header = "ID,Date,Time,Merchant,Amount,Direction,Category,Account,Note,Status\n"
     val rows = transactions.joinToString("\n") { t ->
         listOf(
             t.id,
             t.occurredAtMillis.asFullDate(),
+            t.occurredAtMillis.asTime(),
             "\"${t.merchant.replace("\"", "\"\"")}\"",
             t.amount,
             t.direction.name,

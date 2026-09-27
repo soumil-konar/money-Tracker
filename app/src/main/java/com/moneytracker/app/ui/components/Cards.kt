@@ -67,6 +67,7 @@ import com.moneytracker.app.data.model.TransactionStatus
 import com.moneytracker.app.ui.asCurrency
 import com.moneytracker.app.ui.asDayMonth
 import com.moneytracker.app.ui.asFullDate
+import com.moneytracker.app.ui.asTime
 
 @Composable
 fun SectionCard(
@@ -716,6 +717,11 @@ fun TransactionItem(
                 text = transaction.occurredAtMillis.asFullDate(),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = transaction.occurredAtMillis.asTime(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
             )
             if (transaction.status == TransactionStatus.REVIEW) {
                 Surface(

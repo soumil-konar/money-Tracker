@@ -28,6 +28,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Visibility
@@ -44,6 +45,8 @@ import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
@@ -82,16 +85,21 @@ import androidx.compose.material.icons.outlined.AccountBalance
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.Icon
 import androidx.compose.ui.graphics.Color
 import com.moneytracker.app.ui.asCurrency
 import com.moneytracker.app.ui.asDateTime
 import com.moneytracker.app.ui.asFullDate
+import com.moneytracker.app.ui.asTime
 import com.moneytracker.app.ui.haptics.LocalAppHaptics
+import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.Month
 import java.time.YearMonth
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.TextStyle
 import java.util.Locale
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -168,18 +176,38 @@ fun AddTransactionDialog(
         mutableStateOf(initialDraft?.occurredAtMillis ?: System.currentTimeMillis())
     }
     var showDatePicker by remember { mutableStateOf(false) }
+    var showTimePicker by remember { mutableStateOf(false) }
     var accountExpanded by remember { mutableStateOf(false) }
     var categoryExpanded by remember { mutableStateOf(false) }
     val selectedAccount = accounts.firstOrNull { it.id == selectedAccountId } ?: accounts.firstOrNull()
 
     if (showDatePicker) {
-        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = occurredAtMillis)
+        val initialPickerMillis = remember(occurredAtMillis) {
+            Instant.ofEpochMilli(occurredAtMillis)
+                .atZone(ZoneId.systemDefault())
+                .toLocalDate()
+                .atStartOfDay(ZoneOffset.UTC)
+                .toInstant()
+                .toEpochMilli()
+        }
+        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = initialPickerMillis)
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
             confirmButton = {
                 TextButton(onClick = {
                     haptics.click()
-                    datePickerState.selectedDateMillis?.let { occurredAtMillis = it }
+                    datePickerState.selectedDateMillis?.let { utcMidnightMillis ->
+                        val selectedDate = Instant.ofEpochMilli(utcMidnightMillis)
+                            .atZone(ZoneOffset.UTC)
+                            .toLocalDate()
+                        val currentTime = Instant.ofEpochMilli(occurredAtMillis)
+                            .atZone(ZoneId.systemDefault())
+                            .toLocalTime()
+                        occurredAtMillis = selectedDate.atTime(currentTime)
+                            .atZone(ZoneId.systemDefault())
+                            .toInstant()
+                            .toEpochMilli()
+                    }
                     showDatePicker = false
                 }) {
                     Text("OK")
@@ -196,6 +224,52 @@ fun AddTransactionDialog(
         ) {
             DatePicker(state = datePickerState)
         }
+    }
+
+    if (showTimePicker) {
+        val initialZdt = remember(occurredAtMillis) {
+            Instant.ofEpochMilli(occurredAtMillis).atZone(ZoneId.systemDefault())
+        }
+        val timePickerState = rememberTimePickerState(
+            initialHour = initialZdt.hour,
+            initialMinute = initialZdt.minute,
+            is24Hour = false,
+        )
+        AlertDialog(
+            onDismissRequest = { showTimePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    haptics.click()
+                    val currentDate = Instant.ofEpochMilli(occurredAtMillis)
+                        .atZone(ZoneId.systemDefault())
+                        .toLocalDate()
+                    val newTime = LocalTime.of(timePickerState.hour, timePickerState.minute)
+                    occurredAtMillis = currentDate.atTime(newTime)
+                        .atZone(ZoneId.systemDefault())
+                        .toInstant()
+                        .toEpochMilli()
+                    showTimePicker = false
+                }) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    haptics.click()
+                    showTimePicker = false
+                }) {
+                    Text("Cancel")
+                }
+            },
+            text = {
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    TimePicker(state = timePickerState)
+                }
+            },
+        )
     }
 
     Surface(
@@ -353,30 +427,30 @@ fun AddTransactionDialog(
                     )
                 }
 
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    onClick = {
-                        haptics.click()
-                        showDatePicker = true
-                    },
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 11.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+                        modifier = Modifier.weight(1.15f),
+                        onClick = {
+                            haptics.click()
+                            showDatePicker = true
+                        },
                     ) {
                         Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 11.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(34.dp)
+                                    .size(32.dp)
                                     .clip(CircleShape)
                                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
                                 contentAlignment = Alignment.Center,
@@ -385,12 +459,12 @@ fun AddTransactionDialog(
                                     imageVector = Icons.Outlined.CalendarMonth,
                                     contentDescription = "Select transaction date",
                                     tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(18.dp),
+                                    modifier = Modifier.size(16.dp),
                                 )
                             }
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "Transaction date",
+                                    text = "Date",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -398,19 +472,58 @@ fun AddTransactionDialog(
                                     text = occurredAtMillis.asFullDate(),
                                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
                                     color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
                             }
                         }
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+                        modifier = Modifier.weight(0.85f),
+                        onClick = {
+                            haptics.click()
+                            showTimePicker = true
+                        },
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            Text(
-                                text = "Change",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Schedule,
+                                    contentDescription = "Select transaction time",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Time",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = occurredAtMillis.asTime(),
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                         }
                     }
                 }

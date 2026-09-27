@@ -14,6 +14,7 @@ private val compactDateFormatter = DateTimeFormatter.ofPattern("dd MMM")
 private val detailedDateFormatter = DateTimeFormatter.ofPattern("dd MMM yyyy")
 private val monthYearFormatter = DateTimeFormatter.ofPattern("MMMM yyyy")
 private val dateTimeFormatter = DateTimeFormatter.ofPattern("dd MMM, hh:mm a")
+private val timeFormatter = DateTimeFormatter.ofPattern("hh:mm a")
 
 fun Double.asCurrency(): String = inrFormatter.format(this)
 
@@ -30,6 +31,11 @@ fun Long.asFullDate(): String =
         .atZone(ZoneId.systemDefault())
         .toLocalDate()
         .format(detailedDateFormatter)
+
+fun Long.asTime(): String =
+    Instant.ofEpochMilli(this)
+        .atZone(ZoneId.systemDefault())
+        .format(timeFormatter)
 
 fun Long.asMonthYear(): String =
     Instant.ofEpochMilli(this)

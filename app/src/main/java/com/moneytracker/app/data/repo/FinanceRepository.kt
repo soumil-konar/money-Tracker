@@ -369,6 +369,7 @@ class FinanceRepository(
             existing.copy(
                 amount = draft.amount,
                 direction = draft.direction,
+                occurredAtMillis = draft.occurredAtMillis,
                 merchant = draft.merchant.trim(),
                 category = draft.category,
                 accountId = draft.accountId,

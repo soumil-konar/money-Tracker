@@ -75,7 +75,7 @@ interface TransactionDao {
                a.name AS accountName, a.kind AS accountKind
         FROM transactions t
         LEFT JOIN accounts a ON t.accountId = a.id
-        ORDER BY t.occurredAtMillis DESC
+        ORDER BY t.occurredAtMillis DESC, t.id DESC
         """,
     )
     fun observeTransactions(): Flow<List<TransactionRecord>>
@@ -88,7 +88,7 @@ interface TransactionDao {
         FROM transactions t
         LEFT JOIN accounts a ON t.accountId = a.id
         WHERE t.status = 'POSTED'
-        ORDER BY t.occurredAtMillis DESC
+        ORDER BY t.occurredAtMillis DESC, t.id DESC
         """,
     )
     fun observePostedTransactions(): Flow<List<TransactionRecord>>
