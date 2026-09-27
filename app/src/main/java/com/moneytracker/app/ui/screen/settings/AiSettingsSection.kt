@@ -1,6 +1,10 @@
 package com.moneytracker.app.ui.screen.settings
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -24,6 +28,7 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Memory
 import androidx.compose.material.icons.outlined.Security
@@ -37,6 +42,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -71,7 +77,7 @@ fun AiSettingsSection(
 ) {
     val haptics = LocalAppHaptics.current
     var keyInput by rememberSaveable(aiApiKey) { mutableStateOf(aiApiKey) }
-    var isGuideExpanded by rememberSaveable { mutableStateOf(aiApiKey.isBlank()) }
+    var isGuideExpanded by rememberSaveable { mutableStateOf(false) }
 
     SectionCard(
         title = "AI Intelligence & Engine",
@@ -198,11 +204,6 @@ fun AiSettingsSection(
             }
 
             if (engineMode != AiEngineMode.ON_DEVICE_ONLY) {
-                AiStudioKeyGuideCard(
-                    isExpanded = isGuideExpanded,
-                    onToggleExpand = { isGuideExpanded = !isGuideExpanded },
-                )
-
                 OutlinedTextField(
                     value = keyInput,
                     onValueChange = { keyInput = it },
@@ -213,6 +214,11 @@ fun AiSettingsSection(
                     },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
+                )
+
+                AiStudioKeyGuideCard(
+                    isExpanded = isGuideExpanded,
+                    onToggleExpand = { isGuideExpanded = !isGuideExpanded },
                 )
 
                 Row(
@@ -332,12 +338,12 @@ fun AiStudioKeyGuideCard(
     val haptics = LocalAppHaptics.current
 
     Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
         modifier = modifier.fillMaxWidth(),
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
+        Column(modifier = Modifier.padding(12.dp)) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -346,171 +352,97 @@ fun AiStudioKeyGuideCard(
                         onToggleExpand()
                     },
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Outlined.HelpOutline,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(22.dp),
-                )
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text(
-                            text = "How to get a free AI Studio Key",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.2f),
-                        ) {
-                            Text(
-                                text = "Free • 1 Min",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.tertiary,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                            )
-                        }
-                    }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Info,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp),
+                    )
                     Text(
-                        text = if (isExpanded) "Tap to collapse step-by-step setup guide" else "Tap to view simple step-by-step guide with direct link",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        text = "How to generate a free AI Studio Key",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
                     )
                 }
                 Icon(
                     imageVector = if (isExpanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                    contentDescription = if (isExpanded) "Collapse guide" else "Expand guide",
+                    contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
-            AnimatedVisibility(visible = isExpanded) {
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut(),
+            ) {
                 Column(
-                    modifier = Modifier.padding(top = 14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.padding(top = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Text(
-                        text = "Google AI Studio provides a free API key with generous daily quotas (Gemini Flash Lite offers 500 requests/day free with no credit card required). Follow these quick steps:",
+                        text = "1. Open aistudio.google.com/app/apikey on your browser.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-
-                    GuideStepItem(
-                        stepNumber = "1",
-                        title = "Open Google AI Studio",
-                        description = "Tap the button below or visit aistudio.google.com/app/apikey in your browser.",
+                    Text(
+                        text = "2. Sign in with your Google account.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = "3. Tap 'Create API key' (or 'Get API key').",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = "4. Select or create a project to generate your free key.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = "5. Copy the generated key (starts with AIzaSy...), paste it above, and tap 'Save Key'.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = "• Gemini Flash Lite provides 500 requests per day for free with no credit card required.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.tertiary,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(top = 2.dp),
                     )
 
-                    GuideStepItem(
-                        stepNumber = "2",
-                        title = "Sign in with Google",
-                        description = "Sign in using any Google account.",
-                    )
-
-                    GuideStepItem(
-                        stepNumber = "3",
-                        title = "Click \"Create API key\"",
-                        description = "Click the blue \"Create API key\" (or \"Get API key\") button at the top.",
-                    )
-
-                    GuideStepItem(
-                        stepNumber = "4",
-                        title = "Choose or create a project",
-                        description = "Select an existing project or click \"Create API key in new project\".",
-                    )
-
-                    GuideStepItem(
-                        stepNumber = "5",
-                        title = "Copy & Paste your key",
-                        description = "Copy your API key (starts with AIzaSy...), paste it into the field below, and tap \"Save Key\".",
-                    )
-
-                    GuideStepItem(
-                        stepNumber = "6",
-                        title = "Test Connection",
-                        description = "Tap \"Test Connection\" to verify that your key is active and connected.",
-                    )
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Button(
-                        onClick = {
-                            haptics.click()
-                            uriHandler.openUri("https://aistudio.google.com/app/apikey")
-                        },
-                        modifier = Modifier.fillMaxWidth(),
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.End,
                     ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(modifier = Modifier.size(8.dp))
-                        Text("Open Google AI Studio (Get Free Key)")
-                    }
-
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                    ) {
-                        Text(
-                            text = "🔒 Privacy: Your key is stored securely in private Android app storage on your device and is only used to directly query Google's official Gemini API.",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(10.dp),
-                        )
+                        TextButton(
+                            onClick = {
+                                haptics.click()
+                                uriHandler.openUri("https://aistudio.google.com/app/apikey")
+                            },
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(modifier = Modifier.size(4.dp))
+                            Text("Open Google AI Studio")
+                        }
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun GuideStepItem(
-    stepNumber: String,
-    title: String,
-    description: String,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.Top,
-    ) {
-        Surface(
-            shape = RoundedCornerShape(8.dp),
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(24.dp),
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text(
-                    text = stepNumber,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimary,
-                )
-            }
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }
