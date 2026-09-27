@@ -6,6 +6,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,6 +47,12 @@ class MainActivity : FragmentActivity() {
             val biometricTimeout by container.securityPreferences.biometricTimeout.collectAsStateWithLifecycle()
             var isAppLocked by rememberSaveable { mutableStateOf(container.securityPreferences.isBiometricEnabled.value) }
             var lastStopTimestamp by rememberSaveable { mutableStateOf(0L) }
+
+            LaunchedEffect(Unit) {
+                mainViewModel.reviewPromptEvents.collect {
+                    container.reviewPromptManager.launchReviewIfEligible(this@MainActivity)
+                }
+            }
 
             fun triggerUnlock() {
                 BiometricAuthHelper.authenticate(
@@ -107,10 +114,12 @@ class MainActivity : FragmentActivity() {
 
             val themeMode by container.themePreferences.themeMode.collectAsStateWithLifecycle()
             val themeAccent by container.themePreferences.themeAccent.collectAsStateWithLifecycle()
+            val isDynamicColorEnabled by container.themePreferences.isDynamicColorEnabled.collectAsStateWithLifecycle()
 
             MoneyTrackerTheme(
                 themeMode = themeMode,
                 themeAccent = themeAccent,
+                isDynamicColorEnabled = isDynamicColorEnabled,
             ) {
                 CompositionLocalProvider(LocalAppHaptics provides container.hapticManager) {
                     if (isAppLocked) {
