@@ -45,7 +45,7 @@ An enterprise-grade, privacy-first automated personal finance management platfor
                                                    │
         ┌──────────────────────────────────────────┴──────────────────────────────────────────┐
         ▼                                                                                     ▼
- [ Room Database v8 ]                                                             [ Vector Embedding Store ]
+ [ Room Database v10 ]                                                            [ Vector Embedding Store ]
  • Accounts (balance, proof snippets, verified status)                            • Gemini Embedding-2
  • Transactions (availableBalance, budgetInclusion, note)                         • 256-dim Vector Store
  • FTS4 Virtual Table (Automated Triggers)                                         • Local Cosine Similarity
@@ -144,7 +144,7 @@ An enterprise-grade, privacy-first automated personal finance management platfor
 |---|---|---|
 | **Language** | Kotlin | 2.0.21 |
 | **UI Framework** | Jetpack Compose (Material 3 Expressive) | BOM 2024.10.01 |
-| **Local Database** | Room with SQLite FTS4 & Triggers | 2.6.1 (Schema v8) |
+| **Local Database** | Room with SQLite FTS4 & Triggers | 2.6.1 (Schema v10) |
 | **Security & Auth** | AndroidX Biometric & AES-256-GCM / PBKDF2 | 1.2.0-alpha05 |
 | **Home Screen Widgets** | Android AppWidgetProvider with RemoteViews | API 26 - 35 |
 | **Concurrency** | Kotlin Coroutines & StateFlow | 1.8.1 |
@@ -223,6 +223,10 @@ The database is powered by Room with automated schema versioning:
   - Updates `transactions` table: adds `availableBalance REAL`.
 - **Migration 7 to 8:**
   - Updates `accounts` table: adds `balanceProofSnippet TEXT`, `balanceProofSource TEXT`, and `isBalanceVerified INTEGER NOT NULL DEFAULT 0` for forensic balance auditability.
+- **Migration 8 to 9:**
+  - Adds composite Room indices (`accountId` + `occurredAtMillis` and `direction` + `countsTowardBudget`) to maintain sub-4ms query latencies at scale.
+- **Migration 9 to 10:**
+  - Updates `scheduled_transactions` table: adds `isPaid`, `paidAtMillis`, `matchedTransactionId`, and `requiresConfirmation` columns for automated bill tracking and settlement reconciliation.
 
 ---
 
