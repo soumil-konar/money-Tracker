@@ -15,6 +15,7 @@ import com.moneytracker.app.data.db.SubscriptionRecord
 import com.moneytracker.app.data.db.TransactionRecord
 import com.moneytracker.app.data.model.AccountDraft
 import com.moneytracker.app.data.model.AccountKind
+import com.moneytracker.app.data.model.CategoryBudgetProgress
 import com.moneytracker.app.data.model.DashboardState
 import com.moneytracker.app.data.model.MonthBudgetSummary
 import com.moneytracker.app.data.model.ScheduledTransactionKind
@@ -32,6 +33,10 @@ import com.moneytracker.app.data.model.TransactionFilter
 import com.moneytracker.app.data.model.TransactionStatus
 import com.moneytracker.app.data.repo.FinanceRepository
 import com.moneytracker.app.data.db.canTransferToCash
+import androidx.lifecycle.viewModelScope
+import androidx.paging.cachedIn
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -49,6 +54,8 @@ class MainViewModel(
 ) : ViewModel() {
 
     private val messageEvents = MutableSharedFlow<String>()
+    private val _reviewPromptEvents = MutableSharedFlow<Unit>()
+    val reviewPromptEvents = _reviewPromptEvents.asSharedFlow()
     private val selectedFilter = MutableStateFlow(TransactionFilter.ALL)
     private val currentSearchQuery = MutableStateFlow("")
     private val _isAiAnalyzing = MutableStateFlow(false)
@@ -58,6 +65,7 @@ class MainViewModel(
     val filter: StateFlow<TransactionFilter> = selectedFilter
     val searchQuery: StateFlow<String> = currentSearchQuery
     val isAiAnalyzing: StateFlow<Boolean> = _isAiAnalyzing
+    val pagedTransactions = repository.pagedTransactions.cachedIn(viewModelScope)
     val aiTestStatus: StateFlow<String?> = _aiTestStatus
     private val _emailTestStatus = MutableStateFlow<String?>(null)
     val emailTestStatus: StateFlow<String?> = _emailTestStatus
@@ -158,6 +166,39 @@ class MainViewModel(
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = emptyList(),
     )
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val categoryBudgetProgress: StateFlow<List<CategoryBudgetProgress>> = selectedYearMonth.flatMapLatest { yearMonth ->
+        repository.observeCategoryBudgetProgress(yearMonth)
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList(),
+    )
+
+    fun setCategoryBudget(category: TransactionCategory, limit: Double) {
+        viewModelScope.launch {
+            runCatching {
+                repository.setCategoryBudget(selectedYearMonth.value, category, limit)
+            }.onSuccess {
+                emitMessage("${category.label} budget limit set to ₹$limit")
+            }.onFailure {
+                emitMessage("Could not set category budget.")
+            }
+        }
+    }
+
+    fun removeCategoryBudget(category: TransactionCategory) {
+        viewModelScope.launch {
+            runCatching {
+                repository.removeCategoryBudget(selectedYearMonth.value, category)
+            }.onSuccess {
+                emitMessage("${category.label} budget limit removed")
+            }.onFailure {
+                emitMessage("Could not remove category budget.")
+            }
+        }
+    }
 
     val isInitialSetupComplete: StateFlow<Boolean> = repository.isInitialSetupComplete.stateIn(
         scope = viewModelScope,
@@ -298,6 +339,7 @@ class MainViewModel(
 
     val themeMode: StateFlow<com.moneytracker.app.data.local.ThemeMode> = repository.themePreferences.themeMode
     val themeAccent: StateFlow<com.moneytracker.app.data.local.ThemeAccent> = repository.themePreferences.themeAccent
+    val isDynamicColorEnabled: StateFlow<Boolean> = repository.themePreferences.isDynamicColorEnabled
 
     fun setThemeMode(mode: com.moneytracker.app.data.local.ThemeMode) {
         repository.themePreferences.setThemeMode(mode)
@@ -309,6 +351,15 @@ class MainViewModel(
             emitMessage("Material 3 Expressive theming activated.")
         } else {
             emitMessage("${accent.label} accent applied (Material 3 Expressive disabled).")
+        }
+    }
+
+    fun setDynamicColorEnabled(enabled: Boolean) {
+        repository.themePreferences.setDynamicColorEnabled(enabled)
+        if (enabled) {
+            emitMessage("Dynamic wallpaper colors activated (Material You).")
+        } else {
+            emitMessage("Curated theme colors restored.")
         }
     }
 
@@ -526,12 +577,19 @@ class MainViewModel(
         }
     }
 
+    fun triggerReviewPrompt() {
+        viewModelScope.launch {
+            _reviewPromptEvents.emit(Unit)
+        }
+    }
+
     fun trueUpAccountBalance(accountId: Long, newBalance: Double, reason: String? = null) {
         viewModelScope.launch {
             runCatching {
                 repository.trueUpAccountBalance(accountId, newBalance, reason)
             }.onSuccess {
                 emitMessage("Account balance adjusted and reconciled.")
+                triggerReviewPrompt()
             }.onFailure {
                 emitMessage("Could not adjust account balance.")
             }
@@ -548,6 +606,7 @@ class MainViewModel(
                 } ?: error("Unable to open output stream.")
             }.onSuccess {
                 emitMessage("Encrypted backup exported successfully.")
+                triggerReviewPrompt()
             }.onFailure { e ->
                 emitMessage("Export failed: ${e.message ?: "Unknown error"}")
             }

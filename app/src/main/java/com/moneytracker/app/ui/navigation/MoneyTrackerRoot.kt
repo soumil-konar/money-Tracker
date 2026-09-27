@@ -170,6 +170,7 @@ fun MoneyTrackerRoot(
     val excludedKeywords by viewModel.excludedKeywords.collectAsStateWithLifecycle()
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
     val themeAccent by viewModel.themeAccent.collectAsStateWithLifecycle()
+    val isDynamicColorEnabled by viewModel.isDynamicColorEnabled.collectAsStateWithLifecycle()
     val userName by viewModel.userName.collectAsStateWithLifecycle()
     val hasPromptedForName by viewModel.hasPromptedForName.collectAsStateWithLifecycle()
     val categories by viewModel.categories.collectAsStateWithLifecycle()
@@ -512,8 +513,10 @@ fun MoneyTrackerRoot(
                                     onSyncRecentEmails = viewModel::syncRecentEmails,
                                     themeMode = themeMode,
                                     themeAccent = themeAccent,
+                                    isDynamicColorEnabled = isDynamicColorEnabled,
                                     onSelectThemeMode = viewModel::setThemeMode,
                                     onSelectThemeAccent = viewModel::setThemeAccent,
+                                    onToggleDynamicColor = viewModel::setDynamicColorEnabled,
                                     onRequestExportBackup = { showExportPassphraseDialog = true },
                                     onRequestRestoreBackup = { openBackupLauncher.launch(arrayOf("*/*")) },
                                 )

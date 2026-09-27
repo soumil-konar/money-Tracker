@@ -1,10 +1,12 @@
 package com.moneytracker.app.data.db
 
+import androidx.paging.PagingSource
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
+import com.moneytracker.app.data.model.TransactionCategory
 import com.moneytracker.app.data.model.TransactionDirection
 import kotlinx.coroutines.flow.Flow
 
@@ -79,6 +81,18 @@ interface TransactionDao {
         """,
     )
     fun observeTransactions(): Flow<List<TransactionRecord>>
+
+    @Query(
+        """
+        SELECT t.id, t.amount, t.direction, t.occurredAtMillis, t.merchant, t.category, t.accountId, t.sourceSender,
+               t.smsBody, t.confidence, t.status, t.note, t.countsTowardBudget, t.availableBalance,
+               a.name AS accountName, a.kind AS accountKind
+        FROM transactions t
+        LEFT JOIN accounts a ON t.accountId = a.id
+        ORDER BY t.occurredAtMillis DESC, t.id DESC
+        """,
+    )
+    fun pagedTransactions(): PagingSource<Int, TransactionRecord>
 
     @Query(
         """
@@ -174,7 +188,85 @@ interface TransactionDao {
         """,
     )
     suspend fun getRecentPostedTransactions(limit: Int = 50): List<TransactionRecord>
+
+    @Query(
+        """
+        SELECT COALESCE(SUM(amount), 0.0)
+        FROM transactions
+        WHERE status = 'POSTED'
+          AND direction = 'DEBIT'
+          AND countsTowardBudget = 1
+          AND category != 'TRANSFER'
+          AND occurredAtMillis BETWEEN :startMillis AND :endMillis
+        """,
+    )
+    fun observeMonthlySpent(startMillis: Long, endMillis: Long): Flow<Double>
+
+    @Query(
+        """
+        SELECT COALESCE(SUM(amount), 0.0)
+        FROM transactions
+        WHERE status = 'POSTED'
+          AND direction = 'CREDIT'
+          AND countsTowardBudget = 1
+          AND category != 'TRANSFER'
+          AND occurredAtMillis BETWEEN :startMillis AND :endMillis
+        """,
+    )
+    fun observeMonthlyIncome(startMillis: Long, endMillis: Long): Flow<Double>
+
+    @Query(
+        """
+        SELECT category, COALESCE(SUM(amount), 0.0) AS totalAmount
+        FROM transactions
+        WHERE status = 'POSTED'
+          AND direction = 'DEBIT'
+          AND countsTowardBudget = 1
+          AND category != 'TRANSFER'
+          AND occurredAtMillis BETWEEN :startMillis AND :endMillis
+        GROUP BY category
+        ORDER BY totalAmount DESC
+        """,
+    )
+    fun observeCategorySpendBreakdown(startMillis: Long, endMillis: Long): Flow<List<CategorySpendAggregate>>
+
+    @Query(
+        """
+        SELECT t.id, t.amount, t.direction, t.occurredAtMillis, t.merchant, t.category, t.accountId, t.sourceSender,
+               t.smsBody, t.confidence, t.status, t.note, t.countsTowardBudget, t.availableBalance,
+               a.name AS accountName, a.kind AS accountKind
+        FROM transactions t
+        LEFT JOIN accounts a ON t.accountId = a.id
+        WHERE t.status = 'POSTED'
+        ORDER BY t.occurredAtMillis DESC, t.id DESC
+        LIMIT :limit
+        """,
+    )
+    fun observeRecentPostedTransactions(limit: Int): Flow<List<TransactionRecord>>
+
+    @Query("SELECT COUNT(*) FROM transactions WHERE status = 'REVIEW'")
+    fun observeReviewCount(): Flow<Int>
+
+    @Query(
+        """
+        SELECT COALESCE(SUM(t.amount), 0.0)
+        FROM transactions t
+        LEFT JOIN accounts a ON t.accountId = a.id
+        WHERE t.status = 'POSTED'
+          AND t.direction = 'DEBIT'
+          AND t.countsTowardBudget = 1
+          AND t.category != 'TRANSFER'
+          AND a.kind = 'CARD'
+          AND t.occurredAtMillis BETWEEN :startMillis AND :endMillis
+        """,
+    )
+    fun observeCardSpend(startMillis: Long, endMillis: Long): Flow<Double>
 }
+
+data class CategorySpendAggregate(
+    val category: String,
+    val totalAmount: Double,
+)
 
 @Dao
 interface TransactionEmbeddingDao {
@@ -213,8 +305,20 @@ interface BudgetDao {
     @Query("SELECT * FROM budgets WHERE category IS NULL ORDER BY monthKey DESC")
     fun observeOverallBudgets(): Flow<List<BudgetEntity>>
 
+    @Query("SELECT * FROM budgets WHERE monthKey = :monthKey AND category IS NOT NULL")
+    fun observeCategoryBudgets(monthKey: String): Flow<List<BudgetEntity>>
+
+    @Query("SELECT * FROM budgets WHERE monthKey = :monthKey AND category = :category LIMIT 1")
+    suspend fun getCategoryBudget(monthKey: String, category: TransactionCategory): BudgetEntity?
+
+    @Query("SELECT * FROM budgets WHERE monthKey = :monthKey AND category IS NOT NULL")
+    suspend fun getCategoryBudgets(monthKey: String): List<BudgetEntity>
+
     @Query("DELETE FROM budgets WHERE monthKey = :monthKey AND category IS NULL")
     suspend fun deleteOverallBudget(monthKey: String)
+
+    @Query("DELETE FROM budgets WHERE monthKey = :monthKey AND category = :category")
+    suspend fun deleteCategoryBudget(monthKey: String, category: TransactionCategory)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(budget: BudgetEntity)

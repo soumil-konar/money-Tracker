@@ -16,4 +16,6 @@ dependencyResolutionManagement {
 
 rootProject.name = "MoneyTracker"
 include(":app")
-
+include(":core:model")
+include(":core:parser")
+include(":core:database")

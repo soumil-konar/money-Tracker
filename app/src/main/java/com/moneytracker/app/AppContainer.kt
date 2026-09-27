@@ -12,6 +12,7 @@ import com.moneytracker.app.data.local.SetupPreferences
 import com.moneytracker.app.data.repo.FinanceRepository
 import com.moneytracker.app.parser.SmsParser
 import com.moneytracker.app.ui.haptics.HapticFeedbackManager
+import com.moneytracker.app.ui.review.ReviewPromptManager
 
 class AppContainer(context: Context) {
     private val database by lazy { FinanceDatabase.create(context) }
@@ -30,6 +31,7 @@ class AppContainer(context: Context) {
     val hapticManager by lazy { HapticFeedbackManager(context, hapticPreferences) }
     val geminiApiClient by lazy { GeminiApiClient() }
     val onDeviceAiEngine by lazy { OnDeviceAiEngine(context) }
+    val reviewPromptManager by lazy { ReviewPromptManager(context) }
 
     val ragEngine by lazy {
         FinanceRagEngine(

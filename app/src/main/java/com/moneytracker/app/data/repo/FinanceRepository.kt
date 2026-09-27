@@ -18,6 +18,7 @@ import com.moneytracker.app.data.local.SetupPreferences
 import com.moneytracker.app.data.model.AccountDraft
 import com.moneytracker.app.data.model.AccountKind
 import com.moneytracker.app.data.model.CardType
+import com.moneytracker.app.data.model.CategoryBudgetProgress
 import com.moneytracker.app.data.model.CategorySlice
 import com.moneytracker.app.data.model.DashboardState
 import com.moneytracker.app.data.model.ImportReport
@@ -44,11 +45,14 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
 import kotlin.math.abs
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import com.moneytracker.app.data.db.CategorySpendAggregate
 import com.moneytracker.app.ai.AiParsedTransaction
 import com.moneytracker.app.ai.FinanceRagEngine
 import com.moneytracker.app.ai.GeminiApiClient
@@ -70,6 +74,11 @@ import com.moneytracker.app.data.model.AssistantMessage
 import com.moneytracker.app.data.model.AssistantSender
 import com.moneytracker.app.ui.greeting.TimeOfDayGreetingProvider
 import kotlinx.coroutines.flow.asStateFlow
+
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
+import java.time.LocalTime
 
 class FinanceRepository(
     private val accountDao: AccountDao,
@@ -118,6 +127,15 @@ class FinanceRepository(
     val isInitialSetupComplete: Flow<Boolean> = setupPreferences.isInitialSetupComplete
     val scheduledTransactions: Flow<List<ScheduledTransactionRecord>> = scheduledTransactionDao.observeScheduledTransactions()
     val transactions: Flow<List<TransactionRecord>> = transactionDao.observeTransactions()
+    val pagedTransactions: Flow<PagingData<TransactionRecord>> = Pager(
+        config = PagingConfig(
+            pageSize = 30,
+            prefetchDistance = 10,
+            enablePlaceholders = false,
+        ),
+    ) {
+        transactionDao.pagedTransactions()
+    }.flow
     val postedTransactions: Flow<List<TransactionRecord>> = transactionDao.observePostedTransactions()
     val subscriptions: Flow<List<SubscriptionRecord>> = subscriptionDao.observeSubscriptions()
     val currentBudget: Flow<BudgetEntity?> = budgetDao.observeOverallBudget(currentMonthKey())
@@ -142,42 +160,59 @@ class FinanceRepository(
         buildBudgetHistory(posted, budgets)
     }
 
-    val dashboard: Flow<DashboardState> = combine(
-        postedTransactions,
-        transactions,
-        allBudgets,
-        subscriptions,
-        accounts,
-        _spendingInsights,
-        _isAiLoading,
-        _selectedYearMonth,
-    ) { args: Array<Any?> ->
-        @Suppress("UNCHECKED_CAST")
-        val posted = args[0] as List<TransactionRecord>
-        @Suppress("UNCHECKED_CAST")
-        val all = args[1] as List<TransactionRecord>
-        @Suppress("UNCHECKED_CAST")
-        val budgetsList = args[2] as List<BudgetEntity>
-        @Suppress("UNCHECKED_CAST")
-        val subs = args[3] as List<SubscriptionRecord>
-        @Suppress("UNCHECKED_CAST")
-        val accountsList = args[4] as List<AccountEntity>
-        @Suppress("UNCHECKED_CAST")
-        val insights = args[5] as List<String>
-        val isLoading = args[6] as Boolean
-        val targetMonth = args[7] as YearMonth
-        val budgetEntity = budgetsList.firstOrNull { it.monthKey == targetMonth.toString() }
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val dashboard: Flow<DashboardState> = _selectedYearMonth.flatMapLatest { targetMonth ->
+        val startLocalDate = targetMonth.atDay(1)
+        val endLocalDate = targetMonth.atEndOfMonth()
+        val startMillis = startLocalDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val endMillis = endLocalDate.atTime(LocalTime.MAX).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val monthKey = targetMonth.toString()
 
-        buildDashboardState(
-            postedTransactions = posted,
-            allTransactions = all,
-            budget = budgetEntity?.amountLimit,
-            subscriptions = subs,
-            accountsList = accountsList,
-            insights = insights,
-            isAiLoading = isLoading,
-            targetMonth = targetMonth,
-        )
+        combine(
+            transactionDao.observeMonthlySpent(startMillis, endMillis),
+            transactionDao.observeMonthlyIncome(startMillis, endMillis),
+            transactionDao.observeCategorySpendBreakdown(startMillis, endMillis),
+            transactionDao.observeRecentPostedTransactions(6),
+            transactionDao.observeReviewCount(),
+            transactionDao.observeCardSpend(startMillis, endMillis),
+            budgetDao.observeOverallBudget(monthKey),
+            subscriptionDao.observeSubscriptions(),
+            accountDao.observeAccounts(),
+            _spendingInsights,
+            _isAiLoading,
+        ) { args: Array<Any?> ->
+            val monthSpent = args[0] as Double
+            val monthIncome = args[1] as Double
+            @Suppress("UNCHECKED_CAST")
+            val categoryAggregates = args[2] as List<CategorySpendAggregate>
+            @Suppress("UNCHECKED_CAST")
+            val recentTxs = args[3] as List<TransactionRecord>
+            val reviewCount = args[4] as Int
+            val cardSpend = args[5] as Double
+            val budgetEntity = args[6] as BudgetEntity?
+            @Suppress("UNCHECKED_CAST")
+            val subs = args[7] as List<SubscriptionRecord>
+            @Suppress("UNCHECKED_CAST")
+            val accountsList = args[8] as List<AccountEntity>
+            @Suppress("UNCHECKED_CAST")
+            val insights = args[9] as List<String>
+            val isLoading = args[10] as Boolean
+
+            buildDashboardStateFromAggregates(
+                monthSpent = monthSpent,
+                monthIncome = monthIncome,
+                categoryAggregates = categoryAggregates,
+                recentTransactions = recentTxs,
+                reviewCount = reviewCount,
+                cardSpend = cardSpend,
+                budget = budgetEntity?.amountLimit,
+                subscriptions = subs,
+                accountsList = accountsList,
+                insights = insights,
+                isAiLoading = isLoading,
+                targetMonth = targetMonth,
+            )
+        }
     }
 
     suspend fun bootstrap() {
@@ -343,6 +378,56 @@ class FinanceRepository(
         )
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun observeCategoryBudgetProgress(yearMonth: YearMonth = _selectedYearMonth.value): Flow<List<CategoryBudgetProgress>> {
+        val startLocalDate = yearMonth.atDay(1)
+        val endLocalDate = yearMonth.atEndOfMonth()
+        val startMillis = startLocalDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val endMillis = endLocalDate.atTime(LocalTime.MAX).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val monthKey = yearMonth.toString()
+
+        return combine(
+            budgetDao.observeCategoryBudgets(monthKey),
+            transactionDao.observeCategorySpendBreakdown(startMillis, endMillis),
+        ) { catBudgets, spendAggs ->
+            val spendMap = spendAggs.associate { it.category.uppercase() to it.totalAmount }
+            catBudgets.mapNotNull { budgetEntity ->
+                val cat = budgetEntity.category ?: return@mapNotNull null
+                val spent = spendMap[cat.name.uppercase()] ?: 0.0
+                val limit = budgetEntity.amountLimit
+                val remaining = (limit - spent).coerceAtLeast(0.0)
+                val percent = if (limit > 0.0) (spent / limit).toFloat() else 0f
+                CategoryBudgetProgress(
+                    category = cat,
+                    budgetLimit = limit,
+                    currentSpent = spent,
+                    remainingAmount = remaining,
+                    progressPercent = percent,
+                )
+            }.sortedByDescending { it.currentSpent }
+        }
+    }
+
+    suspend fun setCategoryBudget(
+        yearMonth: YearMonth = _selectedYearMonth.value,
+        category: TransactionCategory,
+        limit: Double,
+    ) {
+        val entity = BudgetEntity(
+            monthKey = yearMonth.toString(),
+            category = category,
+            amountLimit = limit,
+        )
+        budgetDao.insert(entity)
+    }
+
+    suspend fun removeCategoryBudget(
+        yearMonth: YearMonth = _selectedYearMonth.value,
+        category: TransactionCategory,
+    ) {
+        budgetDao.deleteCategoryBudget(yearMonth.toString(), category)
+    }
+
     suspend fun addManualTransaction(draft: TransactionDraft) {
         val fingerprint = hashFingerprint(
             sender = "MANUAL",
@@ -370,9 +455,10 @@ class FinanceRepository(
             countsTowardBudget = draft.countsTowardBudget,
         )
         val insertedId = transactionDao.insert(transaction)
-        if (insertedId != -1L && draft.accountId != null) {
+        val accId = draft.accountId
+        if (insertedId != -1L && accId != null) {
             val delta = if (draft.direction == TransactionDirection.CREDIT) draft.amount else -draft.amount
-            accountDao.adjustBalance(draft.accountId, delta)
+            accountDao.adjustBalance(accId, delta)
         }
     }
 
@@ -1099,9 +1185,13 @@ class FinanceRepository(
         ).any { text.contains(it) }
     }
 
-    private fun buildDashboardState(
-        postedTransactions: List<TransactionRecord>,
-        allTransactions: List<TransactionRecord>,
+    private fun buildDashboardStateFromAggregates(
+        monthSpent: Double,
+        monthIncome: Double,
+        categoryAggregates: List<CategorySpendAggregate>,
+        recentTransactions: List<TransactionRecord>,
+        reviewCount: Int,
+        cardSpend: Double,
         budget: Double?,
         subscriptions: List<SubscriptionRecord>,
         accountsList: List<AccountEntity> = emptyList(),
@@ -1110,32 +1200,7 @@ class FinanceRepository(
         targetMonth: YearMonth = YearMonth.now(),
     ): DashboardState {
         val currentMonth = targetMonth
-        val currentMonthTransactions = postedTransactions.filter {
-            YearMonth.from(it.toLocalDate()) == currentMonth
-        }
-        val spendTransactions = currentMonthTransactions.filter {
-            it.direction == TransactionDirection.DEBIT &&
-                it.category != TransactionCategory.TRANSFER &&
-                it.countsTowardBudget &&
-                !isRepaymentOrTransfer(it)
-        }
-        val monthSpent = spendTransactions.sumOf(TransactionRecord::amount)
-
-        val incomeTransactions = currentMonthTransactions.filter {
-            it.direction == TransactionDirection.CREDIT &&
-                it.category != TransactionCategory.TRANSFER &&
-                it.countsTowardBudget &&
-                !isRepaymentOrTransfer(it)
-        }
-        val monthIncome = incomeTransactions.sumOf(TransactionRecord::amount)
-
-        val cardSpendThisMonth = spendTransactions
-            .filter { it.accountKind == AccountKind.CARD }
-            .sumOf(TransactionRecord::amount)
-        val bankSpendThisMonth = spendTransactions
-            .filter { it.accountKind != AccountKind.CARD }
-            .sumOf(TransactionRecord::amount)
-
+        val bankSpendThisMonth = (monthSpent - cardSpend).coerceAtLeast(0.0)
         val monthNetCashflow = monthIncome - monthSpent
         val now = YearMonth.now()
         val today = LocalDate.now()
@@ -1149,66 +1214,18 @@ class FinanceRepository(
         val safeDailySpend = if (budget != null && budget > 0.0 && currentMonth >= now) remainingBudget / daysRemaining else 0.0
         val budgetPercentUsed = if (budget != null && budget > 0.0) (monthSpent / budget).toFloat() else 0f
 
-        val categoryBreakdown = spendTransactions
-            .groupBy(TransactionRecord::category)
-            .map { (category, items) -> CategorySlice(category, items.sumOf(TransactionRecord::amount)) }
-            .sortedByDescending(CategorySlice::amount)
-
-        val trendPoints = if (currentMonth == now) {
-            (6 downTo 0).map { daysAgo ->
-                val date = today.minusDays(daysAgo.toLong())
-                val dayTransactions = currentMonthTransactions.filter { it.toLocalDate() == date }
-                TrendPoint(
-                    date = date,
-                    income = dayTransactions.filter {
-                        it.direction == TransactionDirection.CREDIT &&
-                            it.category != TransactionCategory.TRANSFER &&
-                            it.countsTowardBudget &&
-                            !isRepaymentOrTransfer(it)
-                    }.sumOf(TransactionRecord::amount),
-                    expense = dayTransactions
-                        .filter {
-                            it.direction == TransactionDirection.DEBIT &&
-                                it.category != TransactionCategory.TRANSFER &&
-                                it.countsTowardBudget &&
-                                !isRepaymentOrTransfer(it)
-                        }
-                        .sumOf(TransactionRecord::amount),
-                )
-            }
-        } else {
-            val sampleDays = listOf(1, 5, 10, 15, 20, 25, daysInMonth)
-            sampleDays.map { day ->
-                val date = currentMonth.atDay(day.coerceAtMost(daysInMonth))
-                val dayTransactions = currentMonthTransactions.filter { it.toLocalDate() == date }
-                TrendPoint(
-                    date = date,
-                    income = dayTransactions.filter {
-                        it.direction == TransactionDirection.CREDIT &&
-                            it.category != TransactionCategory.TRANSFER &&
-                            it.countsTowardBudget &&
-                            !isRepaymentOrTransfer(it)
-                    }.sumOf(TransactionRecord::amount),
-                    expense = dayTransactions
-                        .filter {
-                            it.direction == TransactionDirection.DEBIT &&
-                                it.category != TransactionCategory.TRANSFER &&
-                                it.countsTowardBudget &&
-                                !isRepaymentOrTransfer(it)
-                        }
-                        .sumOf(TransactionRecord::amount),
-                )
-            }
-        }
+        val categoryBreakdown = categoryAggregates.map { agg ->
+            CategorySlice(
+                category = TransactionCategory.valueOf(agg.category),
+                amount = agg.totalAmount,
+            )
+        }.sortedByDescending(CategorySlice::amount)
 
         val totalBankBalance = accountsList.filter { it.kind != AccountKind.CARD }.sumOf { it.currentBalance }
-        val monthAllTransactions = allTransactions.filter {
-            YearMonth.from(it.toLocalDate()) == currentMonth
-        }
 
-        val resolvedInsights = if (insights.isEmpty() && monthAllTransactions.isNotEmpty()) {
+        val resolvedInsights = if (insights.isEmpty() && recentTransactions.isNotEmpty()) {
             onDeviceAiEngine.generateSpendingInsightsOnDevice(
-                transactions = monthAllTransactions,
+                transactions = recentTransactions,
                 budgetLimit = budget,
                 monthSpent = monthSpent,
                 monthIncome = monthIncome,
@@ -1222,16 +1239,16 @@ class FinanceRepository(
             monthSpent = monthSpent,
             monthIncome = monthIncome,
             monthNetCashflow = monthNetCashflow,
-            cardSpendThisMonth = cardSpendThisMonth,
+            cardSpendThisMonth = cardSpend,
             bankSpendThisMonth = bankSpendThisMonth,
             safeDailySpend = safeDailySpend,
             budgetPercentUsed = budgetPercentUsed,
             budgetLimit = budget,
-            reviewCount = allTransactions.count { it.status == TransactionStatus.REVIEW },
+            reviewCount = reviewCount,
             activeSubscriptionsCount = subscriptions.count { it.state == SubscriptionState.ACTIVE },
             categoryBreakdown = categoryBreakdown,
-            trendPoints = trendPoints,
-            recentTransactions = monthAllTransactions.take(6),
+            trendPoints = emptyList(),
+            recentTransactions = recentTransactions,
             spendingInsights = resolvedInsights,
             isAiLoading = isAiLoading,
             accounts = accountsList,
@@ -1573,10 +1590,11 @@ class FinanceRepository(
                 )
                 transactionDao.update(updated)
 
-                if (targetAccountId != null && balanceProof.isVerified && balanceProof.balance != null) {
+                val proofBal = balanceProof.balance
+                if (targetAccountId != null && balanceProof.isVerified && proofBal != null) {
                     accountDao.updateVerifiedBalance(
                         accountId = targetAccountId,
-                        balance = balanceProof.balance,
+                        balance = proofBal,
                         updatedAt = resolvedOccurredAt,
                         proofSnippet = balanceProof.proofSnippet,
                         proofSource = "SMS (${sender.substringAfter("-")})",
@@ -1618,10 +1636,11 @@ class FinanceRepository(
         }
 
         if (accountId != null) {
-            if (balanceProof.isVerified && balanceProof.balance != null) {
+            val proofBal = balanceProof.balance
+            if (balanceProof.isVerified && proofBal != null) {
                 accountDao.updateVerifiedBalance(
                     accountId = accountId,
-                    balance = balanceProof.balance,
+                    balance = proofBal,
                     updatedAt = resolvedOccurredAt,
                     proofSnippet = balanceProof.proofSnippet,
                     proofSource = balanceProof.proofSource,
@@ -1724,12 +1743,14 @@ class FinanceRepository(
                 minDueDate = scheduledForMillis - toleranceMillis,
                 maxDueDate = scheduledForMillis + toleranceMillis,
             )
+            val cardDigits = parsed.cardLastFourDigits
+            val instName = parsed.institutionName
             val matchedExisting = similarReminders.firstOrNull { existing ->
                 val m1 = existing.merchant.lowercase()
                 val m2 = merchant.lowercase()
                 m1 == m2 || m1.contains(m2) || m2.contains(m1) ||
-                    (parsed.cardLastFourDigits != null && existing.smsBody?.contains(parsed.cardLastFourDigits) == true) ||
-                    (parsed.institutionName != null && existing.merchant.contains(parsed.institutionName, ignoreCase = true))
+                    (cardDigits != null && existing.smsBody?.contains(cardDigits) == true) ||
+                    (instName != null && existing.merchant.contains(instName, ignoreCase = true))
             }
             if (matchedExisting != null) {
                 // If the new one has a longer or richer body, enrich existing without creating duplicate
@@ -2167,7 +2188,8 @@ class FinanceRepository(
 
         // 1. Check for the most recent verified bank SMS transaction
         val verifiedAnchorTx = allAccountTxs.lastOrNull { tx ->
-            if (tx.availableBalance != null && tx.availableBalance > 0.0) {
+            val availBal = tx.availableBalance
+            if (availBal != null && availBal > 0.0) {
                 val proof = BalanceProofVerifier.verifyBalance(
                     sender = tx.sourceSender,
                     body = tx.smsBody ?: "",

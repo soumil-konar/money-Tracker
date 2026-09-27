@@ -4,6 +4,7 @@
 /.idea
 .DS_Store
 /build
+**/build/
 /captures
 .externalNativeBuild
 .cxx
@@ -18,4 +19,4 @@ secrets.properties
 *.mtbackup
 PRODUCT_ROADMAP.md
 .kotlin/
-.kotlin
+**/.kotlin/

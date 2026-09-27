@@ -43,6 +43,11 @@ import androidx.compose.material.icons.outlined.ReceiptLong
 import com.moneytracker.app.data.db.canTransferToCash
 import com.moneytracker.app.data.db.ScheduledTransactionRecord
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.MoneyOff
 import androidx.compose.material.icons.outlined.Savings
 import androidx.compose.material.icons.outlined.Search
@@ -197,6 +202,7 @@ fun TransactionsScreen(
     val groupedTransactions = remember(visibleTransactions) {
         visibleTransactions.groupBy { it.occurredAtMillis.asMonthYear() }
     }
+    var collapsedMonths by rememberSaveable { mutableStateOf(setOf<String>()) }
     val selectableCards = remember(cardAccounts) {
         cardAccounts.filter { it.kind == AccountKind.CARD }
     }
@@ -604,90 +610,102 @@ fun TransactionsScreen(
             }
         } else {
             groupedTransactions.forEach { (monthYear, monthTransactions) ->
+                val isCollapsed = monthYear in collapsedMonths
                 item(key = "month-$monthYear") {
                     MotionReveal(index = 4) {
                         MonthYearDivider(
                             label = monthYear,
                             total = monthTransactions.signedTotal(),
+                            isCollapsed = isCollapsed,
+                            onToggleCollapse = {
+                                haptics.click()
+                                collapsedMonths = if (isCollapsed) {
+                                    collapsedMonths - monthYear
+                                } else {
+                                    collapsedMonths + monthYear
+                                }
+                            },
                         )
                     }
                 }
-                items(monthTransactions, key = { it.id }) { transaction ->
-                    var cardCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .onGloballyPositioned { coords -> cardCoordinates = coords }
-                            .clickable {
-                                haptics.click()
-                                val bounds = cardCoordinates?.takeIf { it.isAttached }?.boundsInRoot()
-                                onEditTransaction(transaction, bounds)
-                            },
-                        shape = RoundedCornerShape(22.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        ),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-                    ) {
-                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                            TransactionItem(
-                                transaction = transaction,
-                                onTransferToCash = if (transaction.canTransferToCash && onTransferToCashWallet != null) {
-                                    {
-                                        haptics.click()
-                                        onTransferToCashWallet(transaction.id)
-                                    }
-                                } else null,
-                            )
-                                Spacer(modifier = Modifier.height(10.dp))
-                            if (transaction.status == TransactionStatus.REVIEW) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                ) {
-                                    if (onAnalyzeWithAi != null && !transaction.smsBody.isNullOrBlank()) {
-                                        OutlinedButton(
-                                            onClick = {
-                                                haptics.click()
-                                                onAnalyzeWithAi(transaction.id)
-                                            },
-                                            enabled = !isAiAnalyzing,
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Outlined.AutoAwesome,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(16.dp),
-                                            )
-                                            Spacer(modifier = Modifier.size(4.dp))
-                                            Text("AI Fix")
+                if (!isCollapsed) {
+                    items(monthTransactions, key = { it.id }) { transaction ->
+                        var cardCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .onGloballyPositioned { coords -> cardCoordinates = coords }
+                                .clickable {
+                                    haptics.click()
+                                    val bounds = cardCoordinates?.takeIf { it.isAttached }?.boundsInRoot()
+                                    onEditTransaction(transaction, bounds)
+                                },
+                            shape = RoundedCornerShape(22.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            ),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                        ) {
+                            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                                TransactionItem(
+                                    transaction = transaction,
+                                    onTransferToCash = if (transaction.canTransferToCash && onTransferToCashWallet != null) {
+                                        {
+                                            haptics.click()
+                                            onTransferToCashWallet(transaction.id)
                                         }
-                                    }
-                                    Button(
-                                        onClick = {
-                                            haptics.success()
-                                            onApproveReview(transaction.id)
-                                        },
-                                        modifier = Modifier.weight(1f),
+                                    } else null,
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                                if (transaction.status == TransactionStatus.REVIEW) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                                     ) {
-                                        Text("Approve")
+                                        if (onAnalyzeWithAi != null && !transaction.smsBody.isNullOrBlank()) {
+                                            OutlinedButton(
+                                                onClick = {
+                                                    haptics.click()
+                                                    onAnalyzeWithAi(transaction.id)
+                                                },
+                                                enabled = !isAiAnalyzing,
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Outlined.AutoAwesome,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(16.dp),
+                                                )
+                                                Spacer(modifier = Modifier.size(4.dp))
+                                                Text("AI Fix")
+                                            }
+                                        }
+                                        Button(
+                                            onClick = {
+                                                haptics.success()
+                                                onApproveReview(transaction.id)
+                                            },
+                                            modifier = Modifier.weight(1f),
+                                        ) {
+                                            Text("Approve")
+                                        }
+                                        TransactionCardActions(
+                                            transaction = transaction,
+                                            onDelete = { onDeleteTransaction(transaction) },
+                                            onToggleBudgetInclusion = { onToggleBudgetInclusion(transaction) },
+                                        )
                                     }
-                                    TransactionCardActions(
-                                        transaction = transaction,
-                                        onDelete = { onDeleteTransaction(transaction) },
-                                        onToggleBudgetInclusion = { onToggleBudgetInclusion(transaction) },
-                                    )
-                                }
-                            } else {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.End,
-                                ) {
-                                    TransactionCardActions(
-                                        transaction = transaction,
-                                        onDelete = { onDeleteTransaction(transaction) },
-                                        onToggleBudgetInclusion = { onToggleBudgetInclusion(transaction) },
-                                    )
+                                } else {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.End,
+                                    ) {
+                                        TransactionCardActions(
+                                            transaction = transaction,
+                                            onDelete = { onDeleteTransaction(transaction) },
+                                            onToggleBudgetInclusion = { onToggleBudgetInclusion(transaction) },
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -702,6 +720,8 @@ fun TransactionsScreen(
 private fun MonthYearDivider(
     label: String,
     total: Double,
+    isCollapsed: Boolean = false,
+    onToggleCollapse: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val totalColor = when {
@@ -714,15 +734,34 @@ private fun MonthYearDivider(
         total < 0 -> "-${(-total).asCurrency()}"
         else -> 0.0.asCurrency()
     }
+    val rotationAngle by animateFloatAsState(
+        targetValue = if (isCollapsed) -90f else 0f,
+        animationSpec = spring(stiffness = Spring.StiffnessMedium),
+        label = "MonthCollapseRotation",
+    )
+
     Row(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { onToggleCollapse() }
+            .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        Icon(
+            imageVector = Icons.Outlined.KeyboardArrowDown,
+            contentDescription = if (isCollapsed) "Expand $label" else "Collapse $label",
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .size(24.dp)
+                .graphicsLayer { rotationZ = rotationAngle },
+        )
         Text(
             text = label,
             style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
         )
         Box(
             modifier = Modifier
@@ -733,6 +772,7 @@ private fun MonthYearDivider(
         Text(
             text = totalLabel,
             style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
             color = totalColor,
         )
     }

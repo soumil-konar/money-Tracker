@@ -18,7 +18,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         SubscriptionEntity::class,
         ScheduledTransactionEntity::class,
     ],
-    version = 10,
+    version = 11,
     exportSchema = true,
 )
 @TypeConverters(FinanceTypeConverters::class)
@@ -210,13 +210,68 @@ abstract class FinanceDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Drop legacy triggers if present
+                db.execSQL("DROP TRIGGER IF EXISTS `transactions_ai`")
+                db.execSQL("DROP TRIGGER IF EXISTS `transactions_ad`")
+                db.execSQL("DROP TRIGGER IF EXISTS `transactions_au`")
+                // Re-create FTS table with FTS5 or updated schema
+                db.execSQL("DROP TABLE IF EXISTS `transactions_fts`")
+                db.execSQL(
+                    """
+                    CREATE VIRTUAL TABLE IF NOT EXISTS `transactions_fts` USING FTS4(
+                        `merchant`,
+                        `note`,
+                        `sourceSender`,
+                        `smsBody`,
+                        content=`transactions`
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO `transactions_fts`(`docid`, `merchant`, `note`, `sourceSender`, `smsBody`)
+                    SELECT `id`, `merchant`, `note`, `sourceSender`, `smsBody` FROM `transactions`
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE TRIGGER IF NOT EXISTS `transactions_ai` AFTER INSERT ON `transactions` BEGIN
+                        INSERT INTO `transactions_fts`(`docid`, `merchant`, `note`, `sourceSender`, `smsBody`)
+                        VALUES (new.`id`, new.`merchant`, new.`note`, new.`sourceSender`, new.`smsBody`);
+                    END;
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE TRIGGER IF NOT EXISTS `transactions_ad` AFTER DELETE ON `transactions` BEGIN
+                        DELETE FROM `transactions_fts` WHERE `docid` = old.`id`;
+                    END;
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE TRIGGER IF NOT EXISTS `transactions_au` AFTER UPDATE ON `transactions` BEGIN
+                        DELETE FROM `transactions_fts` WHERE `docid` = old.`id`;
+                        INSERT INTO `transactions_fts`(`docid`, `merchant`, `note`, `sourceSender`, `smsBody`)
+                        VALUES (new.`id`, new.`merchant`, new.`note`, new.`sourceSender`, new.`smsBody`);
+                    END;
+                    """.trimIndent(),
+                )
+            }
+        }
+
         fun create(context: Context): FinanceDatabase =
             Room.databaseBuilder(
                 context,
                 FinanceDatabase::class.java,
                 "money-tracker.db",
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
-                .build()
+            ).addMigrations(
+                MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
+                MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
+                MIGRATION_9_10, MIGRATION_10_11,
+            ).build()
     }
 }
 
