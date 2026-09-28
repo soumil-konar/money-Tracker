@@ -52,10 +52,20 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 import com.moneytracker.app.data.network.NetworkConnectivityObserver
+import com.moneytracker.app.domain.usecase.DetectTransferPairsUseCase
+import com.moneytracker.app.domain.usecase.GenerateSpendingInsightsUseCase
+import com.moneytracker.app.domain.usecase.IngestTransactionUseCase
+import com.moneytracker.app.domain.usecase.ReconcileLedgerUseCase
+import com.moneytracker.app.domain.usecase.SyncGmailAlertsUseCase
 
 class MainViewModel(
-    private val repository: FinanceRepository,
-    private val connectivityObserver: NetworkConnectivityObserver? = null,
+    val repository: FinanceRepository,
+    val connectivityObserver: NetworkConnectivityObserver? = null,
+    val ingestTransactionUseCase: IngestTransactionUseCase = repository.ingestTransactionUseCase,
+    val reconcileLedgerUseCase: ReconcileLedgerUseCase = repository.reconcileLedgerUseCase,
+    val detectTransferPairsUseCase: DetectTransferPairsUseCase = repository.detectTransferPairsUseCase,
+    val generateSpendingInsightsUseCase: GenerateSpendingInsightsUseCase = repository.generateSpendingInsightsUseCase,
+    val syncGmailAlertsUseCase: SyncGmailAlertsUseCase = repository.syncGmailAlertsUseCase,
 ) : ViewModel() {
 
     private val messageEvents = MutableSharedFlow<String>()
@@ -353,7 +363,7 @@ class MainViewModel(
 
     init {
         viewModelScope.launch {
-            repository.deduplicateTransactions()
+            ingestTransactionUseCase.deduplicateTransactions()
         }
     }
 
@@ -653,7 +663,7 @@ class MainViewModel(
     fun trueUpAccountBalance(accountId: Long, newBalance: Double, reason: String? = null) {
         viewModelScope.launch {
             runCatching {
-                repository.trueUpAccountBalance(accountId, newBalance, reason)
+                reconcileLedgerUseCase.trueUpAccountBalance(accountId, newBalance, reason)
             }.onSuccess {
                 emitMessage("Account balance adjusted and reconciled.")
             }.onFailure {
@@ -847,7 +857,7 @@ class MainViewModel(
     fun importRecentSms(contentResolver: ContentResolver) {
         viewModelScope.launch {
             runCatching {
-                repository.importRecentSms(contentResolver)
+                ingestTransactionUseCase.importRecentSms(contentResolver)
             }.onSuccess { report ->
                 emitMessage(
                     "Scanned ${report.scanned} SMS. Imported ${report.imported}, review ${report.sentToReview}, scheduled ${report.scheduled}, ignored ${report.ignored}.",
@@ -869,7 +879,7 @@ class MainViewModel(
     fun testEmailConnection(email: String, appPassword: String) {
         viewModelScope.launch {
             _emailTestStatus.value = "Testing Gmail connection..."
-            repository.testEmailCredentials(email, appPassword)
+            syncGmailAlertsUseCase.testEmailCredentials(email, appPassword)
                 .onSuccess {
                     repository.emailPreferences.setCredentials(email, appPassword)
                     _emailTestStatus.value = "Success: Connected and authenticated with Gmail IMAP."
@@ -890,7 +900,7 @@ class MainViewModel(
         viewModelScope.launch {
             _isEmailSyncing.value = true
             try {
-                repository.syncRecentEmails()
+                syncGmailAlertsUseCase.syncRecentEmails()
                     .onSuccess { count ->
                         emitMessage("Email sync complete. Ingested $count new transaction alerts.")
                     }
@@ -902,6 +912,7 @@ class MainViewModel(
             }
         }
     }
+
 
     fun isNotificationPermissionGranted(context: Context): Boolean {
         return repository.notificationPreferences.isSystemPermissionGranted(context)
@@ -966,14 +977,28 @@ class MainViewModel(
         fun provideFactory(
             repository: FinanceRepository,
             connectivityObserver: NetworkConnectivityObserver? = null,
+            ingestTransactionUseCase: IngestTransactionUseCase = repository.ingestTransactionUseCase,
+            reconcileLedgerUseCase: ReconcileLedgerUseCase = repository.reconcileLedgerUseCase,
+            detectTransferPairsUseCase: DetectTransferPairsUseCase = repository.detectTransferPairsUseCase,
+            generateSpendingInsightsUseCase: GenerateSpendingInsightsUseCase = repository.generateSpendingInsightsUseCase,
+            syncGmailAlertsUseCase: SyncGmailAlertsUseCase = repository.syncGmailAlertsUseCase,
         ): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                    return MainViewModel(repository, connectivityObserver) as T
+                    return MainViewModel(
+                        repository = repository,
+                        connectivityObserver = connectivityObserver,
+                        ingestTransactionUseCase = ingestTransactionUseCase,
+                        reconcileLedgerUseCase = reconcileLedgerUseCase,
+                        detectTransferPairsUseCase = detectTransferPairsUseCase,
+                        generateSpendingInsightsUseCase = generateSpendingInsightsUseCase,
+                        syncGmailAlertsUseCase = syncGmailAlertsUseCase,
+                    ) as T
                 }
             }
     }
+
 }
 
 private fun TransactionRecord.matchesUpiFilter(): Boolean {

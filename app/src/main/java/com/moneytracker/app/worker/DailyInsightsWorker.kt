@@ -15,24 +15,38 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
+import com.moneytracker.app.data.repo.FinanceRepository
+import com.moneytracker.app.domain.usecase.GenerateSpendingInsightsUseCase
+import com.moneytracker.app.notification.AppNotificationManager
+import org.koin.core.component.KoinComponent
+
 class DailyInsightsWorker(
     appContext: Context,
     params: WorkerParameters,
-) : CoroutineWorker(appContext, params) {
+    private val repository: FinanceRepository? = null,
+    private val notificationManager: AppNotificationManager? = null,
+    private val generateSpendingInsightsUseCase: GenerateSpendingInsightsUseCase? = null,
+) : CoroutineWorker(appContext, params), KoinComponent {
+
+    private val repo: FinanceRepository by lazy {
+        repository ?: getKoin().getOrNull<FinanceRepository>() ?: (applicationContext as? MoneyTrackerApp)?.container?.repository ?: error("FinanceRepository not available")
+    }
+    private val notifManager: AppNotificationManager by lazy {
+        notificationManager ?: getKoin().getOrNull<AppNotificationManager>() ?: (applicationContext as? MoneyTrackerApp)?.container?.appNotificationManager ?: AppNotificationManager(applicationContext)
+    }
+    private val insightsUseCase: GenerateSpendingInsightsUseCase by lazy {
+        generateSpendingInsightsUseCase ?: getKoin().getOrNull<GenerateSpendingInsightsUseCase>() ?: repo.generateSpendingInsightsUseCase
+    }
 
     override suspend fun doWork(): Result {
-        val app = applicationContext as? MoneyTrackerApp ?: return Result.success()
-        val repo = app.container.repository
-        val notificationManager = app.container.appNotificationManager
-
         // 1. Refresh recurring suggestions
         repo.refreshRecurringSuggestions()
 
         // 2. Dispatch Daily Recap if user has recorded transactions today and has permission
-        if (notificationManager.hasNotificationPermission()) {
-            val recap = repo.getDailyRecapData()
+        if (notifManager.hasNotificationPermission()) {
+            val recap = insightsUseCase.getDailyRecapData()
             if (recap.txCount > 0) {
-                notificationManager.showDailyRecap(
+                notifManager.showDailyRecap(
                     spentToday = recap.spentToday,
                     txCount = recap.txCount,
                     remainingBuffer = recap.remainingBuffer,
@@ -43,10 +57,10 @@ class DailyInsightsWorker(
             val now = System.currentTimeMillis()
             val windowStart = now + TimeUnit.HOURS.toMillis(24)
             val windowEnd = now + TimeUnit.HOURS.toMillis(48)
-            val upcomingBills = repo.getUpcomingBillReminders(windowStart, windowEnd)
+            val upcomingBills = insightsUseCase.getUpcomingBillReminders(windowStart, windowEnd)
             val dateFormat = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault())
             for (bill in upcomingBills) {
-                notificationManager.showBillReminder(
+                notifManager.showBillReminder(
                     merchant = bill.merchant,
                     amount = bill.amount,
                     dueDateFormatted = dateFormat.format(Date(bill.scheduledForMillis)),

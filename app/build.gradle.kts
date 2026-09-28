@@ -60,6 +60,7 @@ dependencies {
     implementation(project(":core:model"))
     implementation(project(":core:parser"))
     implementation(project(":core:database"))
+    implementation(project(":core:ai"))
 
     val composeBom = platform("androidx.compose:compose-bom:2024.10.01")
 
@@ -80,6 +81,9 @@ dependencies {
     implementation("androidx.biometric:biometric:1.2.0-alpha05")
     implementation("com.google.android.play:review-ktx:2.0.2")
     implementation("com.google.ai.edge.aicore:aicore:0.0.1-exp02")
+    implementation("io.insert-koin:koin-android:3.5.6")
+    implementation("io.insert-koin:koin-androidx-compose:3.5.6")
+    implementation("io.insert-koin:koin-androidx-workmanager:3.5.6")
 
     implementation(composeBom)
     androidTestImplementation(composeBom)

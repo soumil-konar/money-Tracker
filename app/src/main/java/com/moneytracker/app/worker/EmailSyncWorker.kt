@@ -12,29 +12,39 @@ import androidx.work.WorkerParameters
 import com.moneytracker.app.MoneyTrackerApp
 import java.util.concurrent.TimeUnit
 
+import com.moneytracker.app.data.local.EmailPreferences
+import com.moneytracker.app.domain.usecase.SyncGmailAlertsUseCase
+import org.koin.core.component.KoinComponent
+
 class EmailSyncWorker(
     appContext: Context,
     params: WorkerParameters,
-) : CoroutineWorker(appContext, params) {
+    private val emailPrefs: EmailPreferences? = null,
+    private val syncAlertsUseCase: SyncGmailAlertsUseCase? = null,
+) : CoroutineWorker(appContext, params), KoinComponent {
+
+    private val preferences: EmailPreferences by lazy {
+        emailPrefs ?: getKoin().getOrNull<EmailPreferences>() ?: (applicationContext as? MoneyTrackerApp)?.container?.emailPreferences ?: EmailPreferences(applicationContext)
+    }
+    private val syncUseCase: SyncGmailAlertsUseCase by lazy {
+        syncAlertsUseCase ?: getKoin().getOrNull<SyncGmailAlertsUseCase>() ?: (applicationContext as? MoneyTrackerApp)?.container?.syncGmailAlertsUseCase ?: error("SyncGmailAlertsUseCase not available")
+    }
 
     override suspend fun doWork(): Result {
-        val app = applicationContext as? MoneyTrackerApp ?: return Result.failure()
-        val emailPrefs = app.container.emailPreferences
-
-        if (!emailPrefs.isEmailSyncEnabled.value) {
+        if (!preferences.isEmailSyncEnabled.value) {
             Log.d(TAG, "Email sync is disabled by user setting. Skipping.")
             return Result.success()
         }
 
-        val email = emailPrefs.emailAddress.value
-        val password = emailPrefs.appPassword.value
+        val email = preferences.emailAddress.value
+        val password = preferences.appPassword.value
         if (email.isBlank() || password.isBlank()) {
             Log.d(TAG, "Email sync credentials not configured. Skipping.")
             return Result.success()
         }
 
         return try {
-            val syncResult = app.container.repository.syncRecentEmails(maxMessages = 25)
+            val syncResult = syncUseCase.syncRecentEmails(maxMessages = 25)
             syncResult.fold(
                 onSuccess = { importedCount ->
                     Log.i(TAG, "Periodic email sync succeeded. Imported $importedCount transactions.")

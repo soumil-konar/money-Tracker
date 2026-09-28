@@ -99,8 +99,8 @@ class AiPreferences(
 
         // Default API key - configured by user via Settings or runtime config
         const val DEFAULT_API_KEY = ""
-        const val DEFAULT_MODEL = "gemini-3.5-flash-lite"
-        const val FALLBACK_MODEL = "gemini-3.1-flash-lite"
+        const val DEFAULT_MODEL = com.moneytracker.app.ai.GeminiApiClient.DEFAULT_MODEL
+        const val FALLBACK_MODEL = com.moneytracker.app.ai.GeminiApiClient.FALLBACK_MODEL
 
         val AVAILABLE_MODELS = listOf(
             "gemini-3.5-flash-lite" to "Gemini 3.5 Flash Lite (Recommended, 500 RPD)",

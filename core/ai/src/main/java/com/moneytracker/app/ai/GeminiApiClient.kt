@@ -1,7 +1,6 @@
 package com.moneytracker.app.ai
 
 import com.moneytracker.app.data.db.TransactionRecord
-import com.moneytracker.app.data.local.AiPreferences
 import com.moneytracker.app.data.model.AccountKind
 import com.moneytracker.app.data.model.CardType
 import com.moneytracker.app.data.model.TransactionCategory
@@ -86,14 +85,14 @@ open class GeminiApiClient {
         smsBody: String,
         sender: String,
         apiKey: String,
-        model: String = AiPreferences.DEFAULT_MODEL,
+        model: String = DEFAULT_MODEL,
     ): Result<AiParsedTransaction> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) {
             return@withContext Result.failure(GeminiApiException.InvalidApiKeyException("Google AI Studio API key is not configured."))
         }
 
         // Try selected model first, then fallback model if rate limited or not found
-        val candidateModels = listOf(model, AiPreferences.FALLBACK_MODEL).distinct()
+        val candidateModels = listOf(model, FALLBACK_MODEL).distinct()
         var lastError: Throwable? = null
 
         for (candidate in candidateModels) {
@@ -115,7 +114,7 @@ open class GeminiApiClient {
         monthSpent: Double,
         monthIncome: Double,
         apiKey: String,
-        model: String = AiPreferences.DEFAULT_MODEL,
+        model: String = DEFAULT_MODEL,
     ): Result<List<String>> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) {
             return@withContext Result.failure(GeminiApiException.InvalidApiKeyException("API key is not configured."))
@@ -187,7 +186,7 @@ open class GeminiApiClient {
 
     suspend fun testConnection(
         apiKey: String,
-        model: String = AiPreferences.DEFAULT_MODEL,
+        model: String = DEFAULT_MODEL,
     ): Result<String> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) {
             return@withContext Result.failure(GeminiApiException.InvalidApiKeyException("API Key cannot be blank."))
@@ -262,7 +261,7 @@ open class GeminiApiClient {
         retrievedTransactions: List<TransactionRecord>,
         macroContext: String,
         apiKey: String,
-        model: String = AiPreferences.DEFAULT_MODEL,
+        model: String = DEFAULT_MODEL,
     ): Result<RagAnswerResponse> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) {
             return@withContext Result.failure(GeminiApiException.InvalidApiKeyException("API key is not configured."))
@@ -317,7 +316,7 @@ open class GeminiApiClient {
             }
 
             // Fallback strategy: user-selected model first, then fallback model
-            val candidateModels = listOf(model, AiPreferences.FALLBACK_MODEL).distinct()
+            val candidateModels = listOf(model, FALLBACK_MODEL).distinct()
             var responseBody: String? = null
             var lastError: Throwable? = null
 
@@ -673,6 +672,8 @@ open class GeminiApiClient {
     }
 
     companion object {
+        const val DEFAULT_MODEL = "gemini-3.5-flash-lite"
+        const val FALLBACK_MODEL = "gemini-3.1-flash-lite"
         const val DEFAULT_EMBEDDING_MODEL = "text-embedding-004"
         const val CONNECT_TIMEOUT_MS = 15_000
         const val READ_TIMEOUT_MS = 30_000
