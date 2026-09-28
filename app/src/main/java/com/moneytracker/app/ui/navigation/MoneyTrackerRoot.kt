@@ -179,6 +179,8 @@ fun MoneyTrackerRoot(
     val userName by viewModel.userName.collectAsStateWithLifecycle()
     val hasPromptedForName by viewModel.hasPromptedForName.collectAsStateWithLifecycle()
     val categories by viewModel.categories.collectAsStateWithLifecycle()
+    val aiCoreStatus by viewModel.aiCoreStatus.collectAsStateWithLifecycle()
+    val onDeviceBenchmarkResult by viewModel.onDeviceBenchmarkResult.collectAsStateWithLifecycle()
     var notificationPermissionGranted by remember { mutableStateOf(viewModel.isNotificationPermissionGranted(context)) }
 
     val haptics = LocalAppHaptics.current
@@ -482,6 +484,16 @@ fun MoneyTrackerRoot(
                                     isPixel9Ready = viewModel.isTensorG4Ready,
                                     deviceModel = viewModel.deviceModel,
                                     hardwareAccelerator = viewModel.hardwareAccelerator,
+                                    detectedSoc = viewModel.detectedSoc,
+                                    aiCoreStatus = when (val status = aiCoreStatus) {
+                                        is com.moneytracker.app.ai.NanoAvailabilityStatus.Ready -> "Ready"
+                                        is com.moneytracker.app.ai.NanoAvailabilityStatus.DownloadingModel -> "Downloading Model"
+                                        is com.moneytracker.app.ai.NanoAvailabilityStatus.UnsupportedDevice -> "Not Supported on this Device"
+                                        is com.moneytracker.app.ai.NanoAvailabilityStatus.Error -> "Error: ${status.message}"
+                                    },
+                                    activeParser = viewModel.activeParserName,
+                                    benchmarkResult = onDeviceBenchmarkResult,
+                                    onRunBenchmark = viewModel::runOnDeviceBenchmark,
                                     aiTestStatus = aiTestStatus,
                                     onUpdateApiKey = viewModel::updateAiApiKey,
                                     onToggleAiEnabled = viewModel::setAiEnabled,

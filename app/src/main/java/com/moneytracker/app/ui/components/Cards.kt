@@ -43,6 +43,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import com.moneytracker.app.data.db.cleanNote
+import com.moneytracker.app.data.db.parseEngine
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -668,7 +670,7 @@ fun TransactionItem(
                     )
                 }
             }
-            val noteText = transaction.note
+            val noteText = transaction.cleanNote ?: transaction.note
             if (!noteText.isNullOrBlank()) {
                 Spacer(modifier = Modifier.height(2.dp))
                 Row(

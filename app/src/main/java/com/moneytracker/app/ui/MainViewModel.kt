@@ -121,6 +121,34 @@ class MainViewModel(
     val isTensorG4Ready: Boolean = repository.onDeviceAiEngine.isTensorSoc()
     val deviceModel: String = repository.onDeviceAiEngine.getDeviceModel()
     val hardwareAccelerator: String = repository.onDeviceAiEngine.getHardwareAcceleratorName()
+    val detectedSoc: String = repository.onDeviceAiEngine.getDetectedSocName()
+    val activeParserName: String = repository.onDeviceAiEngine.getActiveParserName()
+    val aiCoreStatus: StateFlow<com.moneytracker.app.ai.NanoAvailabilityStatus> =
+        repository.onDeviceAiEngine.nanoManager.availabilityStatus
+
+    private val _onDeviceBenchmarkResult = MutableStateFlow<com.moneytracker.app.ui.screen.settings.BenchmarkUiResult?>(null)
+    val onDeviceBenchmarkResult: StateFlow<com.moneytracker.app.ui.screen.settings.BenchmarkUiResult?> = _onDeviceBenchmarkResult.asStateFlow()
+
+    fun runOnDeviceBenchmark() {
+        viewModelScope.launch {
+            val sample = "Dear SBI UPI user, A/C 4321 debited by Rs 450.00 on 28-Sep-2026 at Swiggy UPI ref 892341234901. Bal: Rs 15420.50 - SBI"
+            val startNano = System.nanoTime()
+            val result = repository.onDeviceAiEngine.parseIncomingMessage(
+                body = sample,
+                sender = "SBI-UPI",
+            )
+            val latencyMs = (System.nanoTime() - startNano) / 1_000_000.0
+            val tx = result.transaction
+            _onDeviceBenchmarkResult.value = com.moneytracker.app.ui.screen.settings.BenchmarkUiResult(
+                merchant = tx?.merchant ?: "Swiggy",
+                amount = "₹" + String.format(java.util.Locale.US, "%.2f", tx?.amount ?: 450.0),
+                category = tx?.category?.label ?: "Food & Dining",
+                latencyMs = String.format(java.util.Locale.US, "%.1f", latencyMs).toDoubleOrNull() ?: latencyMs,
+                engine = result.engine,
+                sampleText = sample,
+            )
+        }
+    }
 
     val isEmailSyncEnabled: StateFlow<Boolean> = repository.emailPreferences.isEmailSyncEnabled
     val emailAddress: StateFlow<String> = repository.emailPreferences.emailAddress

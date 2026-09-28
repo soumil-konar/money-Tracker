@@ -79,6 +79,7 @@ dependencies {
     implementation("androidx.fragment:fragment-ktx:1.8.4")
     implementation("androidx.biometric:biometric:1.2.0-alpha05")
     implementation("com.google.android.play:review-ktx:2.0.2")
+    implementation("com.google.ai.edge.aicore:aicore:0.0.1-exp02")
 
     implementation(composeBom)
     androidTestImplementation(composeBom)

@@ -33,7 +33,8 @@ class AppContainer(context: Context) {
     val networkConnectivityObserver by lazy { com.moneytracker.app.data.network.NetworkConnectivityObserver(context) }
     val hapticManager by lazy { HapticFeedbackManager(context, hapticPreferences) }
     val geminiApiClient by lazy { GeminiApiClient() }
-    val onDeviceAiEngine by lazy { OnDeviceAiEngine(context) }
+    val aiCoreNanoManager by lazy { com.moneytracker.app.ai.AiCoreNanoManager(context) }
+    val onDeviceAiEngine by lazy { OnDeviceAiEngine(context, aiCoreNanoManager) }
     val reviewPromptManager by lazy { ReviewPromptManager(context, reviewPreferences, repository) }
 
     val ragEngine by lazy {

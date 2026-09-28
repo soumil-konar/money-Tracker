@@ -53,6 +53,18 @@ data class TransactionEntity(
     val createdAtMillis: Long = System.currentTimeMillis(),
 )
 
+val TransactionEntity.parseEngine: String
+    get() = when {
+        note?.contains("[Engine: GEMINI_NANO]") == true -> "GEMINI_NANO"
+        note?.contains("[Engine: GEMINI_CLOUD]") == true -> "GEMINI_CLOUD"
+        note?.contains("[Engine: DEGRADED_MANUAL]") == true -> "DEGRADED_MANUAL"
+        note?.contains("[Engine: LOCAL_REGEX]") == true -> "LOCAL_REGEX"
+        else -> "LOCAL_REGEX"
+    }
+
+val TransactionEntity.cleanNote: String?
+    get() = note?.replace(Regex("""\s*\[Engine:\s*[A-Z_]+\]"""), "")?.trim()?.takeIf { it.isNotEmpty() }
+
 @Fts4(contentEntity = TransactionEntity::class)
 @Entity(tableName = "transactions_fts")
 data class TransactionFtsEntity(

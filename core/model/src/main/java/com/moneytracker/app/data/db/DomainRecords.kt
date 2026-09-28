@@ -61,6 +61,18 @@ val TransactionRecord.isTransferredToCash: Boolean
 val TransactionRecord.canTransferToCash: Boolean
     get() = isAtmWithdrawal && !isTransferredToCash && category != TransactionCategory.TRANSFER
 
+val TransactionRecord.parseEngine: String
+    get() = when {
+        note?.contains("[Engine: GEMINI_NANO]") == true -> "GEMINI_NANO"
+        note?.contains("[Engine: GEMINI_CLOUD]") == true -> "GEMINI_CLOUD"
+        note?.contains("[Engine: DEGRADED_MANUAL]") == true -> "DEGRADED_MANUAL"
+        note?.contains("[Engine: LOCAL_REGEX]") == true -> "LOCAL_REGEX"
+        else -> "LOCAL_REGEX"
+    }
+
+val TransactionRecord.cleanNote: String?
+    get() = note?.replace(Regex("""\s*\[Engine:\s*[A-Z_]+\]"""), "")?.trim()?.takeIf { it.isNotEmpty() }
+
 data class ScheduledTransactionRecord(
     val id: Long,
     val merchant: String,

@@ -10,3 +10,14 @@
 # Coroutines, BiometricPrompt, and SSL socket protocols
 -keepclassmembers class * extends kotlinx.coroutines.** { *; }
 -keep class androidx.biometric.** { *; }
+
+# Google AI Edge / Android AICore AIDL & Reflection interfaces
+-dontwarn module-info
+-keep class com.google.ai.edge.aicore.** { *; }
+-keep interface com.google.ai.edge.aicore.** { *; }
+-keep class com.google.android.apps.aicore.** { *; }
+-keep interface com.google.android.apps.aicore.** { *; }
+-keep class com.google.android.gms.internal.aicore.** { *; }
+-keepclassmembers class * extends com.google.android.gms.internal.aicore.zzex {
+  <fields>;
+}

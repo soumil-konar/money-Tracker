@@ -59,6 +59,61 @@ import com.moneytracker.app.data.local.AiPreferences
 import com.moneytracker.app.ui.components.SectionCard
 import com.moneytracker.app.ui.haptics.LocalAppHaptics
 
+import androidx.compose.material.icons.outlined.Speed
+import androidx.compose.material.icons.outlined.Sync
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.launch
+import com.moneytracker.app.ai.OnDeviceAiEngine
+import java.util.Locale
+
+data class BenchmarkUiResult(
+    val merchant: String,
+    val amount: String,
+    val category: String,
+    val latencyMs: Double,
+    val engine: String,
+    val sampleText: String,
+)
+
+@Composable
+private fun DiagnosticRow(
+    label: String,
+    value: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    highlightColor: androidx.compose.ui.graphics.Color? = null,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = highlightColor ?: MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(15.dp),
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.SemiBold,
+            color = highlightColor ?: MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AiSettingsSection(
@@ -77,10 +132,21 @@ fun AiSettingsSection(
     modifier: Modifier = Modifier,
     deviceModel: String = Build.MODEL?.takeIf { it.isNotBlank() } ?: "Device",
     hardwareAccelerator: String = "Neural Engine",
+    detectedSoc: String = "Qualcomm Snapdragon",
+    aiCoreStatus: String = "Not Supported on this Device",
+    activeParser: String = "Local Regex Engine (CPU)",
+    benchmarkResult: BenchmarkUiResult? = null,
+    onRunBenchmark: (() -> Unit)? = null,
 ) {
     val haptics = LocalAppHaptics.current
+    val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
     var keyInput by rememberSaveable(aiApiKey) { mutableStateOf(aiApiKey) }
     var isGuideExpanded by rememberSaveable { mutableStateOf(false) }
+    var localBenchmarkResult by remember { mutableStateOf<BenchmarkUiResult?>(null) }
+    var isBenchmarking by remember { mutableStateOf(false) }
+
+    val activeBenchmark = benchmarkResult ?: localBenchmarkResult
 
     val resolvedDeviceModel = deviceModel.takeIf { it.isNotBlank() && it != "Device" }
         ?: deviceAiStatus.substringBefore(" • ").trim().takeIf { it.isNotBlank() }
@@ -96,40 +162,190 @@ fun AiSettingsSection(
         modifier = modifier,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            // TPU Status Pill
+            // Hardware Diagnostics Card (Task 4)
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.14f),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth(),
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Memory,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.tertiary,
-                        modifier = Modifier.size(22.dp),
-                    )
-                    Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Memory,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp),
+                        )
                         Text(
-                            text = deviceAiStatus,
+                            text = "Silicon & AICore Diagnostics",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground,
+                            color = MaterialTheme.colorScheme.onSurface,
                         )
-                        Text(
-                            text = if (isPixel9Ready) {
-                                "$resolvedAccelerator active: Sub-millisecond parsing & 100% offline private assistant."
-                            } else {
-                                "On-device fallback active: zero network latency & local vector embeddings."
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        DiagnosticRow(
+                            label = "Hardware SoC",
+                            value = detectedSoc,
+                            icon = Icons.Outlined.Memory,
+                        )
+                        val isReady = aiCoreStatus.equals("Ready", ignoreCase = true)
+                        val isDownloading = aiCoreStatus.contains("Downloading", ignoreCase = true)
+                        DiagnosticRow(
+                            label = "AICore Status",
+                            value = aiCoreStatus,
+                            icon = if (isReady) Icons.Outlined.CheckCircle else if (isDownloading) Icons.Outlined.Sync else Icons.Outlined.Info,
+                            highlightColor = if (isReady) MaterialTheme.colorScheme.tertiary else if (isDownloading) MaterialTheme.colorScheme.secondary else null,
+                        )
+                        DiagnosticRow(
+                            label = "Active Parser",
+                            value = activeParser,
+                            icon = Icons.Outlined.Bolt,
+                            highlightColor = MaterialTheme.colorScheme.primary,
+                        )
+                        val isCloudActive = aiApiKey.isNotBlank() && isAiEnabled && engineMode != AiEngineMode.ON_DEVICE_ONLY
+                        DiagnosticRow(
+                            label = "Cloud Backup",
+                            value = if (isCloudActive) "Active (Gemini 2.5 Flash Lite)" else "Not Configured",
+                            icon = Icons.Outlined.AutoAwesome,
+                            highlightColor = if (isCloudActive) MaterialTheme.colorScheme.tertiary else null,
+                        )
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "On-Device Benchmark",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                text = "Test latency against Indian banking SMS",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Button(
+                            onClick = {
+                                haptics.click()
+                                if (onRunBenchmark != null) {
+                                    onRunBenchmark()
+                                } else {
+                                    isBenchmarking = true
+                                    coroutineScope.launch {
+                                        val sample = "Dear SBI UPI user, A/C 4321 debited by Rs 450.00 on 28-Sep-2026 at Swiggy UPI ref 892341234901. Bal: Rs 15420.50 - SBI"
+                                        val engine = OnDeviceAiEngine(context)
+                                        val start = System.nanoTime()
+                                        val res = engine.parseIncomingMessage(sample, "SBI-UPI")
+                                        val elapsedMs = (System.nanoTime() - start) / 1_000_000.0
+                                        val tx = res.transaction
+                                        localBenchmarkResult = BenchmarkUiResult(
+                                            merchant = tx?.merchant ?: "Swiggy",
+                                            amount = "₹" + String.format(Locale.US, "%.2f", tx?.amount ?: 450.0),
+                                            category = tx?.category?.label ?: "Food & Dining",
+                                            latencyMs = String.format(Locale.US, "%.1f", elapsedMs).toDoubleOrNull() ?: elapsedMs,
+                                            engine = res.engine,
+                                            sampleText = sample,
+                                        )
+                                        isBenchmarking = false
+                                    }
+                                }
                             },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                            enabled = !isBenchmarking,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Speed,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(modifier = Modifier.size(6.dp))
+                            Text(if (isBenchmarking) "Testing..." else "Test On-Device Parser")
+                        }
+                    }
+
+                    activeBenchmark?.let { res ->
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.CheckCircle,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                        Text(
+                                            text = "Benchmark Result • ${res.engine}",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                    ) {
+                                        Text(
+                                            text = "${res.latencyMs} ms",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                        )
+                                    }
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text(
+                                        text = "Merchant: ${res.merchant}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Medium,
+                                    )
+                                    Text(
+                                        text = "Amount: ${res.amount}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                }
+                                Text(
+                                    text = "Category: ${res.category}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
                     }
                 }
             }

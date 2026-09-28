@@ -17,9 +17,31 @@ import com.moneytracker.app.bank.BalanceProofVerifier
 import com.moneytracker.app.bank.BankDetector
 import com.moneytracker.app.parser.PromotionalDetector
 
+import com.moneytracker.app.data.model.TransactionStatus
+import com.moneytracker.app.parser.SmsParser
+
+data class IngestionParseResult(
+    val transaction: AiParsedTransaction?,
+    val engine: String,
+    val status: TransactionStatus = TransactionStatus.POSTED,
+    val confidence: Double = 0.95,
+)
+
 class OnDeviceAiEngine(
     private val context: Context? = null,
+    private val aiCoreNanoManager: AiCoreNanoManager? = null,
 ) {
+
+    val nanoManager: AiCoreNanoManager by lazy {
+        aiCoreNanoManager ?: AiCoreNanoManager(context)
+    }
+
+    companion object {
+        const val ENGINE_GEMINI_NANO = "GEMINI_NANO"
+        const val ENGINE_LOCAL_REGEX = "LOCAL_REGEX"
+        const val ENGINE_GEMINI_CLOUD = "GEMINI_CLOUD"
+        const val ENGINE_DEGRADED_MANUAL = "DEGRADED_MANUAL"
+    }
 
     fun isPixelDevice(): Boolean {
         return Build.MANUFACTURER?.equals("Google", ignoreCase = true) == true &&
@@ -42,20 +64,188 @@ class OnDeviceAiEngine(
     }
 
     fun isAiCoreAvailable(): Boolean {
-        return runCatching {
-            val pm = context?.packageManager ?: return false
-            pm.getPackageInfo("com.google.android.aicore", 0) != null
-        }.getOrDefault(false)
+        return nanoManager.isAvailable()
     }
 
     fun getDeviceModel(): String {
         return Build.MODEL?.takeIf { it.isNotBlank() } ?: "Device"
     }
 
+    fun getDetectedSocName(): String {
+        val hardware = Build.HARDWARE?.lowercase(Locale.getDefault()).orEmpty()
+        val board = Build.BOARD?.lowercase(Locale.getDefault()).orEmpty()
+        val soc = runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                Build.SOC_MODEL?.lowercase(Locale.getDefault()).orEmpty()
+            } else ""
+        }.getOrDefault("")
+        val socManuf = runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                Build.SOC_MANUFACTURER?.lowercase(Locale.getDefault()).orEmpty()
+            } else ""
+        }.getOrDefault("")
+
+        return when {
+            isTensorSoc() -> "Google Tensor"
+            socManuf.contains("qualcomm") || hardware.contains("qcom") || board.contains("qcom") || soc.contains("sm") || soc.contains("snapdragon") -> "Qualcomm Snapdragon"
+            socManuf.contains("samsung") || hardware.contains("exynos") || board.contains("universal") || soc.contains("exynos") -> "Samsung Exynos"
+            socManuf.contains("mediatek") || hardware.contains("mt") || board.contains("mt") || soc.contains("dimensity") -> "MediaTek Dimensity"
+            else -> Build.HARDWARE?.takeIf { it.isNotBlank() } ?: "ARM64 Processor"
+        }
+    }
+
+    fun getActiveParserName(): String {
+        return if (nanoManager.isAvailable()) {
+            "Gemini Nano"
+        } else {
+            "Local Regex Engine (CPU)"
+        }
+    }
+
+    fun getHardwareAcceleratorName(): String {
+        return if (nanoManager.isAvailable()) {
+            "Google Tensor / NPU (Gemini Nano Active)"
+        } else {
+            "${getDetectedSocName()} • Local Deterministic Regex Engine (Ultra-Fast CPU)"
+        }
+    }
+
     fun getDeviceStatus(): String {
         val model = getDeviceModel()
-        val accelerator = getHardwareAcceleratorName()
-        return "$model • $accelerator Active"
+        return if (nanoManager.isAvailable()) {
+            "$model • Google Tensor / NPU (Gemini Nano Active)"
+        } else {
+            "$model (${getDetectedSocName()}) • Local Deterministic Regex Engine (Ultra-Fast CPU)"
+        }
+    }
+
+    suspend fun parseIncomingMessage(
+        body: String,
+        sender: String,
+        apiKey: String = "",
+        cloudClient: GeminiApiClient? = null,
+        parser: SmsParser? = null,
+    ): IngestionParseResult {
+        if (body.isBlank()) {
+            return IngestionParseResult(
+                transaction = null,
+                engine = ENGINE_LOCAL_REGEX,
+                status = TransactionStatus.REVIEW,
+                confidence = 0.0,
+            )
+        }
+
+        // Check 1: Android AICore / Gemini Nano Available?
+        if (nanoManager.isAvailable()) {
+            val nanoResult = nanoManager.extractFinancialEntity(rawText = body, sender = sender)
+            val nanoTx = nanoResult.getOrNull()
+            if (nanoTx != null && nanoTx.isTransaction && nanoTx.amount != null && nanoTx.amount > 0.0 && nanoTx.direction != null) {
+                val status = if (nanoTx.confidence >= 0.70) TransactionStatus.POSTED else TransactionStatus.REVIEW
+                return IngestionParseResult(
+                    transaction = nanoTx,
+                    engine = ENGINE_GEMINI_NANO,
+                    status = status,
+                    confidence = nanoTx.confidence,
+                )
+            }
+        }
+
+        // Tier 1: Local Deterministic Regex Engine (SmsParser.kt / parseSmsOnDevice - Ultra-fast CPU <2ms)
+        val localRegexResult = parseSmsOnDevice(body, sender).getOrNull()
+        if (localRegexResult != null && localRegexResult.isTransaction && localRegexResult.amount != null && localRegexResult.amount > 0.0 && localRegexResult.direction != null) {
+            if (localRegexResult.confidence >= 0.85) {
+                return IngestionParseResult(
+                    transaction = localRegexResult,
+                    engine = ENGINE_LOCAL_REGEX,
+                    status = TransactionStatus.POSTED,
+                    confidence = localRegexResult.confidence,
+                )
+            }
+        }
+
+        // Check 2: Cloud Gemini API Key Configured?
+        if (apiKey.isNotBlank() && cloudClient != null) {
+            val cloudTx = runCatching {
+                cloudClient.parseSms(
+                    smsBody = body,
+                    sender = sender,
+                    apiKey = apiKey,
+                    model = "gemini-2.5-flash-lite",
+                ).getOrNull()
+            }.getOrNull()
+
+            if (cloudTx != null && cloudTx.isTransaction && cloudTx.amount != null && cloudTx.amount > 0.0 && cloudTx.direction != null) {
+                val status = if (cloudTx.confidence >= 0.70) TransactionStatus.POSTED else TransactionStatus.REVIEW
+                return IngestionParseResult(
+                    transaction = cloudTx,
+                    engine = ENGINE_GEMINI_CLOUD,
+                    status = status,
+                    confidence = cloudTx.confidence,
+                )
+            }
+        }
+
+        // Tier 3: Local Recovery (Extract guaranteed numbers) -> Commit (REVIEW status)
+        val recoveredTx = buildDegradedRecoveryTransaction(body, sender, localRegexResult)
+        return IngestionParseResult(
+            transaction = recoveredTx,
+            engine = ENGINE_DEGRADED_MANUAL,
+            status = TransactionStatus.REVIEW,
+            confidence = recoveredTx?.confidence ?: 0.35,
+        )
+    }
+
+    private fun buildDegradedRecoveryTransaction(
+        body: String,
+        sender: String,
+        fallback: AiParsedTransaction?,
+    ): AiParsedTransaction? {
+        if (fallback != null && fallback.amount != null && fallback.direction != null) {
+            return fallback.copy(confidence = 0.50)
+        }
+
+        val lower = body.lowercase(Locale.getDefault())
+        val amountRegex = Regex("""(?:inr|rs\.?|re\.?|₹)\s*([0-9,]+(?:\.[0-9]{1,2})?)""", RegexOption.IGNORE_CASE)
+        val amount = amountRegex.find(body)?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
+            ?: run {
+                val numRegex = Regex("""\b([0-9]+(?:\.[0-9]{1,2})?)\b""")
+                numRegex.findAll(body)
+                    .mapNotNull { it.groupValues[1].toDoubleOrNull() }
+                    .firstOrNull { it in 1.0..10_000_000.0 }
+            }
+
+        if (amount == null || amount <= 0.0) {
+            return null
+        }
+
+        val isCredit = listOf("credited", "received", "deposited", "refund").any { it in lower }
+        val direction = if (isCredit) TransactionDirection.CREDIT else TransactionDirection.DEBIT
+
+        val last4Regex = Regex("""(?:a/c|acct|card|ending|xx)\s*[:#\s]*([0-9]{4})""", RegexOption.IGNORE_CASE)
+        val last4 = last4Regex.find(body)?.groupValues?.get(1)
+
+        val merchant = extractMerchant(body, lower).takeIf { it != "Merchant" }
+            ?: sender.takeIf { it.isNotBlank() }
+            ?: "Transaction"
+
+        return AiParsedTransaction(
+            isTransaction = true,
+            amount = amount,
+            direction = direction,
+            merchant = merchant,
+            category = TransactionCategory.OTHER,
+            accountKind = AccountKind.BANK,
+            institutionName = extractInstitution(sender, body).takeIf { it.isNotBlank() },
+            accountLastFour = last4,
+            cardType = null,
+            isUpi = false,
+            isCardBillPayment = false,
+            placeDetail = null,
+            detailedDescription = "Recovered Transaction (Requires Manual Review)",
+            confidence = 0.40,
+            countsTowardBudget = true,
+            availableBalance = null,
+        )
     }
 
     fun parseSmsOnDevice(smsBody: String, sender: String): Result<AiParsedTransaction> {
@@ -557,29 +747,6 @@ class OnDeviceAiEngine(
         return insights.take(4)
     }
 
-    fun getHardwareAcceleratorName(): String {
-        val hardware = Build.HARDWARE?.lowercase(Locale.getDefault()).orEmpty()
-        val board = Build.BOARD?.lowercase(Locale.getDefault()).orEmpty()
-        val soc = runCatching {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                Build.SOC_MODEL?.lowercase(Locale.getDefault()).orEmpty()
-            } else ""
-        }.getOrDefault("")
-        val socManuf = runCatching {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                Build.SOC_MANUFACTURER?.lowercase(Locale.getDefault()).orEmpty()
-            } else ""
-        }.getOrDefault("")
-
-        return when {
-            isTensorSoc() -> "Google Tensor TPU"
-            socManuf.contains("qualcomm") || hardware.contains("qcom") || board.contains("qcom") || soc.contains("sm") || soc.contains("snapdragon") -> "Snapdragon NPU"
-            socManuf.contains("samsung") || hardware.contains("exynos") || board.contains("universal") || soc.contains("exynos") -> "Exynos NPU"
-            socManuf.contains("mediatek") || hardware.contains("mt") || board.contains("mt") || soc.contains("dimensity") -> "MediaTek APU"
-            isAiCoreAvailable() -> "Android AICore NPU"
-            else -> "On-Device Neural Engine"
-        }
-    }
 
     fun generateNeuralRecommendations(
         transactions: List<TransactionRecord>,

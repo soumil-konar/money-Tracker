@@ -14,6 +14,8 @@ import com.moneytracker.app.data.db.SubscriptionRecord
 import com.moneytracker.app.data.db.TransactionDao
 import com.moneytracker.app.data.db.TransactionEntity
 import com.moneytracker.app.data.db.TransactionRecord
+import com.moneytracker.app.data.db.cleanNote
+import com.moneytracker.app.data.db.parseEngine
 import com.moneytracker.app.data.local.SetupPreferences
 import com.moneytracker.app.data.model.AccountDraft
 import com.moneytracker.app.data.model.AccountKind
@@ -628,60 +630,20 @@ class FinanceRepository(
         val apiKey = aiPreferences.apiKey.value
         val engineMode = aiPreferences.engineMode.value
 
-        val (updatedMerchant, updatedCategory, updatedNote) = when (engineMode) {
-            AiEngineMode.ON_DEVICE_ONLY -> {
-                val parsed = onDeviceAiEngine.parseSmsOnDevice(body, existing.sourceSender)
-                    .getOrElse { return Result.failure(it) }
-                Triple(
-                    parsed.merchant?.takeIf { it.isNotBlank() } ?: existing.merchant,
-                    parsed.category,
-                    parsed.detailedDescription ?: parsed.placeDetail ?: existing.note,
-                )
-            }
-            AiEngineMode.AUTO_PIXEL_FIRST -> {
-                if (apiKey.isNotBlank()) {
-                    val parsed = geminiApiClient.parseSms(
-                        smsBody = body,
-                        sender = existing.sourceSender,
-                        apiKey = apiKey,
-                        model = aiPreferences.selectedModel.value,
-                    ).getOrElse {
-                        // Fall back to On-Device Engine on Tensor G4 TPU
-                        onDeviceAiEngine.parseSmsOnDevice(body, existing.sourceSender)
-                            .getOrElse { return Result.failure(it) }
-                    }
-                    Triple(
-                        parsed.merchant?.takeIf { it.isNotBlank() } ?: existing.merchant,
-                        parsed.category,
-                        parsed.detailedDescription ?: parsed.placeDetail ?: existing.note,
-                    )
-                } else {
-                    val parsed = onDeviceAiEngine.parseSmsOnDevice(body, existing.sourceSender)
-                        .getOrElse { return Result.failure(it) }
-                    Triple(
-                        parsed.merchant?.takeIf { it.isNotBlank() } ?: existing.merchant,
-                        parsed.category,
-                        parsed.detailedDescription ?: parsed.placeDetail ?: existing.note,
-                    )
-                }
-            }
-            AiEngineMode.CLOUD_ONLY -> {
-                if (apiKey.isBlank()) {
-                    return Result.failure(IllegalStateException("Google AI Studio API key is not configured in Settings."))
-                }
-                val parsed = geminiApiClient.parseSms(
-                    smsBody = body,
-                    sender = existing.sourceSender,
-                    apiKey = apiKey,
-                    model = aiPreferences.selectedModel.value,
-                ).getOrElse { return Result.failure(it) }
-                Triple(
-                    parsed.merchant?.takeIf { it.isNotBlank() } ?: existing.merchant,
-                    parsed.category,
-                    parsed.detailedDescription ?: parsed.placeDetail ?: existing.note,
-                )
-            }
-        }
+        val parseResult = onDeviceAiEngine.parseIncomingMessage(
+            body = body,
+            sender = existing.sourceSender,
+            apiKey = if (engineMode != AiEngineMode.ON_DEVICE_ONLY) apiKey else "",
+            cloudClient = geminiApiClient,
+            parser = parser,
+        )
+        val parsed = parseResult.transaction
+            ?: return Result.failure(IllegalStateException("AI could not extract transaction details"))
+
+        val updatedMerchant = parsed.merchant?.takeIf { it.isNotBlank() } ?: existing.merchant
+        val updatedCategory = parsed.category
+        val baseNote = parsed.detailedDescription ?: parsed.placeDetail ?: existing.cleanNote ?: existing.note
+        val updatedNote = if (baseNote?.contains("[Engine:") == true) baseNote else "$baseNote [Engine: ${parseResult.engine}]"
 
         val updatedEntity = existing.copy(
             merchant = updatedMerchant,
@@ -1412,43 +1374,22 @@ class FinanceRepository(
         var confidence = parsed?.confidence ?: 0.5
         var note: String? = null
 
-        // Hybrid / On-Device Intelligence: Extract rich merchant, clean note, place detail
+        // Unified 4-tier Ingestion Router (Gemini Nano -> Local Regex -> Cloud Gemini -> Local Recovery)
+        var detectedEngine = OnDeviceAiEngine.ENGINE_LOCAL_REGEX
         if (aiPreferences.isAiEnabled.value) {
             val engineMode = aiPreferences.engineMode.value
-            val apiKey = aiPreferences.apiKey.value
+            val apiKey = if (engineMode != AiEngineMode.ON_DEVICE_ONLY) aiPreferences.apiKey.value else ""
 
-            val onDeviceCandidate = if (engineMode == AiEngineMode.ON_DEVICE_ONLY || engineMode == AiEngineMode.AUTO_PIXEL_FIRST) {
-                onDeviceAiEngine.parseSmsOnDevice(smsBody = body, sender = sender).getOrNull()
-            } else {
-                null
-            }
+            val parseResult = onDeviceAiEngine.parseIncomingMessage(
+                body = body,
+                sender = sender,
+                apiKey = apiKey,
+                cloudClient = geminiApiClient,
+                parser = parser,
+            )
+            detectedEngine = parseResult.engine
 
-            var aiParsed: AiParsedTransaction? = null
-
-            if (onDeviceCandidate != null && onDeviceCandidate.isTransaction && onDeviceCandidate.amount != null && onDeviceCandidate.direction != null) {
-                if (engineMode == AiEngineMode.ON_DEVICE_ONLY || onDeviceCandidate.confidence >= 0.90) {
-                    aiParsed = onDeviceCandidate
-                }
-            }
-
-            if (aiParsed == null && (engineMode == AiEngineMode.AUTO_PIXEL_FIRST || engineMode == AiEngineMode.CLOUD_ONLY) && apiKey.isNotBlank()) {
-                val cloudResult = geminiApiClient.parseSms(
-                    smsBody = body,
-                    sender = sender,
-                    apiKey = apiKey,
-                    model = aiPreferences.selectedModel.value,
-                ).getOrNull()
-
-                if (cloudResult != null && cloudResult.isTransaction) {
-                    aiParsed = cloudResult
-                } else if (onDeviceCandidate != null && onDeviceCandidate.isTransaction) {
-                    aiParsed = onDeviceCandidate
-                }
-            } else if (aiParsed == null && onDeviceCandidate != null && onDeviceCandidate.isTransaction) {
-                aiParsed = onDeviceCandidate
-            }
-
-            aiParsed?.let { result ->
+            parseResult.transaction?.let { result ->
                 if (result.isTransaction && result.amount != null && result.direction != null) {
                     amount = result.amount
                     direction = result.direction
@@ -1491,12 +1432,11 @@ class FinanceRepository(
             return SmsIngestionOutcome.IGNORED
         }
 
-        if (note.isNullOrBlank()) {
-            note = when (direction) {
-                TransactionDirection.CREDIT -> "Payment from $resolvedMerchant"
-                TransactionDirection.DEBIT -> "Payment to $resolvedMerchant"
-            }
+        val baseNote = note ?: when (direction) {
+            TransactionDirection.CREDIT -> "Payment from $resolvedMerchant"
+            TransactionDirection.DEBIT -> "Payment to $resolvedMerchant"
         }
+        note = if (baseNote.contains("[Engine:")) baseNote else "$baseNote [Engine: $detectedEngine]"
 
         val resolvedOccurredAt = when {
             receivedAtMillis > 0L -> {
@@ -1624,7 +1564,11 @@ class FinanceRepository(
             }
         }
 
-        val status = if (confidence >= 0.7) TransactionStatus.POSTED else TransactionStatus.REVIEW
+        val status = if (confidence >= 0.7 && detectedEngine != OnDeviceAiEngine.ENGINE_DEGRADED_MANUAL) {
+            TransactionStatus.POSTED
+        } else {
+            TransactionStatus.REVIEW
+        }
         val countsTowardBudget = if (isCardBillPayment || category == TransactionCategory.TRANSFER) {
             false
         } else {
