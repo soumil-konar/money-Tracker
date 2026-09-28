@@ -136,6 +136,24 @@ class FinanceRepository(
     ) {
         transactionDao.pagedTransactions()
     }.flow
+
+    fun pagedFilteredTransactions(
+        accountId: Long? = null,
+        direction: String? = null,
+        searchQuery: String = "",
+    ): Flow<PagingData<TransactionRecord>> = Pager(
+        config = PagingConfig(
+            pageSize = 30,
+            prefetchDistance = 10,
+            enablePlaceholders = false,
+        ),
+    ) {
+        transactionDao.pagedFilteredTransactions(
+            accountId = accountId,
+            direction = direction,
+            searchQuery = searchQuery,
+        )
+    }.flow
     val postedTransactions: Flow<List<TransactionRecord>> = transactionDao.observePostedTransactions()
     val subscriptions: Flow<List<SubscriptionRecord>> = subscriptionDao.observeSubscriptions()
     val currentBudget: Flow<BudgetEntity?> = budgetDao.observeOverallBudget(currentMonthKey())
@@ -218,7 +236,7 @@ class FinanceRepository(
     suspend fun bootstrap() {
         reconcileAccountsAndBalances()
         refreshRecurringSuggestions()
-        deduplicateTransactions()
+        deduplicateTransactions(windowDays = 14)
     }
 
     fun markInitialSetupComplete() {
@@ -602,7 +620,7 @@ class FinanceRepository(
         transactionDao.updateBudgetInclusion(transactionId, countsTowardBudget)
     }
 
-    suspend fun enrichTransactionWithAi(transactionId: Long): Result<TransactionRecord> {
+    suspend fun enrichTransactionWithAi(transactionId: Long): Result<TransactionEntity> {
         val existing = transactionDao.getById(transactionId)
             ?: return Result.failure(IllegalArgumentException("Transaction not found"))
         val body = existing.smsBody
@@ -673,7 +691,7 @@ class FinanceRepository(
             status = TransactionStatus.POSTED,
         )
         transactionDao.update(updatedEntity)
-        val record = transactionDao.observeTransactions().first().firstOrNull { it.id == transactionId }
+        val record = transactionDao.getById(transactionId)
             ?: return Result.failure(IllegalStateException("Failed to load updated transaction"))
         return Result.success(record)
     }
@@ -2088,12 +2106,17 @@ class FinanceRepository(
         return "Scheduled via ${sender.uppercase()}"
     }
 
-    suspend fun deduplicateTransactions(): Int {
-        val all = transactionDao.getAllTransactions()
+    suspend fun deduplicateTransactions(windowDays: Int = 14): Int {
+        val cutoff = System.currentTimeMillis() - windowDays * 24 * 60 * 60 * 1000L
+        val candidates = if (windowDays > 0) {
+            transactionDao.getRecentTransactions(cutoff)
+        } else {
+            transactionDao.getAllTransactions()
+        }
         val duplicatesToDelete = mutableListOf<Long>()
         val seen = mutableListOf<TransactionEntity>()
 
-        for (tx in all) {
+        for (tx in candidates) {
             val merchantLower = tx.merchant.trim().lowercase()
             val isBogus = merchantLower.startsWith("be recorded") ||
                 merchantLower.contains("recorded by amc") ||

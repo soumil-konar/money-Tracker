@@ -28,7 +28,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.ui.draw.blur
+import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -130,6 +130,8 @@ fun MoneyTrackerRoot(
     val dashboard by viewModel.dashboard.collectAsStateWithLifecycle()
     val budgetHistory by viewModel.budgetHistory.collectAsStateWithLifecycle()
     val transactions by viewModel.filteredTransactions.collectAsStateWithLifecycle()
+    val pagedTransactions = viewModel.pagedTransactions.collectAsLazyPagingItems()
+    val selectedAccountId by viewModel.selectedAccount.collectAsStateWithLifecycle()
     val accounts by viewModel.accounts.collectAsStateWithLifecycle()
     val budget by viewModel.currentBudget.collectAsStateWithLifecycle()
     val filter by viewModel.filter.collectAsStateWithLifecycle()
@@ -266,14 +268,6 @@ fun MoneyTrackerRoot(
     val isAddTransactionOpen = showAddTransactionDialog || editingTransaction != null
     val isAssistantOpen = showAiAssistantDialog
     val isOverlayOpen = isAddTransactionOpen || isAssistantOpen
-    val backgroundBlur by animateDpAsState(
-        targetValue = if (isOverlayOpen) 20.dp else 0.dp,
-        animationSpec = spring(
-            dampingRatio = 0.82f,
-            stiffness = Spring.StiffnessMediumLow,
-        ),
-        label = "mainBackgroundBlur",
-    )
     val scrimAlpha by animateFloatAsState(
         targetValue = if (isOverlayOpen) 0.54f else 0.0f,
         animationSpec = spring(
@@ -295,9 +289,7 @@ fun MoneyTrackerRoot(
                 },
         ) {
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .blur(backgroundBlur),
+                modifier = Modifier.fillMaxSize(),
             ) {
                 NavHost(
                     navController = navController,
@@ -362,12 +354,14 @@ fun MoneyTrackerRoot(
                                 )
                                 1 -> TransactionsScreen(
                                     filter = filter,
-                                    transactions = transactions,
+                                    pagedTransactions = pagedTransactions,
                                     cardAccounts = accounts.filter { it.kind == AccountKind.CARD },
                                     searchQuery = searchQuery,
                                     listState = transactionsListState,
                                     onSearchQueryChange = viewModel::setSearchQuery,
                                     onFilterSelected = viewModel::setFilter,
+                                    onSelectedAccountIdChange = viewModel::setSelectedAccountId,
+                                    selectedAccountId = selectedAccountId,
                                     onAddTransactionClick = { bounds ->
                                         transactionAnchorBounds = bounds
                                         lastOpenedWasEditing = false

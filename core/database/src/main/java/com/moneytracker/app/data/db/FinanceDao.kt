@@ -95,6 +95,23 @@ interface TransactionDao {
     )
     fun pagedTransactions(): PagingSource<Int, TransactionRecord>
 
+    @Query("""
+        SELECT t.id, t.amount, t.direction, t.occurredAtMillis, t.merchant, t.category, t.accountId, t.sourceSender,
+               t.smsBody, t.confidence, t.status, t.note, t.countsTowardBudget, t.availableBalance,
+               a.name AS accountName, a.kind AS accountKind
+        FROM transactions t
+        LEFT JOIN accounts a ON t.accountId = a.id
+        WHERE (:accountId IS NULL OR t.accountId = :accountId)
+          AND (:direction IS NULL OR t.direction = :direction)
+          AND (:searchQuery = '' OR t.merchant LIKE '%' || :searchQuery || '%' OR t.note LIKE '%' || :searchQuery || '%')
+        ORDER BY t.occurredAtMillis DESC, t.id DESC
+    """)
+    fun pagedFilteredTransactions(
+        accountId: Long?,
+        direction: String?,
+        searchQuery: String,
+    ): PagingSource<Int, TransactionRecord>
+
     @Query(
         """
         SELECT t.id, t.amount, t.direction, t.occurredAtMillis, t.merchant, t.category, t.accountId, t.sourceSender,
@@ -129,6 +146,9 @@ interface TransactionDao {
 
     @Query("SELECT * FROM transactions ORDER BY occurredAtMillis DESC, id DESC")
     suspend fun getAllTransactions(): List<TransactionEntity>
+
+    @Query("SELECT * FROM transactions WHERE occurredAtMillis >= :sinceMillis ORDER BY occurredAtMillis DESC")
+    suspend fun getRecentTransactions(sinceMillis: Long): List<TransactionEntity>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(transaction: TransactionEntity): Long

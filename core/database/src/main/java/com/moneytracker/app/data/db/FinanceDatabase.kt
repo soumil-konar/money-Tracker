@@ -18,7 +18,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         SubscriptionEntity::class,
         ScheduledTransactionEntity::class,
     ],
-    version = 11,
+    version = 12,
     exportSchema = true,
 )
 @TypeConverters(FinanceTypeConverters::class)
@@ -257,6 +257,14 @@ abstract class FinanceDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_transactions_occurredAtMillis_amount_direction` ON `transactions` (`occurredAtMillis`, `amount`, `direction`)",
+                )
+            }
+        }
+
         fun create(context: Context): FinanceDatabase =
             Room.databaseBuilder(
                 context,
@@ -265,7 +273,7 @@ abstract class FinanceDatabase : RoomDatabase() {
             ).addMigrations(
                 MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
                 MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
-                MIGRATION_9_10, MIGRATION_10_11,
+                MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12,
             ).fallbackToDestructiveMigration()
             .build()
     }

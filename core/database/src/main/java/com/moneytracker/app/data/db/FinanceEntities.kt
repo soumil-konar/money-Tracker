@@ -31,6 +31,7 @@ import com.moneytracker.app.data.model.TransactionStatus
         Index(value = ["accountId"]),
         Index(value = ["accountId", "occurredAtMillis"]),
         Index(value = ["direction", "countsTowardBudget"]),
+        Index(value = ["occurredAtMillis", "amount", "direction"]),
     ],
 )
 data class TransactionEntity(

@@ -34,8 +34,10 @@ import com.moneytracker.app.data.model.TransactionStatus
 import com.moneytracker.app.data.repo.FinanceRepository
 import com.moneytracker.app.data.db.canTransferToCash
 import androidx.lifecycle.viewModelScope
+import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -58,14 +60,36 @@ class MainViewModel(
     val reviewPromptEvents = _reviewPromptEvents.asSharedFlow()
     private val selectedFilter = MutableStateFlow(TransactionFilter.ALL)
     private val currentSearchQuery = MutableStateFlow("")
+    private val selectedAccountId = MutableStateFlow<Long?>(null)
     private val _isAiAnalyzing = MutableStateFlow(false)
     private val _aiTestStatus = MutableStateFlow<String?>(null)
 
     val messages = messageEvents.asSharedFlow()
     val filter: StateFlow<TransactionFilter> = selectedFilter
     val searchQuery: StateFlow<String> = currentSearchQuery
+    val selectedAccount: StateFlow<Long?> = selectedAccountId
     val isAiAnalyzing: StateFlow<Boolean> = _isAiAnalyzing
-    val pagedTransactions = repository.pagedTransactions.cachedIn(viewModelScope)
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val pagedTransactions: Flow<PagingData<TransactionRecord>> = combine(
+        selectedFilter,
+        currentSearchQuery,
+        selectedAccountId,
+    ) { filter, query, accountId ->
+        val direction = when (filter) {
+            TransactionFilter.SPENT -> TransactionDirection.DEBIT.name
+            TransactionFilter.INCOME -> TransactionDirection.CREDIT.name
+            else -> null
+        }
+        Triple(accountId, direction, query.trim())
+    }.flatMapLatest { (accountId, direction, query) ->
+        repository.pagedFilteredTransactions(
+            accountId = accountId,
+            direction = direction,
+            searchQuery = query,
+        )
+    }.cachedIn(viewModelScope)
+
     val aiTestStatus: StateFlow<String?> = _aiTestStatus
     private val _emailTestStatus = MutableStateFlow<String?>(null)
     val emailTestStatus: StateFlow<String?> = _emailTestStatus
@@ -302,6 +326,13 @@ class MainViewModel(
 
     fun setFilter(filter: TransactionFilter) {
         selectedFilter.value = filter
+        if (filter != TransactionFilter.CARD) {
+            selectedAccountId.value = null
+        }
+    }
+
+    fun setSelectedAccountId(accountId: Long?) {
+        selectedAccountId.value = accountId
     }
 
     fun setSearchQuery(query: String) {
