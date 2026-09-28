@@ -1,8 +1,8 @@
 package com.moneytracker.app.data.db
 
-import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
+import androidx.room.Fts4
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.TypeConverter
@@ -13,7 +13,6 @@ import com.moneytracker.app.data.model.SubscriptionState
 import com.moneytracker.app.data.model.TransactionCategory
 import com.moneytracker.app.data.model.TransactionDirection
 import com.moneytracker.app.data.model.TransactionStatus
-import kotlin.reflect.KClass
 
 @Entity(
     tableName = "transactions",
@@ -53,23 +52,9 @@ data class TransactionEntity(
     val createdAtMillis: Long = System.currentTimeMillis(),
 )
 
-@Target(AnnotationTarget.CLASS)
-@Retention(AnnotationRetention.BINARY)
-annotation class Fts5(
-    val tokenizer: String = "trigram",
-    val contentEntity: KClass<*> = Any::class,
-)
-
-object FtsOptions {
-    const val TOKENIZER_TRIGRAM = "trigram"
-}
-
-@Fts5(tokenizer = FtsOptions.TOKENIZER_TRIGRAM)
+@Fts4(contentEntity = TransactionEntity::class)
 @Entity(tableName = "transactions_fts")
 data class TransactionFtsEntity(
-    @PrimaryKey
-    @ColumnInfo(name = "rowid")
-    val rowid: Long = 0,
     val merchant: String,
     val note: String?,
     val smsBody: String?,

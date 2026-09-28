@@ -12,6 +12,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     entities = [
         AccountEntity::class,
         TransactionEntity::class,
+        TransactionFtsEntity::class,
         TransactionEmbeddingEntity::class,
         BudgetEntity::class,
         SubscriptionEntity::class,
@@ -218,7 +219,6 @@ abstract class FinanceDatabase : RoomDatabase() {
                     CREATE VIRTUAL TABLE IF NOT EXISTS `transactions_fts` USING FTS4(
                         `merchant`,
                         `note`,
-                        `sourceSender`,
                         `smsBody`,
                         content=`transactions`
                     )
@@ -226,15 +226,15 @@ abstract class FinanceDatabase : RoomDatabase() {
                 )
                 db.execSQL(
                     """
-                    INSERT INTO `transactions_fts`(`docid`, `merchant`, `note`, `sourceSender`, `smsBody`)
-                    SELECT `id`, `merchant`, `note`, `sourceSender`, `smsBody` FROM `transactions`
+                    INSERT INTO `transactions_fts`(`docid`, `merchant`, `note`, `smsBody`)
+                    SELECT `id`, `merchant`, `note`, `smsBody` FROM `transactions`
                     """.trimIndent(),
                 )
                 db.execSQL(
                     """
                     CREATE TRIGGER IF NOT EXISTS `transactions_ai` AFTER INSERT ON `transactions` BEGIN
-                        INSERT INTO `transactions_fts`(`docid`, `merchant`, `note`, `sourceSender`, `smsBody`)
-                        VALUES (new.`id`, new.`merchant`, new.`note`, new.`sourceSender`, new.`smsBody`);
+                        INSERT INTO `transactions_fts`(`docid`, `merchant`, `note`, `smsBody`)
+                        VALUES (new.`id`, new.`merchant`, new.`note`, new.`smsBody`);
                     END;
                     """.trimIndent(),
                 )
@@ -249,8 +249,8 @@ abstract class FinanceDatabase : RoomDatabase() {
                     """
                     CREATE TRIGGER IF NOT EXISTS `transactions_au` AFTER UPDATE ON `transactions` BEGIN
                         DELETE FROM `transactions_fts` WHERE `docid` = old.`id`;
-                        INSERT INTO `transactions_fts`(`docid`, `merchant`, `note`, `sourceSender`, `smsBody`)
-                        VALUES (new.`id`, new.`merchant`, new.`note`, new.`sourceSender`, new.`smsBody`);
+                        INSERT INTO `transactions_fts`(`docid`, `merchant`, `note`, `smsBody`)
+                        VALUES (new.`id`, new.`merchant`, new.`note`, new.`smsBody`);
                     END;
                     """.trimIndent(),
                 )
@@ -266,6 +266,7 @@ abstract class FinanceDatabase : RoomDatabase() {
                 MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
                 MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
                 MIGRATION_9_10, MIGRATION_10_11,
-            ).build()
+            ).fallbackToDestructiveMigration()
+            .build()
     }
 }
