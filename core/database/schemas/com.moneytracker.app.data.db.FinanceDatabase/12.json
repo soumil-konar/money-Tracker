@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 12,
-    "identityHash": "b671474335fd355f5e71b4d87f278e70",
+    "identityHash": "38ccf4604677777f91f0a54ba732b555",
     "entities": [
       {
         "tableName": "accounts",
@@ -287,26 +287,15 @@
         ]
       },
       {
-        "ftsVersion": "FTS4",
-        "ftsOptions": {
-          "tokenizer": "simple",
-          "tokenizerArgs": [],
-          "contentTable": "transactions",
-          "languageIdColumnName": "",
-          "matchInfo": "FTS4",
-          "notIndexedColumns": [],
-          "prefixSizes": [],
-          "preferredOrder": "ASC"
-        },
-        "contentSyncTriggers": [
-          "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_transactions_fts_BEFORE_UPDATE BEFORE UPDATE ON `transactions` BEGIN DELETE FROM `transactions_fts` WHERE `docid`=OLD.`rowid`; END",
-          "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_transactions_fts_BEFORE_DELETE BEFORE DELETE ON `transactions` BEGIN DELETE FROM `transactions_fts` WHERE `docid`=OLD.`rowid`; END",
-          "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_transactions_fts_AFTER_UPDATE AFTER UPDATE ON `transactions` BEGIN INSERT INTO `transactions_fts`(`docid`, `merchant`, `note`, `smsBody`) VALUES (NEW.`rowid`, NEW.`merchant`, NEW.`note`, NEW.`smsBody`); END",
-          "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_transactions_fts_AFTER_INSERT AFTER INSERT ON `transactions` BEGIN INSERT INTO `transactions_fts`(`docid`, `merchant`, `note`, `smsBody`) VALUES (NEW.`rowid`, NEW.`merchant`, NEW.`note`, NEW.`smsBody`); END"
-        ],
         "tableName": "transactions_fts",
-        "createSql": "CREATE VIRTUAL TABLE IF NOT EXISTS `${TABLE_NAME}` USING FTS4(`merchant` TEXT NOT NULL, `note` TEXT, `smsBody` TEXT, content=`transactions`)",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`rowid` INTEGER NOT NULL, `merchant` TEXT NOT NULL, `note` TEXT, `smsBody` TEXT, PRIMARY KEY(`rowid`))",
         "fields": [
+          {
+            "fieldPath": "docid",
+            "columnName": "rowid",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
           {
             "fieldPath": "merchant",
             "columnName": "merchant",
@@ -328,7 +317,9 @@
         ],
         "primaryKey": {
           "autoGenerate": false,
-          "columnNames": []
+          "columnNames": [
+            "rowid"
+          ]
         },
         "indices": [],
         "foreignKeys": []
@@ -680,7 +671,7 @@
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'b671474335fd355f5e71b4d87f278e70')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '38ccf4604677777f91f0a54ba732b555')"
     ]
   }
 }

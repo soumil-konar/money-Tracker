@@ -78,7 +78,7 @@ data class RagAnswerResponse(
     val citedTransactionIds: List<Long>,
 )
 
-class GeminiApiClient {
+open class GeminiApiClient {
 
     private val baseUrl = "https://generativelanguage.googleapis.com/v1beta/models"
 
@@ -218,7 +218,7 @@ class GeminiApiClient {
         }
     }
 
-    suspend fun generateEmbedding(
+    open suspend fun generateEmbedding(
         text: String,
         apiKey: String,
         model: String = DEFAULT_EMBEDDING_MODEL,

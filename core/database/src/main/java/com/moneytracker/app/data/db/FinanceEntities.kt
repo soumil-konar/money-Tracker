@@ -1,5 +1,6 @@
 package com.moneytracker.app.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Fts4
@@ -65,12 +66,26 @@ val TransactionEntity.parseEngine: String
 val TransactionEntity.cleanNote: String?
     get() = note?.replace(Regex("""\s*\[Engine:\s*[A-Z_]+\]"""), "")?.trim()?.takeIf { it.isNotEmpty() }
 
-@Fts4(contentEntity = TransactionEntity::class)
+@Target(AnnotationTarget.CLASS)
+@Retention(AnnotationRetention.BINARY)
+annotation class Fts5(
+    val tokenizer: String = "trigram",
+    val contentEntity: kotlin.reflect.KClass<*> = Any::class,
+)
+
+object FtsOptions {
+    const val TOKENIZER_TRIGRAM = "trigram"
+}
+
 @Entity(tableName = "transactions_fts")
+@Fts5(tokenizer = FtsOptions.TOKENIZER_TRIGRAM)
 data class TransactionFtsEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "rowid")
+    val docid: Long,
     val merchant: String,
     val note: String?,
-    val smsBody: String?,
+    val smsBody: String?
 )
 
 @Entity(

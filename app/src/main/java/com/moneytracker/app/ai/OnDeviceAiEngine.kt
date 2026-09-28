@@ -8,11 +8,9 @@ import com.moneytracker.app.data.model.CardType
 import com.moneytracker.app.data.model.NudgeActionType
 import com.moneytracker.app.data.model.TransactionCategory
 import com.moneytracker.app.data.model.TransactionDirection
-import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlin.math.sqrt
 import com.moneytracker.app.bank.BalanceProofVerifier
 import com.moneytracker.app.bank.BankDetector
 import com.moneytracker.app.parser.PromotionalDetector
@@ -846,26 +844,7 @@ class OnDeviceAiEngine(
     }
 
     fun generateEmbeddingOnDevice(text: String): Result<List<Float>> {
-        val lower = text.lowercase(Locale.getDefault())
-        val vector = FloatArray(256)
-
-        // Seed with normalized character and semantic hash
-        val md = MessageDigest.getInstance("SHA-256")
-        val hash = md.digest(lower.toByteArray(Charsets.UTF_8))
-
-        for (i in 0 until 256) {
-            val byteVal = hash[i % hash.size].toFloat()
-            val charWeight = if (i < lower.length) lower[i].code.toFloat() else 0f
-            vector[i] = (byteVal * 0.7f + charWeight * 0.3f) / 255f
-        }
-
-        // Normalize vector to unit length
-        var sumSquares = 0f
-        for (v in vector) sumSquares += v * v
-        val norm = sqrt(sumSquares).coerceAtLeast(1e-6f)
-        val normalized = vector.map { it / norm }
-
-        return Result.success(normalized)
+        return Result.failure(UnsupportedOperationException("On-device neural embedding model not loaded"))
     }
 
     private fun isGarbageMerchantName(name: String): Boolean {

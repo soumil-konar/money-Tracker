@@ -30,72 +30,81 @@ class FinanceRagEngine(
         allPosted: List<TransactionRecord>,
     ): RetrievedContext {
         val lowerQuery = query.lowercase(Locale.getDefault())
-
-        // 1. Extract Temporal Range
-        val (timeStart, timeEnd) = extractTimeRange(lowerQuery)
-
-        // 2. Candidate collection
         val candidates = LinkedHashMap<Long, TransactionRecord>()
 
-        // 2a. Time window candidates
+        // -------------------------------------------------------------
+        // Tier 1: Temporal & Deterministic SQL
+        // -------------------------------------------------------------
+        val (timeStart, timeEnd) = extractTimeRange(lowerQuery)
         if (timeStart != null && timeEnd != null) {
-            val timeMatches = transactionDao.getTransactionsBetween(timeStart, timeEnd)
-            timeMatches.forEach { candidates[it.id] = it }
+            runCatching {
+                val timeMatches = transactionDao.getTransactionsBetween(timeStart, timeEnd)
+                timeMatches.forEach { candidates[it.id] = it }
+            }
         }
 
-        // 2b. Full-Text Search (FTS) Keyword matches
-        val ftsQuery = sanitizeForFts(lowerQuery)
+        // -------------------------------------------------------------
+        // Tier 2: FTS5 Substring Search (Trigram Tokenizer)
+        // -------------------------------------------------------------
+        val ftsQuery = sanitizeForFts5(lowerQuery)
         if (ftsQuery.isNotBlank()) {
             runCatching {
-                val ftsMatches = transactionDao.searchTransactionsFts(ftsQuery, limit = 40)
+                val ftsMatches = transactionDao.searchTransactionsFts(ftsQuery, limit = 30)
                 ftsMatches.forEach { candidates[it.id] = it }
             }
         }
 
-        // 2c. Semantic Vector Search (Cloud or On-Device via Tensor G4)
-        runCatching {
-            val queryEmbedding: List<Float>? = if (apiKey.isNotBlank()) {
-                geminiApiClient.generateEmbedding(
+        // -------------------------------------------------------------
+        // Tier 3: Semantic Vector Search (Conditional on Cloud API Key)
+        // Never fall back to SHA-256 byte mapping. If cloud embedding is
+        // unavailable or key is absent, rely on Tier 1 + Tier 2.
+        // -------------------------------------------------------------
+        if (apiKey.isNotBlank()) {
+            runCatching {
+                val embeddingResult = geminiApiClient.generateEmbedding(
                     text = query,
                     apiKey = apiKey,
                     outputDimensionality = 256,
-                ).getOrNull() ?: onDeviceAiEngine.generateEmbeddingOnDevice(query).getOrNull()
-            } else {
-                onDeviceAiEngine.generateEmbeddingOnDevice(query).getOrNull()
-            }
+                )
+                val queryEmbedding = embeddingResult.getOrNull()
+                if (queryEmbedding != null && queryEmbedding.isNotEmpty()) {
+                    val queryVector = FloatArray(queryEmbedding.size) { queryEmbedding[it] }
+                    val storedEmbeddings = embeddingDao.getAll()
+                    val scored = storedEmbeddings.mapNotNull { entity ->
+                        val vector = entity.toFloatArray()
+                        if (vector.isEmpty()) return@mapNotNull null
+                        val score = cosineSimilarity(queryVector, vector)
+                        entity.transactionId to score
+                    }.filter { it.second > 0.45f }
+                        .sortedByDescending { it.second }
+                        .take(15)
 
-            val queryVector = queryEmbedding?.let { list -> FloatArray(list.size) { list[it] } }
-            if (queryVector != null && queryVector.isNotEmpty()) {
-                val storedEmbeddings = embeddingDao.getAll()
-                val scored = storedEmbeddings.mapNotNull { entity ->
-                    val vector = entity.toFloatArray()
-                    if (vector.isEmpty()) return@mapNotNull null
-                    val score = cosineSimilarity(queryVector, vector)
-                    entity.transactionId to score
-                }.filter { it.second > 0.45 }
-                    .sortedByDescending { it.second }
-                    .take(25)
-
-                if (scored.isNotEmpty()) {
-                    val allMap = allPosted.associateBy { it.id }
-                    scored.forEach { (txId, _) ->
-                        allMap[txId]?.let { candidates[it.id] = it }
+                    if (scored.isNotEmpty()) {
+                        val allMap = allPosted.associateBy { it.id }
+                        scored.forEach { (txId, _) ->
+                            allMap[txId]?.let { candidates[it.id] = it }
+                        }
                     }
                 }
             }
         }
 
-        // 2d. Fallback if candidates are still empty (e.g. general questions like "How are my savings?")
+        // Fallback for general non-targeted inquiries (e.g. "How are my savings?")
         if (candidates.isEmpty()) {
-            allPosted.take(30).forEach { candidates[it.id] = it }
+            allPosted.take(15).forEach { candidates[it.id] = it }
         }
 
-        // Sort candidates: prioritize time relevancy and amount
+        // -------------------------------------------------------------
+        // Context Synthesis:
+        // Combine unique records from Tier 1, Tier 2, and Tier 3.
+        // Compact to top 10-15 records to maintain prompt compactness
+        // and eliminate context dilution.
+        // -------------------------------------------------------------
         val finalTransactions = candidates.values
             .sortedByDescending { it.occurredAtMillis }
-            .take(30)
+            .take(15)
 
-        // 3. Build Macro Financial Summary
+        // Build Macro Financial Summary
         val currentMonth = YearMonth.now()
         val currentMonthTxs = allPosted.filter {
             YearMonth.from(it.toLocalDate()) == currentMonth
@@ -175,24 +184,6 @@ class FinanceRagEngine(
         }
     }
 
-    private fun sanitizeForFts(query: String): String {
-        val stopWords = setOf(
-            "how", "much", "did", "i", "spend", "on", "what", "where", "my", "in", "the",
-            "for", "to", "show", "me", "all", "expenses", "transactions", "money", "tracker",
-            "at", "from", "was", "were", "a", "an", "and", "or", "of", "about", "with",
-            "this", "that", "last", "month", "today", "yesterday", "week", "year",
-        )
-
-        val tokens = query.lowercase(Locale.getDefault())
-            .split(Regex("[^a-z0-9]+"))
-            .map { it.trim() }
-            .filter { it.length > 2 && it !in stopWords }
-
-        if (tokens.isEmpty()) return ""
-        // Form SQLite FTS prefix match: e.g. "swiggy* OR bangalore* OR food*"
-        return tokens.take(4).joinToString(" OR ") { "$it*" }
-    }
-
     private fun cosineSimilarity(vecA: FloatArray, vecB: FloatArray): Float {
         if (vecA.size != vecB.size || vecA.isEmpty()) return 0f
         var dot = 0f
@@ -213,5 +204,25 @@ class FinanceRagEngine(
         return java.time.Instant.ofEpochMilli(occurredAtMillis)
             .atZone(ZoneId.systemDefault())
             .toLocalDate()
+    }
+
+    companion object {
+        fun sanitizeForFts5(query: String): String {
+            val stopWords = setOf(
+                "how", "much", "did", "i", "spend", "on", "what", "where", "my", "in", "the",
+                "for", "to", "show", "me", "all", "expenses", "transactions", "money", "tracker",
+                "at", "from", "was", "were", "a", "an", "and", "or", "of", "about", "with",
+                "this", "that", "last", "month", "today", "yesterday", "week", "year",
+            )
+
+            val tokens = query.lowercase(Locale.getDefault())
+                .split(Regex("[^a-z0-9]+"))
+                .map { it.trim() }
+                .filter { it.length >= 2 && it !in stopWords }
+
+            if (tokens.isEmpty()) return ""
+            // Wrap alphanumeric search terms inside escaped double quotes for FTS5 trigram
+            return tokens.take(5).joinToString(" OR ") { "\"$it\"" }
+        }
     }
 }

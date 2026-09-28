@@ -182,7 +182,33 @@ interface TransactionDao {
         LIMIT :limit
         """,
     )
-    suspend fun searchTransactionsFts(matchQuery: String, limit: Int = 50): List<TransactionRecord>
+    suspend fun queryTransactionsFtsRaw(matchQuery: String, limit: Int = 50): List<TransactionRecord>
+
+    suspend fun searchTransactionsFts(matchQuery: String, limit: Int = 50): List<TransactionRecord> {
+        val sanitized = sanitizeFts5Query(matchQuery)
+        if (sanitized.isBlank()) return emptyList()
+        return queryTransactionsFtsRaw(sanitized, limit)
+    }
+
+    companion object {
+        fun sanitizeFts5Query(rawQuery: String): String {
+            if (rawQuery.isBlank()) return ""
+            if (rawQuery.contains(Regex("""\bOR\b""", RegexOption.IGNORE_CASE))) {
+                val parts = rawQuery.split(Regex("""\bOR\b""", RegexOption.IGNORE_CASE))
+                val sanitizedParts = parts.map { sanitizeClause(it) }.filter { it.isNotBlank() }
+                if (sanitizedParts.isEmpty()) return ""
+                return sanitizedParts.joinToString(" OR ")
+            }
+            return sanitizeClause(rawQuery)
+        }
+
+        private fun sanitizeClause(clause: String): String {
+            val clean = clause.replace(Regex("""[^\p{L}\p{N}\s]"""), " ").trim()
+            val tokens = clean.split(Regex("""\s+""")).filter { it.isNotBlank() }
+            if (tokens.isEmpty()) return ""
+            return tokens.joinToString(" AND ") { "\"$it\"" }
+        }
+    }
 
     @Query(
         """

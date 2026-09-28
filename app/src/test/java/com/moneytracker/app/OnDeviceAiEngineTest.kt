@@ -235,24 +235,11 @@ class OnDeviceAiEngineTest {
     }
 
     @Test
-    fun `generateEmbeddingOnDevice produces 256-dimensional normalized vector`() {
-        val text1 = "DEBIT ₹450 at Starbucks (Food) on 12-Oct-2024. Note: Indiranagar"
-        val text2 = "DEBIT ₹450 at Starbucks (Food) on 12-Oct-2024. Note: Indiranagar"
-        val text3 = "CREDIT ₹85000 at Infosys Payroll (Salary) on 01-Nov-2024."
-
-        val emb1 = engine.generateEmbeddingOnDevice(text1).getOrNull()!!.let { list -> FloatArray(list.size) { list[it] } }
-        val emb2 = engine.generateEmbeddingOnDevice(text2).getOrNull()!!.let { list -> FloatArray(list.size) { list[it] } }
-        val emb3 = engine.generateEmbeddingOnDevice(text3).getOrNull()!!.let { list -> FloatArray(list.size) { list[it] } }
-
-        assertEquals(256, emb1.size)
-        assertEquals(256, emb2.size)
-        assertEquals(256, emb3.size)
-
-        val simIdentical = cosineSimilarity(emb1, emb2)
-        assertEquals(1.0f, simIdentical, 0.001f)
-
-        val simDifferent = cosineSimilarity(emb1, emb3)
-        assertTrue(simDifferent < 0.95f)
+    fun `generateEmbeddingOnDevice returns failure when neural runtime is not loaded`() {
+        val result = engine.generateEmbeddingOnDevice("DEBIT ₹450 at Starbucks")
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is UnsupportedOperationException)
+        assertEquals("On-device neural embedding model not loaded", result.exceptionOrNull()?.message)
     }
 
     @Test

@@ -866,17 +866,17 @@ class FinanceRepository(
         val apiKey = aiPreferences.apiKey.value
         val engineMode = aiPreferences.engineMode.value
 
-        val embedding: List<Float>? = if (engineMode != AiEngineMode.ON_DEVICE_ONLY && apiKey.isNotBlank()) {
-            geminiApiClient.generateEmbedding(
-                text = documentText,
-                apiKey = apiKey,
-                outputDimensionality = 256,
-            ).getOrNull() ?: onDeviceAiEngine.generateEmbeddingOnDevice(documentText).getOrNull()
-        } else {
-            onDeviceAiEngine.generateEmbeddingOnDevice(documentText).getOrNull()
+        if (apiKey.isBlank() || engineMode == AiEngineMode.ON_DEVICE_ONLY) {
+            return
         }
 
-        if (embedding == null || embedding.isEmpty()) return
+        val embedding: List<Float>? = geminiApiClient.generateEmbedding(
+            text = documentText,
+            apiKey = apiKey,
+            outputDimensionality = 256,
+        ).getOrNull()
+
+        if (embedding.isNullOrEmpty()) return
 
         val entity = TransactionEmbeddingEntity.fromFloatList(
             transactionId = transactionId,
@@ -887,6 +887,12 @@ class FinanceRepository(
     }
 
     suspend fun indexUnembeddedTransactions(limit: Int = 15) {
+        val apiKey = aiPreferences.apiKey.value
+        val engineMode = aiPreferences.engineMode.value
+        if (apiKey.isBlank() || engineMode == AiEngineMode.ON_DEVICE_ONLY) {
+            return
+        }
+
         val unembeddedIds = embeddingDao.getUnembeddedTransactionIds(limit)
         if (unembeddedIds.isEmpty()) return
 

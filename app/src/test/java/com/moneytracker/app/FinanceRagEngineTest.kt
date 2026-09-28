@@ -62,10 +62,10 @@ class FinanceRagEngineTest {
     @Test
     fun `FTS sanitizer extracts relevant keywords and excludes stop words`() {
         val query = "How much did I spend on dining and swiggy in Indiranagar?"
-        val fts = sanitizeForFts(query)
-        assertTrue(fts.contains("dining*"))
-        assertTrue(fts.contains("swiggy*"))
-        assertTrue(fts.contains("indiranagar*"))
+        val fts = com.moneytracker.app.ai.FinanceRagEngine.sanitizeForFts5(query)
+        assertTrue(fts.contains("\"dining\""))
+        assertTrue(fts.contains("\"swiggy\""))
+        assertTrue(fts.contains("\"indiranagar\""))
     }
 
     @Test
