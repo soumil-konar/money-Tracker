@@ -1,5 +1,6 @@
 package com.moneytracker.app.ui.screen
 
+import android.os.Build
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -79,8 +80,10 @@ fun SettingsScreen(
     isAiEnabled: Boolean = true,
     selectedModel: String = AiPreferences.DEFAULT_MODEL,
     engineMode: AiEngineMode = AiEngineMode.AUTO_PIXEL_FIRST,
-    deviceAiStatus: String = "Google Tensor G4 TPU Ready",
+    deviceAiStatus: String = "On-Device Neural Engine Ready",
     isPixel9Ready: Boolean = true,
+    deviceModel: String = Build.MODEL?.takeIf { it.isNotBlank() } ?: "Device",
+    hardwareAccelerator: String = "Neural Engine",
     aiTestStatus: String? = null,
     isHapticEnabled: Boolean = true,
     hapticIntensity: HapticIntensity = HapticIntensity.BALANCED,
@@ -278,8 +281,11 @@ fun SettingsScreen(
                                 selectedCategory = SettingsCategory.DATA_SYNC
                             },
                         )
+                        val resolvedStatusAccelerator = hardwareAccelerator.takeIf { it.isNotBlank() && it != "Neural Engine" }
+                            ?: deviceAiStatus.substringAfter(" • ").removeSuffix(" Active").trim().takeIf { it.isNotBlank() }
+                            ?: "On-Device"
                         QuickStatusPill(
-                            label = if (engineMode == AiEngineMode.ON_DEVICE_ONLY) "Private Offline AI" else "Tensor G4 + Cloud AI",
+                            label = if (engineMode == AiEngineMode.ON_DEVICE_ONLY) "Private Offline AI" else "$resolvedStatusAccelerator + Cloud AI",
                             icon = Icons.Outlined.Memory,
                             isActive = true,
                             onClick = {
@@ -353,6 +359,8 @@ fun SettingsScreen(
                         engineMode = engineMode,
                         deviceAiStatus = deviceAiStatus,
                         isPixel9Ready = isPixel9Ready,
+                        deviceModel = deviceModel,
+                        hardwareAccelerator = hardwareAccelerator,
                         aiTestStatus = aiTestStatus,
                         onUpdateApiKey = onUpdateApiKey,
                         onToggleAiEnabled = onToggleAiEnabled,

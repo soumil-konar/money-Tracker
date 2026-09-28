@@ -1,5 +1,6 @@
 package com.moneytracker.app.ui.screen.settings
 
+import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -74,14 +75,24 @@ fun AiSettingsSection(
     onSelectEngineMode: (AiEngineMode) -> Unit,
     onTestAiConnection: () -> Unit,
     modifier: Modifier = Modifier,
+    deviceModel: String = Build.MODEL?.takeIf { it.isNotBlank() } ?: "Device",
+    hardwareAccelerator: String = "Neural Engine",
 ) {
     val haptics = LocalAppHaptics.current
     var keyInput by rememberSaveable(aiApiKey) { mutableStateOf(aiApiKey) }
     var isGuideExpanded by rememberSaveable { mutableStateOf(false) }
 
+    val resolvedDeviceModel = deviceModel.takeIf { it.isNotBlank() && it != "Device" }
+        ?: deviceAiStatus.substringBefore(" • ").trim().takeIf { it.isNotBlank() }
+        ?: Build.MODEL?.takeIf { it.isNotBlank() }
+        ?: "Device"
+    val resolvedAccelerator = hardwareAccelerator.takeIf { it.isNotBlank() && it != "Neural Engine" }
+        ?: deviceAiStatus.substringAfter(" • ").removeSuffix(" Active").trim().takeIf { it.isNotBlank() }
+        ?: "Neural Engine"
+
     SectionCard(
         title = "AI Intelligence & Engine",
-        subtitle = "Tensor G4 TPU hardware acceleration & optional Gemini cloud augmentation",
+        subtitle = "$resolvedAccelerator hardware acceleration & optional Gemini cloud augmentation",
         modifier = modifier,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -112,7 +123,7 @@ fun AiSettingsSection(
                         )
                         Text(
                             text = if (isPixel9Ready) {
-                                "Tensor G4 TPU active: Sub-millisecond parsing & 100% offline private assistant."
+                                "$resolvedAccelerator active: Sub-millisecond parsing & 100% offline private assistant."
                             } else {
                                 "On-device fallback active: zero network latency & local vector embeddings."
                             },
@@ -141,7 +152,7 @@ fun AiSettingsSection(
                             haptics.selection()
                             onSelectEngineMode(mode)
                         },
-                        label = { Text(mode.label) },
+                        label = { Text(mode.getLabel(resolvedDeviceModel)) },
                         leadingIcon = {
                             Icon(
                                 imageVector = when (mode) {
@@ -162,7 +173,7 @@ fun AiSettingsSection(
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
             ) {
                 Text(
-                    text = engineMode.description,
+                    text = engineMode.getDescription(resolvedDeviceModel, resolvedAccelerator),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(12.dp),

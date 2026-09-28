@@ -90,6 +90,8 @@ class MainViewModel(
     val deviceStatus: String = repository.onDeviceAiEngine.getDeviceStatus()
     val isPixelDevice: Boolean = repository.onDeviceAiEngine.isPixelDevice()
     val isTensorG4Ready: Boolean = repository.onDeviceAiEngine.isTensorSoc()
+    val deviceModel: String = repository.onDeviceAiEngine.getDeviceModel()
+    val hardwareAccelerator: String = repository.onDeviceAiEngine.getHardwareAcceleratorName()
 
     val isEmailSyncEnabled: StateFlow<Boolean> = repository.emailPreferences.isEmailSyncEnabled
     val emailAddress: StateFlow<String> = repository.emailPreferences.emailAddress

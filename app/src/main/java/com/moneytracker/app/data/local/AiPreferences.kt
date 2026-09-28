@@ -1,22 +1,38 @@
 package com.moneytracker.app.data.local
 
 import android.content.Context
+import android.os.Build
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
-enum class AiEngineMode(val label: String, val description: String) {
-    AUTO_PIXEL_FIRST(
-        label = "Auto (Pixel 9 Local First)",
-        description = "Runs on-device via Tensor G4 first for zero latency and privacy; falls back to cloud Gemini Flash Lite when needed.",
-    ),
-    ON_DEVICE_ONLY(
-        label = "On-Device Only (100% Offline)",
-        description = "No data ever leaves your device. All parsing, places, and spending chat run 100% offline.",
-    ),
-    CLOUD_ONLY(
-        label = "Cloud Only (Google AI Studio)",
-        description = "Processes transactions and RAG chat through Google AI Studio Gemini API.",
-    ),
+enum class AiEngineMode {
+    AUTO_PIXEL_FIRST,
+    ON_DEVICE_ONLY,
+    CLOUD_ONLY;
+
+    val label: String
+        get() = getLabel(Build.MODEL?.takeIf { it.isNotBlank() } ?: "Device")
+
+    val description: String
+        get() = getDescription(Build.MODEL?.takeIf { it.isNotBlank() } ?: "Device")
+
+    fun getLabel(deviceModel: String = Build.MODEL?.takeIf { it.isNotBlank() } ?: "Device"): String = when (this) {
+        AUTO_PIXEL_FIRST -> "Auto ($deviceModel Local First)"
+        ON_DEVICE_ONLY -> "On-Device Only (100% Offline)"
+        CLOUD_ONLY -> "Cloud Only (Google AI Studio)"
+    }
+
+    fun getDescription(
+        deviceModel: String = Build.MODEL?.takeIf { it.isNotBlank() } ?: "Device",
+        accelerator: String? = null,
+    ): String = when (this) {
+        AUTO_PIXEL_FIRST -> {
+            val engine = accelerator?.takeIf { it.isNotBlank() } ?: deviceModel
+            "Runs on-device via $engine first for zero latency and privacy; falls back to cloud Gemini Flash Lite when needed."
+        }
+        ON_DEVICE_ONLY -> "No data ever leaves your device. All parsing, places, and spending chat run 100% offline."
+        CLOUD_ONLY -> "Processes transactions and RAG chat through Google AI Studio Gemini API."
+    }
 }
 
 class AiPreferences(

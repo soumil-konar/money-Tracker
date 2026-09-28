@@ -453,6 +453,8 @@ fun MoneyTrackerRoot(
                                     engineMode = engineMode,
                                     deviceAiStatus = viewModel.deviceStatus,
                                     isPixel9Ready = viewModel.isTensorG4Ready,
+                                    deviceModel = viewModel.deviceModel,
+                                    hardwareAccelerator = viewModel.hardwareAccelerator,
                                     aiTestStatus = aiTestStatus,
                                     onUpdateApiKey = viewModel::updateAiApiKey,
                                     onToggleAiEnabled = viewModel::setAiEnabled,

@@ -48,8 +48,12 @@ class OnDeviceAiEngine(
         }.getOrDefault(false)
     }
 
+    fun getDeviceModel(): String {
+        return Build.MODEL?.takeIf { it.isNotBlank() } ?: "Device"
+    }
+
     fun getDeviceStatus(): String {
-        val model = Build.MODEL ?: "Device"
+        val model = getDeviceModel()
         val accelerator = getHardwareAcceleratorName()
         return "$model • $accelerator Active"
     }
