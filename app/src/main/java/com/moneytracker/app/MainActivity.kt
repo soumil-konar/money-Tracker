@@ -26,9 +26,12 @@ import com.moneytracker.app.data.local.BiometricLockTimeout
 import com.moneytracker.app.ui.theme.MoneyTrackerTheme
 import com.moneytracker.app.widget.BalanceWidgetProvider
 
+import com.moneytracker.app.notification.AppNotificationManager
+
 class MainActivity : FragmentActivity() {
 
     private var openAddTransactionOnLaunch by mutableStateOf(false)
+    private var deepLinkDestination by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -36,12 +39,16 @@ class MainActivity : FragmentActivity() {
             BalanceWidgetProvider.EXTRA_OPEN_ADD_TRANSACTION,
             false,
         ) ?: false
+        deepLinkDestination = intent?.getStringExtra(AppNotificationManager.EXTRA_DESTINATION)
         enableEdgeToEdge()
 
         setContent {
             val container = (application as MoneyTrackerApp).container
             val mainViewModel: MainViewModel = viewModel(
-                factory = MainViewModel.provideFactory(container.repository),
+                factory = MainViewModel.provideFactory(
+                    repository = container.repository,
+                    connectivityObserver = container.networkConnectivityObserver,
+                ),
             )
             val isBiometricEnabled by container.securityPreferences.isBiometricEnabled.collectAsStateWithLifecycle()
             val biometricTimeout by container.securityPreferences.biometricTimeout.collectAsStateWithLifecycle()
@@ -49,8 +56,11 @@ class MainActivity : FragmentActivity() {
             var lastStopTimestamp by rememberSaveable { mutableStateOf(0L) }
 
             LaunchedEffect(Unit) {
-                mainViewModel.reviewPromptEvents.collect {
-                    container.reviewPromptManager.launchReviewIfEligible(this@MainActivity)
+                mainViewModel.reviewPromptEvents.collect { isUnderBudget ->
+                    container.reviewPromptManager.launchReviewIfEligible(
+                        activity = this@MainActivity,
+                        isUnderBudgetAtMonthClose = isUnderBudget,
+                    )
                 }
             }
 
@@ -129,6 +139,8 @@ class MainActivity : FragmentActivity() {
                             viewModel = mainViewModel,
                             initialOpenAddTransaction = openAddTransactionOnLaunch,
                             onConsumeOpenAddTransaction = { openAddTransactionOnLaunch = false },
+                            initialDestination = deepLinkDestination,
+                            onConsumeDestination = { deepLinkDestination = null },
                         )
                     }
                 }
@@ -142,5 +154,9 @@ class MainActivity : FragmentActivity() {
         if (intent.getBooleanExtra(BalanceWidgetProvider.EXTRA_OPEN_ADD_TRANSACTION, false)) {
             openAddTransactionOnLaunch = true
         }
+        intent.getStringExtra(AppNotificationManager.EXTRA_DESTINATION)?.let {
+            deepLinkDestination = it
+        }
     }
+
 }

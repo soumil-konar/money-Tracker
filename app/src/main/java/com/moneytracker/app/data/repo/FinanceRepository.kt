@@ -2508,6 +2508,49 @@ class FinanceRepository(
         return digest.joinToString(separator = "") { byte -> "%02x".format(byte) }
     }
 
+    suspend fun getDailyRecapData(referenceMillis: Long = System.currentTimeMillis()): com.moneytracker.app.data.model.DailyRecapData {
+        val zone = ZoneId.systemDefault()
+        val localDate = Instant.ofEpochMilli(referenceMillis).atZone(zone).toLocalDate()
+        val startOfDay = localDate.atStartOfDay(zone).toInstant().toEpochMilli()
+        val endOfDay = localDate.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
+
+        val todayTransactions = transactionDao.getTransactionsBetween(startOfDay, endOfDay)
+        val todayDebits = todayTransactions.filter {
+            it.direction == TransactionDirection.DEBIT && it.status == TransactionStatus.POSTED
+        }
+        val spentToday = todayDebits.sumOf { it.amount }
+        val txCount = todayDebits.size
+
+        val currentMonthKey = YearMonth.from(localDate).toString()
+        val budget = budgetDao.getOverallBudget(currentMonthKey)
+        val monthStart = YearMonth.from(localDate).atDay(1).atStartOfDay(zone).toInstant().toEpochMilli()
+        val monthEnd = YearMonth.from(localDate).atEndOfMonth().atTime(23, 59, 59).atZone(zone).toInstant().toEpochMilli()
+        val monthTransactions = transactionDao.getTransactionsBetween(monthStart, monthEnd)
+        val monthSpent = monthTransactions.filter {
+            it.direction == TransactionDirection.DEBIT && it.countsTowardBudget && it.category != TransactionCategory.TRANSFER && it.status == TransactionStatus.POSTED
+        }.sumOf { it.amount }
+
+        val remainingBuffer = budget?.let { (it.amountLimit - monthSpent).coerceAtLeast(0.0) } ?: 0.0
+
+        return com.moneytracker.app.data.model.DailyRecapData(
+            spentToday = spentToday,
+            txCount = txCount,
+            remainingBuffer = remainingBuffer,
+        )
+    }
+
+    suspend fun getUpcomingBillReminders(minDueMillis: Long, maxDueMillis: Long): List<ScheduledTransactionEntity> {
+        return scheduledTransactionDao.getUpcomingUnpaidBillReminders(minDueMillis, maxDueMillis)
+    }
+
+    suspend fun getDistinctTransactionDaysCount(): Int {
+        val timestamps = transactionDao.getAllPostedTransactionTimestamps()
+        val zone = ZoneId.systemDefault()
+        return timestamps.map {
+            Instant.ofEpochMilli(it).atZone(zone).toLocalDate()
+        }.distinct().size
+    }
+
     private fun TransactionRecord.toLocalDate(): LocalDate {
         return Instant.ofEpochMilli(occurredAtMillis).atZone(ZoneId.systemDefault()).toLocalDate()
     }
@@ -2520,3 +2563,4 @@ class FinanceRepository(
         DUPLICATE,
     }
 }
+

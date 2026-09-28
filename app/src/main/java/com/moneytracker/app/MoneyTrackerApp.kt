@@ -17,10 +17,12 @@ class MoneyTrackerApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        container.appNotificationManager.createNotificationChannels()
         InsightsScheduler.schedule(this)
         applicationScope.launch {
             container.repository.bootstrap()
         }
     }
+
 }
 

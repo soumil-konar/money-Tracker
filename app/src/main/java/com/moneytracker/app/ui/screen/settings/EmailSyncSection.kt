@@ -69,6 +69,7 @@ fun EmailSyncSection(
     onTestEmailConnection: (String, String) -> Unit,
     onClearEmailCredentials: () -> Unit,
     onSyncRecentEmails: () -> Unit,
+    isOnline: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val haptics = LocalAppHaptics.current
@@ -346,7 +347,7 @@ fun EmailSyncSection(
                                     haptics.click()
                                     onSyncRecentEmails()
                                 },
-                                enabled = !isEmailSyncing,
+                                enabled = !isEmailSyncing && isOnline,
                             ) {
                                 if (isEmailSyncing) {
                                     CircularProgressIndicator(
@@ -359,10 +360,19 @@ fun EmailSyncSection(
                                 } else {
                                     Icon(Icons.Outlined.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.size(6.dp))
-                                    Text("Sync Now")
+                                    Text("Sync Gmail")
                                 }
                             }
                         }
+                    }
+
+                    if (!isOnline) {
+                        Text(
+                            text = "Offline — Internet connection required to sync Gmail.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
                     }
                 }
             }

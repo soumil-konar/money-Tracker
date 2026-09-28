@@ -48,9 +48,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.activity.BackEventCompat
+import androidx.activity.compose.PredictiveBackHandler
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.CancellationException
+
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -105,6 +112,18 @@ fun SpendingAssistantDialog(
     val haptics = LocalAppHaptics.current
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
+    var predictiveBackProgress by remember { mutableFloatStateOf(0f) }
+
+    PredictiveBackHandler(enabled = true) { progress: Flow<BackEventCompat> ->
+        try {
+            progress.collect { backEvent ->
+                predictiveBackProgress = backEvent.progress
+            }
+            onDismiss()
+        } catch (e: CancellationException) {
+            predictiveBackProgress = 0f
+        }
+    }
 
     LaunchedEffect(messages.size, isThinking) {
         if (messages.isNotEmpty()) {
@@ -119,6 +138,13 @@ fun SpendingAssistantDialog(
             .widthIn(max = 440.dp)
             .fillMaxHeight(0.90f)
             .heightIn(max = 660.dp)
+            .graphicsLayer {
+                translationY = predictiveBackProgress * 260.dp.toPx()
+                val scale = 1f - (predictiveBackProgress * 0.08f)
+                scaleX = scale
+                scaleY = scale
+                alpha = (1f - (predictiveBackProgress * 0.25f)).coerceIn(0f, 1f)
+            }
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,

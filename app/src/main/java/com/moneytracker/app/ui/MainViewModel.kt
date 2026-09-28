@@ -51,13 +51,18 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+import com.moneytracker.app.data.network.NetworkConnectivityObserver
+
 class MainViewModel(
     private val repository: FinanceRepository,
+    private val connectivityObserver: NetworkConnectivityObserver? = null,
 ) : ViewModel() {
 
     private val messageEvents = MutableSharedFlow<String>()
-    private val _reviewPromptEvents = MutableSharedFlow<Unit>()
+    private val _reviewPromptEvents = MutableSharedFlow<Boolean>()
     val reviewPromptEvents = _reviewPromptEvents.asSharedFlow()
+    val isOnline: StateFlow<Boolean> = connectivityObserver?.isOnline ?: MutableStateFlow(true)
+
     private val selectedFilter = MutableStateFlow(TransactionFilter.ALL)
     private val currentSearchQuery = MutableStateFlow("")
     private val selectedAccountId = MutableStateFlow<Long?>(null)
@@ -547,6 +552,7 @@ class MainViewModel(
                 repository.addManualTransaction(draft)
             }.onSuccess {
                 emitMessage("Transaction added.")
+                triggerReviewPrompt(isUnderBudgetAtMonthClose = false)
             }.onFailure {
                 emitMessage("Could not add the transaction.")
             }
@@ -610,9 +616,9 @@ class MainViewModel(
         }
     }
 
-    fun triggerReviewPrompt() {
+    fun triggerReviewPrompt(isUnderBudgetAtMonthClose: Boolean = false) {
         viewModelScope.launch {
-            _reviewPromptEvents.emit(Unit)
+            _reviewPromptEvents.emit(isUnderBudgetAtMonthClose)
         }
     }
 
@@ -622,7 +628,6 @@ class MainViewModel(
                 repository.trueUpAccountBalance(accountId, newBalance, reason)
             }.onSuccess {
                 emitMessage("Account balance adjusted and reconciled.")
-                triggerReviewPrompt()
             }.onFailure {
                 emitMessage("Could not adjust account balance.")
             }
@@ -639,7 +644,6 @@ class MainViewModel(
                 } ?: error("Unable to open output stream.")
             }.onSuccess {
                 emitMessage("Encrypted backup exported successfully.")
-                triggerReviewPrompt()
             }.onFailure { e ->
                 emitMessage("Export failed: ${e.message ?: "Unknown error"}")
             }
@@ -931,11 +935,14 @@ class MainViewModel(
     }
 
     companion object {
-        fun provideFactory(repository: FinanceRepository): ViewModelProvider.Factory =
+        fun provideFactory(
+            repository: FinanceRepository,
+            connectivityObserver: NetworkConnectivityObserver? = null,
+        ): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                    return MainViewModel(repository) as T
+                    return MainViewModel(repository, connectivityObserver) as T
                 }
             }
     }

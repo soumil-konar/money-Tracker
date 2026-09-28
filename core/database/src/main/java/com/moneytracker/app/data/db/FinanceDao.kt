@@ -211,6 +211,10 @@ interface TransactionDao {
     )
     suspend fun getRecentPostedTransactions(limit: Int = 50): List<TransactionRecord>
 
+    @Query("SELECT occurredAtMillis FROM transactions WHERE status = 'POSTED'")
+    suspend fun getAllPostedTransactionTimestamps(): List<Long>
+
+
     @Query(
         """
         SELECT COALESCE(SUM(amount), 0.0)
@@ -416,6 +420,21 @@ interface ScheduledTransactionDao {
 
     @Query("SELECT * FROM scheduled_transactions WHERE isPaid = 0 AND kind = 'BILL_REMINDER'")
     suspend fun getUnpaidBillReminders(): List<ScheduledTransactionEntity>
+
+    @Query(
+        """
+        SELECT * FROM scheduled_transactions
+        WHERE isPaid = 0
+          AND kind = 'BILL_REMINDER'
+          AND scheduledForMillis BETWEEN :minDueMillis AND :maxDueMillis
+        ORDER BY scheduledForMillis ASC
+        """,
+    )
+    suspend fun getUpcomingUnpaidBillReminders(
+        minDueMillis: Long,
+        maxDueMillis: Long,
+    ): List<ScheduledTransactionEntity>
+
 
     @Query(
         """

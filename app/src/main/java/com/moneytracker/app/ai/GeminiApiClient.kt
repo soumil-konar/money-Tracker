@@ -15,6 +15,44 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlin.random.Random
+
+sealed class GeminiApiException(
+    message: String,
+    cause: Throwable? = null,
+) : Exception(message, cause) {
+    class RateLimitExceededException(
+        message: String = "AI service rate limit reached. Please wait a moment before trying again.",
+        cause: Throwable? = null,
+    ) : GeminiApiException(message, cause)
+
+    class ServiceUnavailableException(
+        message: String = "AI service is temporarily unavailable (503). Please try again shortly.",
+        cause: Throwable? = null,
+    ) : GeminiApiException(message, cause)
+
+    class NetworkTimeoutException(
+        message: String = "Connection to AI service timed out. Please check your internet connection.",
+        cause: Throwable? = null,
+    ) : GeminiApiException(message, cause)
+
+    class InvalidApiKeyException(
+        message: String = "Google AI Studio API key is invalid or unauthorized. Please check your settings.",
+        cause: Throwable? = null,
+    ) : GeminiApiException(message, cause)
+
+    class NetworkUnavailableException(
+        message: String = "Network connection failed. Please check your internet connection.",
+        cause: Throwable? = null,
+    ) : GeminiApiException(message, cause)
+
+    class ClientErrorException(
+        val statusCode: Int,
+        message: String = "AI service request failed ($statusCode).",
+        cause: Throwable? = null,
+    ) : GeminiApiException(message, cause)
+}
+
 
 data class AiParsedTransaction(
     val isTransaction: Boolean,
@@ -51,7 +89,7 @@ class GeminiApiClient {
         model: String = AiPreferences.DEFAULT_MODEL,
     ): Result<AiParsedTransaction> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) {
-            return@withContext Result.failure(IllegalStateException("Google AI Studio API key is not configured."))
+            return@withContext Result.failure(GeminiApiException.InvalidApiKeyException("Google AI Studio API key is not configured."))
         }
 
         // Try selected model first, then fallback model if rate limited or not found
@@ -80,7 +118,7 @@ class GeminiApiClient {
         model: String = AiPreferences.DEFAULT_MODEL,
     ): Result<List<String>> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) {
-            return@withContext Result.failure(IllegalStateException("API key is not configured."))
+            return@withContext Result.failure(GeminiApiException.InvalidApiKeyException("API key is not configured."))
         }
 
         try {
@@ -152,7 +190,7 @@ class GeminiApiClient {
         model: String = AiPreferences.DEFAULT_MODEL,
     ): Result<String> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) {
-            return@withContext Result.failure(IllegalArgumentException("API Key cannot be blank."))
+            return@withContext Result.failure(GeminiApiException.InvalidApiKeyException("API Key cannot be blank."))
         }
         try {
             val requestJson = JSONObject().apply {
@@ -170,7 +208,6 @@ class GeminiApiClient {
             val response = postHttpRequest(
                 endpointUrl = "$baseUrl/$model:generateContent?key=$apiKey",
                 jsonPayload = requestJson.toString(),
-                timeoutMs = 6000,
             )
 
             val root = JSONObject(response)
@@ -188,7 +225,7 @@ class GeminiApiClient {
         outputDimensionality: Int = 256,
     ): Result<List<Float>> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) {
-            return@withContext Result.failure(IllegalStateException("API key is not configured."))
+            return@withContext Result.failure(GeminiApiException.InvalidApiKeyException("API key is not configured."))
         }
         try {
             val payload = JSONObject().apply {
@@ -203,7 +240,7 @@ class GeminiApiClient {
             }
 
             val endpoint = "$baseUrl/$model:embedContent?key=$apiKey"
-            val responseBody = postHttpRequest(endpointUrl = endpoint, jsonPayload = payload.toString(), timeoutMs = 6000)
+            val responseBody = postHttpRequest(endpointUrl = endpoint, jsonPayload = payload.toString())
             val root = JSONObject(responseBody)
             val embeddingObj = root.optJSONObject("embedding")
                 ?: return@withContext Result.failure(IllegalStateException("No embedding returned: $responseBody"))
@@ -228,7 +265,7 @@ class GeminiApiClient {
         model: String = AiPreferences.DEFAULT_MODEL,
     ): Result<RagAnswerResponse> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) {
-            return@withContext Result.failure(IllegalStateException("API key is not configured."))
+            return@withContext Result.failure(GeminiApiException.InvalidApiKeyException("API key is not configured."))
         }
         try {
             val transactionsContext = if (retrievedTransactions.isEmpty()) {
@@ -289,7 +326,6 @@ class GeminiApiClient {
                     responseBody = postHttpRequest(
                         endpointUrl = "$baseUrl/$candidate:generateContent?key=$apiKey",
                         jsonPayload = requestJson.toString(),
-                        timeoutMs = 12000,
                     )
                     break
                 } catch (t: Throwable) {
@@ -449,7 +485,6 @@ class GeminiApiClient {
         val responseBody = postHttpRequest(
             endpointUrl = "$baseUrl/$model:generateContent?key=$apiKey",
             jsonPayload = requestPayload.toString(),
-            timeoutMs = 7000,
         )
 
         val root = JSONObject(responseBody)
@@ -519,7 +554,8 @@ class GeminiApiClient {
     private fun postHttpRequest(
         endpointUrl: String,
         jsonPayload: String,
-        timeoutMs: Int = 8000,
+        connectTimeoutMs: Int = CONNECT_TIMEOUT_MS,
+        readTimeoutMs: Int = READ_TIMEOUT_MS,
         maxRetries: Int = MAX_RETRIES,
     ): String {
         var lastException: Throwable? = null
@@ -532,8 +568,8 @@ class GeminiApiClient {
                     requestMethod = "POST"
                     setRequestProperty("Content-Type", "application/json")
                     setRequestProperty("Accept", "application/json")
-                    connectTimeout = timeoutMs
-                    readTimeout = timeoutMs
+                    connectTimeout = connectTimeoutMs
+                    readTimeout = readTimeoutMs
                     doOutput = true
                 }
 
@@ -553,46 +589,96 @@ class GeminiApiClient {
                 if (isError) {
                     val errorMsg = runCatching {
                         JSONObject(response).optJSONObject("error")?.optString("message")
-                    }.getOrNull() ?: "HTTP $statusCode: $response"
+                    }.getOrNull()?.takeIf { it.isNotBlank() } ?: "HTTP $statusCode response"
 
-                    // Retry on rate limits (429) or transient server errors (500, 502, 503, 504)
-                    val isTransient = statusCode == 429 || statusCode in 500..504
+                    // Immediate fail for invalid/unauthorized API keys
+                    if (statusCode == 401 || statusCode == 403) {
+                        throw GeminiApiException.InvalidApiKeyException(
+                            message = "Google AI Studio API key is invalid or unauthorized: $errorMsg",
+                        )
+                    }
+
+                    // Retry on transient rate limits (429) or service unavailable (503)
+                    val isTransient = statusCode == 429 || statusCode == 503
                     if (isTransient && attempt < maxRetries) {
+                        val jitter = Random.nextLong(0, (currentBackoff * 0.3).toLong().coerceAtLeast(50L))
+                        val sleepDuration = currentBackoff + jitter
                         try {
-                            Thread.sleep(currentBackoff)
+                            Thread.sleep(sleepDuration)
                         } catch (_: InterruptedException) {
                             Thread.currentThread().interrupt()
-                            throw RuntimeException("Gemini API request interrupted")
+                            throw GeminiApiException.NetworkUnavailableException("Gemini API request interrupted.")
                         }
                         currentBackoff *= 2
                         continue
                     }
-                    throw RuntimeException("Gemini API Error ($statusCode): $errorMsg")
+
+                    // Map final HTTP errors into domain exceptions
+                    throw when (statusCode) {
+                        429 -> GeminiApiException.RateLimitExceededException(
+                            message = "AI service rate limit reached. Please wait a moment before trying again.",
+                        )
+                        503 -> GeminiApiException.ServiceUnavailableException(
+                            message = "AI service is temporarily unavailable (503). Please retry shortly.",
+                        )
+                        else -> GeminiApiException.ClientErrorException(
+                            statusCode = statusCode,
+                            message = "AI service request failed with HTTP $statusCode: $errorMsg",
+                        )
+                    }
                 }
 
                 return response
-            } catch (ioe: java.io.IOException) {
-                lastException = ioe
+            } catch (domainEx: GeminiApiException) {
+                throw domainEx
+            } catch (timeout: java.net.SocketTimeoutException) {
+                lastException = timeout
                 if (attempt < maxRetries) {
+                    val jitter = Random.nextLong(0, (currentBackoff * 0.3).toLong().coerceAtLeast(50L))
                     try {
-                        Thread.sleep(currentBackoff)
+                        Thread.sleep(currentBackoff + jitter)
                     } catch (_: InterruptedException) {
                         Thread.currentThread().interrupt()
-                        throw ioe
+                        throw GeminiApiException.NetworkTimeoutException("Gemini API request interrupted.", timeout)
                     }
                     currentBackoff *= 2
                 } else {
-                    throw ioe
+                    throw GeminiApiException.NetworkTimeoutException(
+                        message = "AI connection timed out after $maxRetries attempts. Please check your internet connection.",
+                        cause = timeout,
+                    )
+                }
+            } catch (ioe: java.io.IOException) {
+                lastException = ioe
+                if (attempt < maxRetries) {
+                    val jitter = Random.nextLong(0, (currentBackoff * 0.3).toLong().coerceAtLeast(50L))
+                    try {
+                        Thread.sleep(currentBackoff + jitter)
+                    } catch (_: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        throw GeminiApiException.NetworkUnavailableException("Gemini API request interrupted.", ioe)
+                    }
+                    currentBackoff *= 2
+                } else {
+                    throw GeminiApiException.NetworkUnavailableException(
+                        message = "Unable to reach Google AI service: ${ioe.message ?: "Network error"}",
+                        cause = ioe,
+                    )
                 }
             }
         }
-        throw lastException ?: RuntimeException("Failed to execute Gemini API request after $maxRetries attempts.")
+        throw lastException?.let {
+            GeminiApiException.NetworkUnavailableException("Failed to execute Gemini API request after $maxRetries attempts.", it)
+        } ?: GeminiApiException.ClientErrorException(500, "Unknown network execution error.")
     }
 
     companion object {
         const val DEFAULT_EMBEDDING_MODEL = "text-embedding-004"
-        private const val MAX_RETRIES = 3
-        private const val INITIAL_BACKOFF_MS = 500L
+        const val CONNECT_TIMEOUT_MS = 15_000
+        const val READ_TIMEOUT_MS = 30_000
+        const val MAX_RETRIES = 3
+        const val INITIAL_BACKOFF_MS = 1000L
     }
 }
+
 

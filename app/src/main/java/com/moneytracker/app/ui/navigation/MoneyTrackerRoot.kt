@@ -120,6 +120,8 @@ fun MoneyTrackerRoot(
     viewModel: MainViewModel,
     initialOpenAddTransaction: Boolean = false,
     onConsumeOpenAddTransaction: (() -> Unit)? = null,
+    initialDestination: String? = null,
+    onConsumeDestination: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val navController = rememberNavController()
@@ -136,6 +138,7 @@ fun MoneyTrackerRoot(
     val budget by viewModel.currentBudget.collectAsStateWithLifecycle()
     val filter by viewModel.filter.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
+    val isOnline by viewModel.isOnline.collectAsStateWithLifecycle()
     val isAiAnalyzing by viewModel.isAiAnalyzing.collectAsStateWithLifecycle()
     val aiApiKey by viewModel.aiApiKey.collectAsStateWithLifecycle()
     val isAiEnabled by viewModel.isAiEnabled.collectAsStateWithLifecycle()
@@ -209,6 +212,7 @@ fun MoneyTrackerRoot(
             onConsumeOpenAddTransaction?.invoke()
         }
     }
+
     var editingAccount by remember { mutableStateOf<AccountEntity?>(null) }
     var accountDialogDraft by remember { mutableStateOf<AccountDraft?>(null) }
     var accountDialogKey by remember { mutableStateOf(0) }
@@ -259,6 +263,29 @@ fun MoneyTrackerRoot(
     val isBudgetHistory = navBackStackEntry?.destination?.route == AppDestination.BudgetHistory.route
     val currentRoute = if (isBudgetHistory) AppDestination.BudgetHistory.route else bottomDestinations.getOrNull(pagerState.currentPage)?.route ?: AppDestination.Home.route
 
+    LaunchedEffect(initialDestination) {
+        initialDestination?.let { dest ->
+            when (dest) {
+                AppDestination.BudgetHistory.route -> {
+                    navController.navigate(AppDestination.BudgetHistory.route)
+                }
+                AppDestination.Transactions.route -> {
+                    pagerState.animateScrollToPage(1)
+                }
+                AppDestination.More.route -> {
+                    pagerState.animateScrollToPage(2)
+                }
+                AppDestination.Settings.route -> {
+                    pagerState.animateScrollToPage(3)
+                }
+                AppDestination.Home.route -> {
+                    pagerState.animateScrollToPage(0)
+                }
+            }
+            onConsumeDestination?.invoke()
+        }
+    }
+
     BackHandler(enabled = !isBudgetHistory && pagerState.currentPage != 0) {
         coroutineScope.launch {
             pagerState.animateScrollToPage(0)
@@ -268,6 +295,11 @@ fun MoneyTrackerRoot(
     val isAddTransactionOpen = showAddTransactionDialog || editingTransaction != null
     val isAssistantOpen = showAiAssistantDialog
     val isOverlayOpen = isAddTransactionOpen || isAssistantOpen
+
+    BackHandler(enabled = isAddTransactionOpen && !showAiAssistantDialog) {
+        showAddTransactionDialog = false
+        editingTransaction = null
+    }
     val scrimAlpha by animateFloatAsState(
         targetValue = if (isOverlayOpen) 0.54f else 0.0f,
         animationSpec = spring(
@@ -309,6 +341,7 @@ fun MoneyTrackerRoot(
                                     smsPermissionGranted = smsPermissionGranted,
                                     listState = homeListState,
                                     chartReloadKey = chartReloadKey,
+                                    isOnline = isOnline,
                                     onRequestPermissions = {
                                         permissionLauncher.launch(context.smsPermissionArray())
                                     },
@@ -515,6 +548,7 @@ fun MoneyTrackerRoot(
                                     onToggleDynamicColor = viewModel::setDynamicColorEnabled,
                                     onRequestExportBackup = { showExportPassphraseDialog = true },
                                     onRequestRestoreBackup = { openBackupLauncher.launch(arrayOf("*/*")) },
+                                    isOnline = isOnline,
                                 )
                             }
                         }

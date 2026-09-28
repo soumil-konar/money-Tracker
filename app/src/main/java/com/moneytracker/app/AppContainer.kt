@@ -28,10 +28,13 @@ class AppContainer(context: Context) {
     val themePreferences by lazy { com.moneytracker.app.data.local.ThemePreferences(context) }
     val userPreferences by lazy { com.moneytracker.app.data.local.UserPreferences(context) }
     val categoryPreferences by lazy { com.moneytracker.app.data.local.CategoryPreferences(context) }
+    val reviewPreferences by lazy { com.moneytracker.app.data.local.ReviewPreferences(context) }
+    val appNotificationManager by lazy { com.moneytracker.app.notification.AppNotificationManager(context) }
+    val networkConnectivityObserver by lazy { com.moneytracker.app.data.network.NetworkConnectivityObserver(context) }
     val hapticManager by lazy { HapticFeedbackManager(context, hapticPreferences) }
     val geminiApiClient by lazy { GeminiApiClient() }
     val onDeviceAiEngine by lazy { OnDeviceAiEngine(context) }
-    val reviewPromptManager by lazy { ReviewPromptManager(context) }
+    val reviewPromptManager by lazy { ReviewPromptManager(context, reviewPreferences, repository) }
 
     val ragEngine by lazy {
         FinanceRagEngine(

@@ -332,3 +332,10 @@ data class AssistantMessage(
     val citedTransactions: List<TransactionRecord> = emptyList(),
     val timestampMillis: Long = System.currentTimeMillis(),
 )
+
+data class DailyRecapData(
+    val spentToday: Double,
+    val txCount: Int,
+    val remainingBuffer: Double,
+)
+

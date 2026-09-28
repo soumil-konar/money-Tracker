@@ -1,6 +1,7 @@
 package com.moneytracker.app.ui.screen
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -123,6 +124,7 @@ fun HomeScreen(
     onNavigateToReview: () -> Unit = {},
     listState: LazyListState = rememberLazyListState(),
     chartReloadKey: Int = 0,
+    isOnline: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val haptics = LocalAppHaptics.current
@@ -350,29 +352,38 @@ fun HomeScreen(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Button(
-                            onClick = {
-                                haptics.click()
-                                onRefreshAiInsights()
-                            },
-                            enabled = !dashboard.isAiLoading,
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
-                            if (dashboard.isAiLoading) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(18.dp),
-                                    color = Color.White,
-                                    strokeWidth = 2.dp,
-                                )
-                                Spacer(modifier = Modifier.size(8.dp))
-                                Text("Analyzing finances...")
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Outlined.AutoAwesome,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                                Spacer(modifier = Modifier.size(8.dp))
-                                Text("Analyze with AI")
+                            Button(
+                                onClick = {
+                                    haptics.click()
+                                    onRefreshAiInsights()
+                                },
+                                enabled = isOnline && !dashboard.isAiLoading,
+                            ) {
+                                if (dashboard.isAiLoading) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        color = Color.White,
+                                        strokeWidth = 2.dp,
+                                    )
+                                    Spacer(modifier = Modifier.size(8.dp))
+                                    Text("Analyzing finances...")
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Outlined.AutoAwesome,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                    Spacer(modifier = Modifier.size(8.dp))
+                                    Text("Analyze with AI (Cloud)")
+                                }
+                            }
+
+                            if (!isOnline) {
+                                OfflineIndicatorBadge()
                             }
                         }
                     }
@@ -401,13 +412,14 @@ fun HomeScreen(
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
                             OutlinedButton(
                                 onClick = {
                                     haptics.click()
                                     onRefreshAiInsights()
                                 },
-                                enabled = !dashboard.isAiLoading,
+                                enabled = isOnline && !dashboard.isAiLoading,
                                 modifier = Modifier.weight(1f),
                             ) {
                                 if (dashboard.isAiLoading) {
@@ -421,6 +433,10 @@ fun HomeScreen(
                                     Text("Refresh")
                                 }
                             }
+                            if (!isOnline) {
+                                OfflineIndicatorBadge()
+                            }
+
                             if (onOpenAssistant != null) {
                                 var askAiButtonCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
                                 Button(
@@ -886,3 +902,32 @@ private fun DynamicContextualNudgesBanner(
         }
     }
 }
+
+@Composable
+private fun OfflineIndicatorBadge(modifier: Modifier = Modifier) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+        modifier = modifier,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.error.copy(alpha = 0.8f)),
+            )
+            Text(
+                text = "Offline - Local heuristics active",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+

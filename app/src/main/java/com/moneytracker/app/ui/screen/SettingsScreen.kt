@@ -138,6 +138,7 @@ fun SettingsScreen(
     onToggleDynamicColor: (Boolean) -> Unit = {},
     onRequestExportBackup: () -> Unit = {},
     onRequestRestoreBackup: () -> Unit = {},
+    isOnline: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val haptics = LocalAppHaptics.current
@@ -414,6 +415,7 @@ fun SettingsScreen(
                         onTestEmailConnection = onTestEmailConnection,
                         onClearEmailCredentials = onClearEmailCredentials,
                         onSyncRecentEmails = onSyncRecentEmails,
+                        isOnline = isOnline,
                     )
                 }
             }
