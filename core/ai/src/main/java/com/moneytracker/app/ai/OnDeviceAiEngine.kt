@@ -133,22 +133,63 @@ class OnDeviceAiEngine(
             )
         }
 
-        // Check 1: Android AICore / Gemini Nano Available?
+        // Route 1 (Primary AI): Android AICore / Gemini Nano Available?
         if (nanoManager.isAvailable()) {
             val nanoResult = nanoManager.extractFinancialEntity(rawText = body, sender = sender)
             val nanoTx = nanoResult.getOrNull()
-            if (nanoTx != null && nanoTx.isTransaction && nanoTx.amount != null && nanoTx.amount > 0.0 && nanoTx.direction != null) {
-                val status = if (nanoTx.confidence >= 0.70) TransactionStatus.POSTED else TransactionStatus.REVIEW
-                return IngestionParseResult(
-                    transaction = nanoTx,
-                    engine = ENGINE_GEMINI_NANO,
-                    status = status,
-                    confidence = nanoTx.confidence,
-                )
+            if (nanoTx != null) {
+                if (!nanoTx.isTransaction) {
+                    return IngestionParseResult(
+                        transaction = nanoTx,
+                        engine = ENGINE_GEMINI_NANO,
+                        status = TransactionStatus.REVIEW,
+                        confidence = 0.0,
+                    )
+                }
+                if (nanoTx.amount != null && nanoTx.amount > 0.0 && nanoTx.direction != null) {
+                    val status = if (nanoTx.confidence >= 0.70) TransactionStatus.POSTED else TransactionStatus.REVIEW
+                    return IngestionParseResult(
+                        transaction = nanoTx,
+                        engine = ENGINE_GEMINI_NANO,
+                        status = status,
+                        confidence = nanoTx.confidence,
+                    )
+                }
             }
         }
 
-        // Tier 1: Local Deterministic Regex Engine (SmsParser.kt / parseSmsOnDevice - Ultra-fast CPU <2ms)
+        // Route 2 (Primary AI Fallback): Cloud Gemini API (Flash-Lite) when Nano is unavailable or fails
+        if (apiKey.isNotBlank() && cloudClient != null) {
+            val cloudTx = runCatching {
+                cloudClient.parseSms(
+                    smsBody = body,
+                    sender = sender,
+                    apiKey = apiKey,
+                ).getOrNull()
+            }.getOrNull()
+
+            if (cloudTx != null) {
+                if (!cloudTx.isTransaction) {
+                    return IngestionParseResult(
+                        transaction = cloudTx,
+                        engine = ENGINE_GEMINI_CLOUD,
+                        status = TransactionStatus.REVIEW,
+                        confidence = 0.0,
+                    )
+                }
+                if (cloudTx.amount != null && cloudTx.amount > 0.0 && cloudTx.direction != null) {
+                    val status = if (cloudTx.confidence >= 0.70) TransactionStatus.POSTED else TransactionStatus.REVIEW
+                    return IngestionParseResult(
+                        transaction = cloudTx,
+                        engine = ENGINE_GEMINI_CLOUD,
+                        status = status,
+                        confidence = cloudTx.confidence,
+                    )
+                }
+            }
+        }
+
+        // Route 3 (Fallback): Local Deterministic Regex Engine (Ultra-fast CPU <2ms when AI unavailable)
         val localRegexResult = parseSmsOnDevice(body, sender).getOrNull()
         if (localRegexResult != null && localRegexResult.isTransaction && localRegexResult.amount != null && localRegexResult.amount > 0.0 && localRegexResult.direction != null) {
             if (localRegexResult.confidence >= 0.85) {
@@ -161,26 +202,15 @@ class OnDeviceAiEngine(
             }
         }
 
-        // Check 2: Cloud Gemini API Key Configured?
-        if (apiKey.isNotBlank() && cloudClient != null) {
-            val cloudTx = runCatching {
-                cloudClient.parseSms(
-                    smsBody = body,
-                    sender = sender,
-                    apiKey = apiKey,
-                    model = "gemini-2.5-flash-lite",
-                ).getOrNull()
-            }.getOrNull()
-
-            if (cloudTx != null && cloudTx.isTransaction && cloudTx.amount != null && cloudTx.amount > 0.0 && cloudTx.direction != null) {
-                val status = if (cloudTx.confidence >= 0.70) TransactionStatus.POSTED else TransactionStatus.REVIEW
-                return IngestionParseResult(
-                    transaction = cloudTx,
-                    engine = ENGINE_GEMINI_CLOUD,
-                    status = status,
-                    confidence = cloudTx.confidence,
-                )
-            }
+        // Check if the message is explicitly non-transactional (Promotional, OTP, Bill Statement)
+        if (isDefiniteNonTransaction(body, sender)) {
+            val nonTx = localRegexResult?.takeIf { !it.isTransaction } ?: createNonTransaction()
+            return IngestionParseResult(
+                transaction = nonTx,
+                engine = ENGINE_LOCAL_REGEX,
+                status = TransactionStatus.REVIEW,
+                confidence = 0.0,
+            )
         }
 
         // Tier 3: Local Recovery (Extract guaranteed numbers) -> Commit (REVIEW status)
@@ -193,6 +223,14 @@ class OnDeviceAiEngine(
         )
     }
 
+    private fun isDefiniteNonTransaction(body: String, sender: String = ""): Boolean {
+        if (PromotionalDetector.isPromotional(sender, body)) return true
+        val lower = body.lowercase(Locale.getDefault())
+        val isOtp = listOf("otp", "one time password", "verification code", "secret code", "do not share").any { it in lower }
+        val isBillReminder = listOf("total amount due", "minimum amount due", "bill due", "statement generated", "e-bill", "pay by").any { it in lower }
+        return isOtp || isBillReminder
+    }
+
     private fun buildDegradedRecoveryTransaction(
         body: String,
         sender: String,
@@ -202,7 +240,35 @@ class OnDeviceAiEngine(
             return fallback.copy(confidence = 0.50)
         }
 
+        // Strict promotional suppression
+        if (PromotionalDetector.isPromotional(sender, body)) {
+            return null
+        }
+
         val lower = body.lowercase(Locale.getDefault())
+
+        // Recovery requires transactional indicator (debit, credit, spent, paid, charge, withdrawn, received, etc.)
+        val hasConfirmedSignal = PromotionalDetector.hasConfirmedTransactionSignal(body)
+        val hasExplicitPastTenseDebit = listOf(
+            "debited", "spent", "paid", "withdrawn", "sent", "deducted", "purchase at", "purchase of", "debit", "charged", "charge"
+        ).any { it in lower }
+        val hasExplicitPastTenseCredit = listOf(
+            "credited", "received", "deposited", "refund", "credit"
+        ).any { it in lower }
+
+        if (!hasConfirmedSignal && !hasExplicitPastTenseDebit && !hasExplicitPastTenseCredit) {
+            return null
+        }
+
+        // Reject if body contains marketing, loan, or credit limit terms without executed debit/credit
+        val hasMarketingTerms = listOf(
+            "pre-approved", "pre approved", "loan", "credit limit", "card limit", "limit enhanced",
+            "limit increased", "offer", "discount", "cashback", "apply now", "avail now", "congratulations", "congrats"
+        ).any { it in lower }
+        if (hasMarketingTerms && !hasConfirmedSignal) {
+            return null
+        }
+
         val amountRegex = Regex("""(?:inr|rs\.?|re\.?|₹)\s*([0-9,]+(?:\.[0-9]{1,2})?)""", RegexOption.IGNORE_CASE)
         val amount = amountRegex.find(body)?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
             ?: run {
@@ -216,15 +282,27 @@ class OnDeviceAiEngine(
             return null
         }
 
-        val isCredit = listOf("credited", "received", "deposited", "refund").any { it in lower }
+        val isCredit = hasExplicitPastTenseCredit
+        val isDebit = hasExplicitPastTenseDebit || hasConfirmedSignal
+        if (!isCredit && !isDebit) {
+            return null
+        }
         val direction = if (isCredit) TransactionDirection.CREDIT else TransactionDirection.DEBIT
 
         val last4Regex = Regex("""(?:a/c|acct|card|ending|xx)\s*[:#\s]*([0-9]{4})""", RegexOption.IGNORE_CASE)
         val last4 = last4Regex.find(body)?.groupValues?.get(1)
 
-        val merchant = extractMerchant(body, lower).takeIf { it != "Merchant" }
+        val candidateMerchant = extractMerchant(body, lower).takeIf { it != "Merchant" }
             ?: sender.takeIf { it.isNotBlank() }
             ?: "Transaction"
+
+        // Guard against bogus merchant names like "Rs600000", numbers, or currency
+        val merchant = if (isGarbageMerchantName(candidateMerchant) || isCurrencyOrAmountString(candidateMerchant)) {
+            val inst = extractInstitution(sender, body)
+            if (inst.isNotBlank()) inst else sender.takeIf { it.isNotBlank() } ?: "Transaction"
+        } else {
+            candidateMerchant
+        }
 
         return AiParsedTransaction(
             isTransaction = true,
@@ -847,6 +925,14 @@ class OnDeviceAiEngine(
         return Result.failure(UnsupportedOperationException("On-device neural embedding model not loaded"))
     }
 
+    private fun isCurrencyOrAmountString(name: String): Boolean {
+        val trimmed = name.trim().lowercase(Locale.getDefault())
+        if (trimmed.isEmpty()) return true
+        if (trimmed.matches(Regex("""^(?:rs\.?|inr|re\.?|₹|\$)\s*[0-9,]+.*"""))) return true
+        if (trimmed.matches(Regex("""^[0-9,.\s]+$"""))) return true
+        return false
+    }
+
     private fun isGarbageMerchantName(name: String): Boolean {
         val lower = name.lowercase(Locale.getDefault())
         val garbagePhrases = listOf(
@@ -868,7 +954,7 @@ class OnDeviceAiEngine(
             "bank account",
             "savings account",
         )
-        return garbagePhrases.any { lower.contains(it) }
+        return garbagePhrases.any { lower.contains(it) } || isCurrencyOrAmountString(name)
     }
 
     private fun extractMerchant(body: String, lower: String): String {
@@ -884,7 +970,7 @@ class OnDeviceAiEngine(
             if (match != null) {
                 val candidate = match.groupValues[1].trim()
                 val cleaned = cleanMerchantName(candidate)
-                if (cleaned.isNotBlank() && cleaned.length >= 2 && !isGarbageMerchantName(cleaned)) return cleaned
+                if (cleaned.isNotBlank() && cleaned.length >= 2 && !isGarbageMerchantName(cleaned) && !isCurrencyOrAmountString(cleaned)) return cleaned
             }
         }
 

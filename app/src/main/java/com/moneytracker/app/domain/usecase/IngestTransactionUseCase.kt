@@ -133,10 +133,23 @@ class IngestTransactionUseCase(
         val hasMoneyIndicator = listOf("₹", "rs.", "inr", "rs ").any { it in lower }
         val hasTransactionVerb = listOf(
             "debited", "credited", "spent", "paid", "withdrawn", "received", "deducted",
-            "sent", "transfer", "successful", "purchase", "bill payment", "alert", "vpa",
+            "sent", "transferred", "successful", "purchase", "bill payment", "vpa",
         ).any { it in lower }
 
         if (!hasMoneyIndicator || !hasTransactionVerb) {
+            return false
+        }
+
+        // Additional notification-shade marketing guard:
+        // Push notifications from bank apps often advertise loans, credit limits, or investments.
+        // If marketing keywords are present without confirmed past-tense transaction signals, reject immediately.
+        val hasMarketingSignals = listOf(
+            "loan", "pre-approved", "pre approved", "credit limit", "card limit", "limit enhanced",
+            "limit increased", "offer", "discount", "cashback", "scratch card", "spin & win",
+            "apply now", "avail now", "congratulations", "congrats", "invest", "fixed deposit"
+        ).any { it in lower }
+        if (hasMarketingSignals && !PromotionalDetector.hasConfirmedTransactionSignal(combinedBody)) {
+            Log.i("IngestTxUseCase", "Notification from $packageName skipped: matched marketing signal without confirmed debit/credit")
             return false
         }
 
@@ -262,7 +275,7 @@ class IngestTransactionUseCase(
         var confidence = parsed?.confidence ?: 0.5
         var note: String? = null
 
-        // Unified 4-tier Ingestion Router (Gemini Nano -> Local Regex -> Cloud Gemini -> Local Recovery)
+        // Unified Ingestion Router (AI extraction as primary route: Gemini Nano -> Cloud Gemini -> Local Regex fallback)
         var detectedEngine = OnDeviceAiEngine.ENGINE_LOCAL_REGEX
         if (aiPreferences.isAiEnabled.value) {
             val engineMode = aiPreferences.engineMode.value
@@ -278,11 +291,16 @@ class IngestTransactionUseCase(
             detectedEngine = parseResult.engine
 
             parseResult.transaction?.let { result ->
-                if (result.isTransaction && result.amount != null && result.direction != null) {
+                if (!result.isTransaction) {
+                    // AI explicitly classified message as non-financial (OTP, spam, promo, info)
+                    return SmsIngestionOutcome.IGNORED
+                }
+                if (result.amount != null && result.direction != null) {
                     amount = result.amount
                     direction = result.direction
-                    if (!result.merchant.isNullOrBlank()) {
-                        merchant = result.merchant
+                    val aiMerchant = result.merchant
+                    if (!aiMerchant.isNullOrBlank()) {
+                        merchant = com.moneytracker.app.ai.MerchantSanitizer.sanitizeMerchantName(aiMerchant)
                     }
                     category = result.category
                     accountKind = result.accountKind
@@ -412,7 +430,7 @@ class IngestTransactionUseCase(
             if (isDuplicate) {
                 val targetAccountId = accountId ?: existingSimilar.accountId
                 val newAvailableBal = if (balanceProof.isVerified) balanceProof.balance else (availableBalance ?: existingSimilar.availableBalance)
-                val targetMerchant = if (isExistingGeneric && !isIncomingGeneric) resolvedMerchant else existingSimilar.merchant
+                val targetMerchant = if ((confidence > existingSimilar.confidence || isExistingGeneric) && !isIncomingGeneric) resolvedMerchant else existingSimilar.merchant
                 val targetCategory = if (isExistingGeneric && !isIncomingGeneric) category else existingSimilar.category
                 val targetNote = if (isExistingGeneric && !isIncomingGeneric) (note ?: existingSimilar.note) else existingSimilar.note
                 val targetCountsTowardBudget = if (isExistingGeneric && !isIncomingGeneric) {
@@ -925,6 +943,11 @@ class IngestTransactionUseCase(
             lower.startsWith("incoming via") ||
             lower == "bank alert" ||
             lower == "payment" ||
+            lower == "transaction" ||
+            lower == "merchant" ||
+            lower.startsWith("axis bank") ||
+            lower.startsWith("upi/") ||
+            lower.startsWith("upi ") ||
             lower.matches(Regex("""^(?:upi transfer|transfer)\s*\(?\.\.[0-9]{4}\)?$""")) ||
             lower.matches(Regex("""^(?:\+?91)?[0-9]{10,12}$"""))
     }

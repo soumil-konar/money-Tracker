@@ -368,42 +368,52 @@ open class GeminiApiClient {
         apiKey: String,
         model: String,
     ): AiParsedTransaction {
+        val senderPrefix = if (sender.isNotBlank()) "Sender: $sender\n" else ""
         val prompt = """
-            You are a strict, highly accurate financial intelligence classifier and parser for Indian banking alerts (SMS, push notifications, and emails).
-            Your goal is to parse REAL financial debit, credit, or bill payment transactions and STRICTLY REJECT promotional marketing, offers, discounts, loan sales, and non-transactional notices.
+You are an expert financial transaction parsing engine.
+Your task is to parse raw banking SMS and notification text into structured JSON.
 
-            SENDER: "$sender"
-            MESSAGE:
-            "$smsBody"
+### Extraction Rules:
+1. "isTransaction": boolean. Set to false if the message is an OTP, promotional spam, balance-only inquiry, or security alert without a financial debit/credit event.
+2. "amount": number. The exact numerical currency amount debited or credited.
+3. "direction": "DEBIT" or "CREDIT".
+4. "accountLast4": string or null. The last 4 digits of the card or bank account (e.g. "6942" for "XX6942").
+5. "merchant": string. The human-readable recipient or sender name to be displayed as the main transaction title on the user's dashboard:
+   - When encountering UPI strings like "UPI/P2M/<rrn>/<payee>" or "UPI/P2P/<rrn>/<payee>", strip the protocol, mode, and RRN code. Extract ONLY the payee name.
+   - If the payee name is split across newlines (e.g., "PRAKASH\nCHANDRA CHA"), join the fragments with a single space.
+   - Strictly strip out fraud warnings, disclaimers, and bank footers (e.g., "Not you?", "SMS BLOCKUPI", "Axis Bank", "Call helpline").
+   - Convert all-caps payee names to Title Case (e.g., "PRAKASH CHANDRA CHA" -> "Prakash Chandra Cha"), keeping standard acronyms intact (e.g., "UPI", "IRCTC", "ATM").
+6. "category": string. One of: "FOOD", "SHOPPING", "BILLS", "ENTERTAINMENT", "TRANSPORT", "GROCERY", "HEALTH", "INVESTMENT", "TRANSFER", "OTHER".
+7. "availableBalance": number or null.
 
-            --- CRITICAL CLASSIFICATION INSTRUCTIONS ---
-            1. isTransaction MUST BE TRUE ONLY IF this message confirms money was ACTUALLY debited, credited, or a bill paid.
-               Real transaction examples:
-               - "Your A/C 1234 is debited by Rs. 2,450 at Swiggy on 24-Sep-26" -> isTransaction = true
-               - "Paid ₹280 to Chai Point via UPI" -> isTransaction = true
-               - "A/C credited with INR 50,000 via NEFT" -> isTransaction = true
-               - "Payment of Rs 15,000 received towards your ICICI Credit card" -> isTransaction = true
+### Output Format:
+Return raw JSON ONLY. No markdown code blocks, no backticks (```), no conversational filler.
 
-            2. isTransaction MUST BE FALSE for:
-               - MARKETING OFFERS & DISCOUNTS: e.g. "Up to ₹30,000 off on electronics with ICICI Bank Credit card", "Save up to ₹30,000", "Get flat ₹500 cashback", "10% off on your next purchase", "Use code DIWALI".
-               - PRODUCT ADS & E-COMMERCE DEALS: e.g. "Wireless Earbuds @ ₹199 - Hear clearly! Grab earbuds for just ₹199. Shop now!", "T-shirts starting @ ₹299", "Smartwatch for just ₹999".
-               - CASHBACK & INCENTIVE CAMPAIGNS: e.g. "Assured Cashback till 11 PM", "Make any 2 UPI Lite payments of ₹20+ on BHIM today and get up to ₹20 cashback on each", "Send ₹1 and win up to ₹500 cashback", "Recharge now and get flat ₹50 cashback".
-               - LOANS & CREDIT OFFERS: e.g. "Pre-approved personal loan of ₹5,00,000", "Credit limit enhanced to ₹3,00,000", "Apply now for Lifetime Free card".
-               - EMI PROMOTIONS: e.g. "Up to ₹30,000 on EMI purchases", "Convert purchases to EMI".
-               - GAMIFICATION & REWARDS: e.g. "Scratch card waiting", "Spin the wheel to win ₹1,000", "Refer and earn ₹100".
-               - INFORMATIONAL / REGISTRATION NOTICES: e.g. "Mandate will be recorded by AMC", "Mutual fund application received", "Statement generated", "Total amount due".
-               - OTPs & SECURITY: e.g. "OTP for login is 123456", "Do not share OTP".
-               - PAYMENT REQUESTS: e.g. "XYZ has requested ₹500 from you".
+### Examples:
+Input:
+INR 1200.00 debited
+A/c no. XX6942
+26-09-26, 23:09:50
+UPI/P2M/626969941600/Raju Wines
+Not you? SMS BLOCKUPI Cust ID to 919951860002
+Axis Bank
+Output:
+{"isTransaction":true,"amount":1200.0,"direction":"DEBIT","merchant":"Raju Wines","accountLast4":"6942","category":"ENTERTAINMENT","availableBalance":null}
 
-            3. If isTransaction is false:
-               - amount MUST be null
-               - direction MUST be null
-               - merchant MUST be null
-               - detailedDescription MUST be null
+Input:
+INR 10.00 debited
+A/c no. XX6942
+28-09-26, 18:38:35
+UPI/P2M/627192752017/PRAKASH
+CHANDRA CHA
+Not you? SMS BLOCKUPI Cust ID to 919951860002
+Axis Bank
+Output:
+{"isTransaction":true,"amount":10.0,"direction":"DEBIT","merchant":"Prakash Chandra Cha","accountLast4":"6942","category":"FOOD","availableBalance":null}
 
-            4. When isTransaction is true:
-               - merchant: Extract the clean business/merchant/person name (e.g. "Swiggy", "Zomato", "Amazon", "Starbucks", "Croma", "D-Mart"). NEVER output generic placeholders like "Merchant", "Bank", "Transaction", or sentence fragments like "be recorded by AMC".
-               - detailedDescription: Provide a clean, natural single-sentence description of the transaction (e.g., "Dinner order on Swiggy via HDFC Credit Card", "Chai & snacks at Chai Point via GPay UPI").
+Input:
+$senderPrefix$smsBody
+Output:
         """.trimIndent()
 
         val schema = JSONObject().apply {
@@ -411,57 +421,34 @@ open class GeminiApiClient {
             put("properties", JSONObject().apply {
                 put("isTransaction", JSONObject().apply {
                     put("type", "BOOLEAN")
-                    put("description", "True ONLY if this message confirms an actual past or present debit, credit, or bill payment. Strictly FALSE for promotional offers (e.g. 'Earbuds @ ₹199', 'Shop now'), cashback incentive campaigns (e.g. 'Make 2 payments and get ₹20 cashback', 'Assured Cashback till 11 PM'), discount deals, EMI promotions, pre-approved loans, credit limit upgrades, scratch cards, referral rewards, or OTPs.")
+                    put("description", "Set to false if OTP, promotional spam, balance inquiry, or security alert without a financial debit/credit event.")
                 })
                 put("amount", JSONObject().apply {
                     put("type", "NUMBER")
-                    put("description", "Transaction amount in INR")
+                    put("description", "The exact numerical currency amount debited or credited.")
                 })
                 put("direction", JSONObject().apply {
                     put("type", "STRING")
-                    put("enum", JSONArray(listOf("CREDIT", "DEBIT")))
+                    put("enum", JSONArray(listOf("DEBIT", "CREDIT")))
+                })
+                put("accountLast4", JSONObject().apply {
+                    put("type", "STRING")
+                    put("description", "The last 4 digits of card or bank account.")
                 })
                 put("merchant", JSONObject().apply {
                     put("type", "STRING")
-                    put("description", "Clean merchant or beneficiary business name (e.g. Swiggy, Amazon, Uber, Croma, Starbucks) without VPA handles, bank noise, or generic terms like 'Merchant' or 'be recorded by AMC'.")
+                    put("description", "The clean human-readable recipient or sender name.")
                 })
                 put("category", JSONObject().apply {
                     put("type", "STRING")
-                    put("enum", JSONArray(listOf("FOOD", "TRAVEL", "BILLS", "SHOPPING", "TRANSFER", "SALARY", "SUBSCRIPTION", "HEALTH", "OTHER")))
+                    put("enum", JSONArray(listOf("FOOD", "SHOPPING", "BILLS", "ENTERTAINMENT", "TRANSPORT", "GROCERY", "HEALTH", "INVESTMENT", "TRANSFER", "OTHER")))
                 })
-                put("accountKind", JSONObject().apply {
-                    put("type", "STRING")
-                    put("enum", JSONArray(listOf("BANK", "CARD", "WALLET", "UPI", "CASH")))
-                })
-                put("institutionName", JSONObject().apply {
-                    put("type", "STRING")
-                    put("description", "Bank or card institution e.g. HDFC Bank, SBI, ICICI Bank, Axis Bank.")
-                })
-                put("accountLastFour", JSONObject().apply {
-                    put("type", "STRING")
-                    put("description", "Last 4 digits of bank account or card if mentioned.")
-                })
-                put("cardType", JSONObject().apply {
-                    put("type", "STRING")
-                    put("enum", JSONArray(listOf("CREDIT", "DEBIT", "NONE")))
-                })
-                put("isUpi", JSONObject().apply {
-                    put("type", "BOOLEAN")
-                })
-                put("isCardBillPayment", JSONObject().apply {
-                    put("type", "BOOLEAN")
-                    put("description", "True if money was paid to clear a credit card bill.")
-                })
-                put("placeDetail", JSONObject().apply {
-                    put("type", "STRING")
-                    put("description", "Specific detail of where or what the spend was done e.g. 'Indiranagar Bangalore branch', 'Swiggy Food order', 'Metro Card recharge', or specific UPI VPA context.")
-                })
-                put("detailedDescription", JSONObject().apply {
-                    put("type", "STRING")
-                    put("description", "A rich, descriptive explanation of what took place (e.g., 'Dinner order on Swiggy via HDFC Credit Card', 'Monthly Netflix subscription auto-debit', 'Flight booking on MakeMyTrip', 'Metro SmartCard recharge via PhonePe UPI', 'Chai & snacks at Indiranagar branch'). Synthesize what was purchased, the platform, and payment instrument context.")
+                put("availableBalance", JSONObject().apply {
+                    put("type", "NUMBER")
+                    put("description", "Available balance if mentioned in message, otherwise null.")
                 })
             })
-            put("required", JSONArray(listOf("isTransaction", "direction", "merchant", "category", "accountKind", "placeDetail", "detailedDescription")))
+            put("required", JSONArray(listOf("isTransaction")))
         }
 
         val requestPayload = JSONObject().apply {
@@ -492,45 +479,92 @@ open class GeminiApiClient {
         val candidate = candidates.getJSONObject(0)
         val content = candidate.getJSONObject("content")
         val parts = content.getJSONArray("parts")
-        val jsonText = parts.getJSONObject(0).getString("text")
+        val rawJsonText = parts.getJSONObject(0).getString("text")
 
-        val resultObj = JSONObject(jsonText)
-        val rawIsTransaction = resultObj.optBoolean("isTransaction", false)
-        val amount = resultObj.optDouble("amount").takeIf { !it.isNaN() && it > 0.0 }
-        val directionStr = resultObj.optString("direction")
-        val direction = when (directionStr.uppercase()) {
-            "CREDIT" -> TransactionDirection.CREDIT
-            "DEBIT" -> TransactionDirection.DEBIT
+        val sanitizedJson = sanitizeJsonText(rawJsonText)
+        val resultObj = JSONObject(sanitizedJson)
+        val rawIsTransaction = resultObj.optBoolean("isTransaction", true)
+        if (!rawIsTransaction) {
+            return AiParsedTransaction(
+                isTransaction = false,
+                amount = null,
+                direction = null,
+                merchant = null,
+                category = TransactionCategory.OTHER,
+                accountKind = AccountKind.BANK,
+                institutionName = null,
+                accountLastFour = null,
+                cardType = null,
+                isUpi = false,
+                isCardBillPayment = false,
+                placeDetail = null,
+                confidence = 0.0,
+                countsTowardBudget = false,
+                availableBalance = null,
+            )
+        }
+
+        val amount = if (resultObj.has("amount") && !resultObj.isNull("amount")) {
+            resultObj.optDouble("amount").takeIf { !it.isNaN() && it > 0.0 }
+        } else null
+
+        val directionStr = resultObj.optString("direction", "").trim().uppercase(java.util.Locale.ROOT)
+        val direction = when {
+            directionStr.contains("DEBIT") -> TransactionDirection.DEBIT
+            directionStr.contains("CREDIT") -> TransactionDirection.CREDIT
             else -> null
         }
-        val rawMerchant = resultObj.optString("merchant").takeIf { it.isNotBlank() }
-        val isBogusMerchant = rawMerchant == null || rawMerchant.equals("Merchant", ignoreCase = true) ||
-            rawMerchant.startsWith("be recorded", ignoreCase = true) || rawMerchant.contains("recorded by amc", ignoreCase = true)
 
-        val isTransaction = rawIsTransaction && amount != null && direction != null && !isBogusMerchant
-        val merchant = if (isTransaction) rawMerchant else null
+        val rawMerchant = resultObj.optString("merchant", "").trim()
+        val cleanedMerchant = MerchantSanitizer.sanitizeMerchantName(rawMerchant)
+        val isBogusMerchant = cleanedMerchant.isBlank() || cleanedMerchant.equals("Merchant", ignoreCase = true) ||
+            cleanedMerchant.startsWith("be recorded", ignoreCase = true) || cleanedMerchant.contains("recorded by amc", ignoreCase = true)
 
-        val categoryStr = resultObj.optString("category")
-        val category = runCatching { TransactionCategory.valueOf(categoryStr) }
-            .getOrDefault(TransactionCategory.OTHER)
-        val accountKindStr = resultObj.optString("accountKind")
-        val accountKind = runCatching { AccountKind.valueOf(accountKindStr) }
-            .getOrDefault(AccountKind.BANK)
-        val institutionName = resultObj.optString("institutionName").takeIf { it.isNotBlank() }
-        val accountLastFour = resultObj.optString("accountLastFour")
+        val isTransaction = amount != null && direction != null && !isBogusMerchant
+        val merchant = if (isTransaction) cleanedMerchant else null
+
+        val categoryStr = resultObj.optString("category", "").trim().uppercase(java.util.Locale.ROOT)
+        val category = mapCategory(categoryStr)
+
+        val accountLastFour = resultObj.optString("accountLast4", "")
+            .ifEmpty { resultObj.optString("accountLastFour", "") }
             .filter(Char::isDigit)
             .takeLast(4)
             .takeIf { it.length == 4 }
-        val cardTypeStr = resultObj.optString("cardType")
-        val cardType = when (cardTypeStr.uppercase()) {
+
+        val availableBalance = if (resultObj.has("availableBalance") && !resultObj.isNull("availableBalance")) {
+            val bal = resultObj.optDouble("availableBalance")
+            if (!bal.isNaN()) bal else null
+        } else null
+
+        val lowerRaw = smsBody.lowercase(java.util.Locale.ROOT)
+        val isUpi = resultObj.optBoolean("isUpi", false) || listOf("upi", "vpa", "/p2a/", "/p2m/", "/p2p/", "@").any { it in lowerRaw } || sender.contains("upi", ignoreCase = true)
+        val isCreditCard = listOf("credit card", "card ending", "card xx").any { it in lowerRaw }
+        val isCardBillPayment = resultObj.optBoolean("isCardBillPayment", false) ||
+            listOf("payment received towards", "credit card bill", "credited to your credit card").any { it in lowerRaw } ||
+            (category == TransactionCategory.TRANSFER && isCreditCard)
+
+        val accountKindStr = resultObj.optString("accountKind", "")
+        val accountKind = runCatching { AccountKind.valueOf(accountKindStr) }.getOrNull() ?: when {
+            isCreditCard && !isCardBillPayment -> AccountKind.CARD
+            isUpi -> AccountKind.UPI
+            else -> AccountKind.BANK
+        }
+
+        val cardTypeStr = resultObj.optString("cardType", "")
+        val cardType = when (cardTypeStr.uppercase(java.util.Locale.ROOT)) {
             "CREDIT" -> CardType.CREDIT
             "DEBIT" -> CardType.DEBIT
-            else -> null
+            else -> if (isCreditCard) CardType.CREDIT else null
         }
-        val isUpi = resultObj.optBoolean("isUpi", false)
-        val isCardBillPayment = resultObj.optBoolean("isCardBillPayment", false)
+
+        val institutionName = resultObj.optString("institutionName").takeIf { it.isNotBlank() }
+            ?: com.moneytracker.app.bank.BankDetector.resolveBankInstitution(sender, smsBody)
+
         val placeDetail = resultObj.optString("placeDetail").takeIf { it.isNotBlank() }
-        val detailedDescription = resultObj.optString("detailedDescription").takeIf { it.isNotBlank() } ?: placeDetail
+        val detailedDescription = resultObj.optString("detailedDescription").takeIf { it.isNotBlank() }
+            ?: merchant?.let { "$it - AI Verified" }
+            ?: placeDetail
 
         return AiParsedTransaction(
             isTransaction = isTransaction,
@@ -546,8 +580,44 @@ open class GeminiApiClient {
             isCardBillPayment = isCardBillPayment,
             placeDetail = placeDetail,
             detailedDescription = detailedDescription,
-            confidence = 0.95,
+            confidence = 0.98,
+            countsTowardBudget = !isCardBillPayment && category != TransactionCategory.TRANSFER,
+            availableBalance = availableBalance,
         )
+    }
+
+    private fun sanitizeJsonText(raw: String): String {
+        var text = raw.trim()
+        val fenceRegex = Regex("""```(?:json)?\s*([\s\S]*?)\s*```""", RegexOption.IGNORE_CASE)
+        val fenceMatch = fenceRegex.find(text)
+        if (fenceMatch != null) {
+            text = fenceMatch.groupValues[1].trim()
+        } else if (text.startsWith("```")) {
+            text = text.removePrefix("```json").removePrefix("```").trim()
+            if (text.endsWith("```")) {
+                text = text.removeSuffix("```").trim()
+            }
+        }
+        val startIndex = text.indexOf('{')
+        val endIndex = text.lastIndexOf('}')
+        if (startIndex != -1 && endIndex != -1 && endIndex > startIndex) {
+            return text.substring(startIndex, endIndex + 1).trim()
+        }
+        return text
+    }
+
+    private fun mapCategory(cat: String): TransactionCategory {
+        return when {
+            cat.contains("FOOD") || cat.contains("DINING") || cat.contains("GROCERY") -> TransactionCategory.FOOD
+            cat.contains("SHOPPING") || cat.contains("RETAIL") -> TransactionCategory.SHOPPING
+            cat.contains("BILL") || cat.contains("UTILITY") -> TransactionCategory.BILLS
+            cat.contains("TRANSPORT") || cat.contains("TRAVEL") || cat.contains("CAB") -> TransactionCategory.TRAVEL
+            cat.contains("ENTERTAINMENT") || cat.contains("MOVIE") || cat.contains("SUBSCRIPTION") -> TransactionCategory.SUBSCRIPTION
+            cat.contains("HEALTH") || cat.contains("MEDICAL") -> TransactionCategory.HEALTH
+            cat.contains("SALARY") -> TransactionCategory.SALARY
+            cat.contains("TRANSFER") || cat.contains("INVESTMENT") -> TransactionCategory.TRANSFER
+            else -> TransactionCategory.OTHER
+        }
     }
 
     private fun postHttpRequest(

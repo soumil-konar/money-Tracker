@@ -31,10 +31,23 @@ class NotificationProcessingTest {
         val hasMoneyIndicator = listOf("₹", "rs.", "inr", "rs ").any { it in combined }
         val hasTransactionVerb = listOf(
             "debited", "credited", "spent", "paid", "withdrawn", "received", "deducted",
-            "sent", "transfer", "successful", "purchase", "bill payment", "alert", "vpa",
+            "sent", "transferred", "successful", "purchase", "bill payment", "vpa",
         ).any { it in combined }
 
-        return hasMoneyIndicator && hasTransactionVerb
+        if (!hasMoneyIndicator || !hasTransactionVerb) {
+            return false
+        }
+
+        val hasMarketingSignals = listOf(
+            "loan", "pre-approved", "pre approved", "credit limit", "card limit", "limit enhanced",
+            "limit increased", "offer", "discount", "cashback", "scratch card", "spin & win",
+            "apply now", "avail now", "congratulations", "congrats", "invest", "fixed deposit"
+        ).any { it in combined }
+        if (hasMarketingSignals && !com.moneytracker.app.parser.PromotionalDetector.hasConfirmedTransactionSignal(combined)) {
+            return false
+        }
+
+        return true
     }
 
     @Test
@@ -178,6 +191,36 @@ class NotificationProcessingTest {
         val text = "Instant personal loan of ₹2,50,000 at zero processing fee. Apply now!"
 
         assertFalse(isEligibleNotification(pkg, title, text))
+    }
+
+    @Test
+    fun `icici bank personal loan push notification shade is rejected`() {
+        val pkg = "com.csam.icici.bank.imobile"
+        val title = "Personal Loan Alert"
+        val text = "Congratulations! Pre-approved personal loan of Rs 5,00,000 on ICICI Bank A/C 1007. Transfer up to Rs600000. Apply now"
+
+        assertFalse(isEligibleNotification(pkg, title, text))
+    }
+
+    @Test
+    fun `icici bank credit limit enhancement push notification shade is rejected`() {
+        val pkg = "com.csam.icici.bank.imobile"
+        val title = "Credit Limit Alert"
+        val text = "Special offer! Credit limit on your ICICI Bank Card ending 1007 has been enhanced to Rs 6,00,000. Avail now"
+
+        assertFalse(isEligibleNotification(pkg, title, text))
+    }
+
+    @Test
+    fun `parseIncomingMessage returns non-transaction and avoids degraded recovery for promo notifications`() = kotlinx.coroutines.runBlocking {
+        val body = "Personal Loan Alert: Congratulations! Pre-approved personal loan of Rs 5,00,000 on ICICI Bank A/C 1007. Transfer up to Rs600000. Apply now"
+        val sender = "ICICI Bank"
+
+        val result = onDeviceAi.parseIncomingMessage(body = body, sender = sender)
+        val tx = result.transaction
+
+        assertTrue(tx == null || !tx.isTransaction)
+        assertEquals(0.0, result.confidence, 0.001)
     }
 
     @Test

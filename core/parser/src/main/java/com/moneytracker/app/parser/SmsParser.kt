@@ -27,8 +27,21 @@ class SmsParser {
         "coupon",
         "winning",
         "loan approved",
+        "loan offer",
         "pre-approved",
+        "pre approved",
+        "instant loan",
+        "personal loan",
+        "credit limit enhanced",
+        "credit limit increased",
+        "credit limit",
+        "card limit",
         "emi card",
+        "congratulations",
+        "congrats",
+        "zero processing fee",
+        "apply now",
+        "avail now",
     )
 
     private val requestOnlyKeywords = listOf(

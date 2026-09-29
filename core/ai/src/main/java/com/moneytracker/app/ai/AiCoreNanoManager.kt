@@ -41,19 +41,51 @@ class AiCoreNanoManager(
         const val AICORE_PACKAGE = "com.google.android.aicore"
         const val INFERENCE_TIMEOUT_MS = 2500L
 
-        const val FINANCIAL_PROMPT_TEMPLATE = """Extract transaction details into raw JSON ONLY.
-Keys:
-- "amount": Double
-- "direction": "DEBIT" or "CREDIT"
-- "merchant": String (Clean brand name, e.g. "Swiggy", "HDFC Bank", "Uber")
-- "accountLast4": String or null
-- "availableBalance": Double or null
-- "category": String ("FOOD", "SHOPPING", "BILLS", "TRANSPORT", "INVESTMENT", "ENTERTAINMENT", "OTHER")
-- "isTransaction": Boolean (false for OTPs, ads, fraud alerts)
-No markdown wrappers, no backticks, no explanatory prose.
+        const val FINANCIAL_PROMPT_TEMPLATE = """You are an expert financial transaction parsing engine.
+Your task is to parse raw banking SMS and notification text into structured JSON.
 
+### Extraction Rules:
+1. "isTransaction": boolean. Set to false if the message is an OTP, promotional spam, balance-only inquiry, or security alert without a financial debit/credit event.
+2. "amount": number. The exact numerical currency amount debited or credited.
+3. "direction": "DEBIT" or "CREDIT".
+4. "accountLast4": string or null. The last 4 digits of the card or bank account (e.g. "6942" for "XX6942").
+5. "merchant": string. The human-readable recipient or sender name to be displayed as the main transaction title on the user's dashboard:
+   - When encountering UPI strings like "UPI/P2M/<rrn>/<payee>" or "UPI/P2P/<rrn>/<payee>", strip the protocol, mode, and RRN code. Extract ONLY the payee name.
+   - If the payee name is split across newlines (e.g., "PRAKASH\nCHANDRA CHA"), join the fragments with a single space.
+   - Strictly strip out fraud warnings, disclaimers, and bank footers (e.g., "Not you?", "SMS BLOCKUPI", "Axis Bank", "Call helpline").
+   - Convert all-caps payee names to Title Case (e.g., "PRAKASH CHANDRA CHA" -> "Prakash Chandra Cha"), keeping standard acronyms intact (e.g., "UPI", "IRCTC", "ATM").
+6. "category": string. One of: "FOOD", "SHOPPING", "BILLS", "ENTERTAINMENT", "TRANSPORT", "GROCERY", "HEALTH", "INVESTMENT", "TRANSFER", "OTHER".
+7. "availableBalance": number or null.
+
+### Output Format:
+Return raw JSON ONLY. No markdown code blocks, no backticks (```), no conversational filler.
+
+### Examples:
+Input:
+INR 1200.00 debited
+A/c no. XX6942
+26-09-26, 23:09:50
+UPI/P2M/626969941600/Raju Wines
+Not you? SMS BLOCKUPI Cust ID to 919951860002
+Axis Bank
+Output:
+{"isTransaction":true,"amount":1200.0,"direction":"DEBIT","merchant":"Raju Wines","accountLast4":"6942","category":"ENTERTAINMENT","availableBalance":null}
+
+Input:
+INR 10.00 debited
+A/c no. XX6942
+28-09-26, 18:38:35
+UPI/P2M/627192752017/PRAKASH
+CHANDRA CHA
+Not you? SMS BLOCKUPI Cust ID to 919951860002
+Axis Bank
+Output:
+{"isTransaction":true,"amount":10.0,"direction":"DEBIT","merchant":"Prakash Chandra Cha","accountLast4":"6942","category":"FOOD","availableBalance":null}
+
+Input:
 Sender: %s
-Message: %s"""
+%s
+Output:"""
     }
 
     fun isAvailable(): Boolean {
@@ -202,12 +234,14 @@ Message: %s"""
             }
 
             val merchantRaw = json.optString("merchant", "").trim()
-            val merchant = merchantRaw.takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
+            val cleanedMerchant = MerchantSanitizer.sanitizeMerchantName(merchantRaw)
+            val merchant = cleanedMerchant.takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
 
             val rawCategory = json.optString("category", "").trim().uppercase(Locale.ROOT)
             val category = mapCategory(rawCategory)
 
             val accountLast4 = json.optString("accountLast4", "")
+                .ifEmpty { json.optString("accountLastFour", "") }
                 .filter { it.isDigit() }
                 .takeLast(4)
                 .takeIf { it.length == 4 }
@@ -218,7 +252,7 @@ Message: %s"""
             } else null
 
             val lowerRaw = rawText.lowercase(Locale.ROOT)
-            val isUpi = listOf("upi", "vpa", "/p2a/", "@").any { it in lowerRaw } || sender.contains("upi", ignoreCase = true)
+            val isUpi = listOf("upi", "vpa", "/p2a/", "/p2m/", "/p2p/", "@").any { it in lowerRaw } || sender.contains("upi", ignoreCase = true)
             val isCreditCard = listOf("credit card", "card ending", "card xx").any { it in lowerRaw }
             val isCardBillPayment = listOf("payment received towards", "credit card bill", "credited to your credit card").any { it in lowerRaw } ||
                 (category == TransactionCategory.TRANSFER && isCreditCard)
@@ -252,11 +286,15 @@ Message: %s"""
         }
     }
 
-    private fun sanitizeJsonOutput(raw: String): String? {
+    fun sanitizeJsonOutput(raw: String): String? {
         var text = raw.trim()
 
-        // Strip markdown ```json ... ``` or ``` ... ```
-        if (text.startsWith("```")) {
+        // Strip markdown code fences if present anywhere: ```json ... ``` or ``` ... ```
+        val fenceRegex = Regex("""```(?:json)?\s*([\s\S]*?)\s*```""", RegexOption.IGNORE_CASE)
+        val fenceMatch = fenceRegex.find(text)
+        if (fenceMatch != null) {
+            text = fenceMatch.groupValues[1].trim()
+        } else if (text.startsWith("```")) {
             text = text.removePrefix("```json").removePrefix("```").trim()
             if (text.endsWith("```")) {
                 text = text.removeSuffix("```").trim()
@@ -275,7 +313,7 @@ Message: %s"""
 
     private fun mapCategory(cat: String): TransactionCategory {
         return when {
-            cat.contains("FOOD") || cat.contains("DINING") -> TransactionCategory.FOOD
+            cat.contains("FOOD") || cat.contains("DINING") || cat.contains("GROCERY") -> TransactionCategory.FOOD
             cat.contains("SHOPPING") || cat.contains("RETAIL") -> TransactionCategory.SHOPPING
             cat.contains("BILL") || cat.contains("UTILITY") -> TransactionCategory.BILLS
             cat.contains("TRANSPORT") || cat.contains("TRAVEL") || cat.contains("CAB") -> TransactionCategory.TRAVEL

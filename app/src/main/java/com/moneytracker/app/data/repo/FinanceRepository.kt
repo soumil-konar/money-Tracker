@@ -284,9 +284,33 @@ class FinanceRepository(
     }
 
     suspend fun bootstrap() {
+        purgeBogusRecoveredTransactions()
         reconcileAccountsAndBalances()
         refreshRecurringSuggestions()
         deduplicateTransactions(windowDays = 14)
+    }
+
+    suspend fun purgeBogusRecoveredTransactions(): Int {
+        val reviewTransactions = transactionDao.getAllTransactions().filter {
+            it.status == TransactionStatus.REVIEW || it.note?.contains("Recovered Transaction") == true
+        }
+        var purged = 0
+        for (tx in reviewTransactions) {
+            val body = tx.smsBody.orEmpty()
+            val sender = tx.sourceSender.orEmpty()
+            val merchant = tx.merchant.trim()
+            val isPromo = PromotionalDetector.isPromotional(sender, body, merchant)
+            val isCurrencyMerchant = merchant.matches(Regex("""^(?:rs\.?|inr|re\.?|₹|\$)\s*[0-9,]+.*""", RegexOption.IGNORE_CASE)) ||
+                merchant.matches(Regex("""^[0-9,.\s]+$"""))
+            val isMarketingBody = listOf("loan", "pre-approved", "credit limit", "limit enhanced", "limit increase", "avail now", "apply now")
+                .any { body.contains(it, ignoreCase = true) } && !PromotionalDetector.hasConfirmedTransactionSignal(body)
+
+            if (isPromo || isCurrencyMerchant || isMarketingBody) {
+                transactionDao.deleteById(tx.id)
+                purged++
+            }
+        }
+        return purged
     }
 
     fun markInitialSetupComplete() {

@@ -24,6 +24,20 @@ object PromotionalDetector {
         Regex("""(?i)\b(?:only|valid)?\s*till\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)\b"""),
     )
 
+    private val loanAndLimitMarketingRegexes = listOf(
+        Regex("""(?i)\b(?:pre[- ]?approved|instant|personal|business|home|car|gold|quick|flexi|paperless)\s+(?:personal\s+)?loans?\b"""),
+        Regex("""(?i)\bloans?\s+(?:offer|approved|sanctioned|eligibility|eligible|up\s*to|upto|of|available|alert|limit)\b"""),
+        Regex("""(?i)\b(?:avail|apply|get|disburse|borrow)\s+(?:a\s+)?(?:personal\s+)?loans?\b"""),
+        Regex("""(?i)\b(?:credit|card)\s+limit\s+(?:enhanced|increased|upgraded|offer|enhancement|upgrade|can\s+be\s+increased)\b"""),
+        Regex("""(?i)\b(?:enhanced|increased|higher)\s+(?:credit\s+)?limit\b"""),
+        Regex("""(?i)\bcredit\s+limit\s+(?:of|is|to)\s+(?:₹|rs\.?|inr)?\s*[0-9,]+"""),
+        Regex("""(?i)\b(?:upgrade|enhance|increase)\s+your\s+(?:credit\s+)?limit\b"""),
+        Regex("""(?i)\binterest\s+rate\s+starting\s+(?:at|from|@)\b"""),
+        Regex("""(?i)\bzero\s+processing\s+fee\b"""),
+        Regex("""(?i)\bemi\s+starting\s+(?:at|from|@)\b"""),
+        Regex("""(?i)\b(?:congratulations|congrats)!?\s+.*(?:loan|limit|offer|pre[- ]approved)"""),
+    )
+
     private val promotionalKeywords = listOf(
         "shop now",
         "buy now",
@@ -80,11 +94,36 @@ object PromotionalDetector {
         "mega offer",
         "pre-approved",
         "pre approved",
+        "pre-qualified",
+        "pre qualified",
         "instant loan",
         "personal loan",
         "business loan",
+        "home loan",
+        "car loan",
+        "gold loan",
+        "quick loan",
+        "loan offer",
+        "loan approved",
+        "loan alert",
+        "loan limit",
+        "eligible for loan",
+        "eligible for a loan",
+        "borrow up to",
+        "borrow upto",
         "credit limit enhanced",
         "credit limit increased",
+        "credit limit upgraded",
+        "credit limit",
+        "card limit",
+        "limit enhanced",
+        "limit increase",
+        "limit increased",
+        "limit upgrade",
+        "upgrade limit",
+        "upgrade your limit",
+        "enhance your limit",
+        "increase your limit",
         "lifetime free card",
         "apply for card",
         "apply for credit card",
@@ -101,6 +140,14 @@ object PromotionalDetector {
         "hurry!",
         "don't miss out",
         "offer ends",
+        "congratulations!",
+        "congratulations",
+        "congrats!",
+        "congrats",
+        "zero processing fee",
+        "paperless loan",
+        "apply today",
+        "avail today",
     )
 
     private val confirmedTransactionRegexes = listOf(
@@ -142,6 +189,15 @@ object PromotionalDetector {
         val titleText = nonBlankTexts.firstOrNull().orEmpty().lowercase(Locale.ENGLISH)
         if (isPromotionalTitle(titleText) && !hasConfirmedTransaction) {
             return "Promotional Title: $titleText"
+        }
+
+        for (regex in loanAndLimitMarketingRegexes) {
+            val match = regex.find(combined)
+            if (match != null) {
+                if (!hasConfirmedTransaction || hasPromotionalCallToAction(lowerCombined)) {
+                    return "Loan/Limit Marketing: ${match.value}"
+                }
+            }
         }
 
         for (regex in productPricingRegexes) {
@@ -193,13 +249,25 @@ object PromotionalDetector {
             "refer & earn",
             "refer and earn",
             "pre-approved",
+            "pre approved",
             "instant loan",
             "personal loan",
+            "loan offer",
+            "loan alert",
+            "loan approved",
+            "credit limit",
+            "limit enhanced",
+            "limit increased",
+            "card limit",
             "flat ₹",
             "flat rs",
             "flat discount",
             "flash sale",
             "mega sale",
+            "congratulations",
+            "congrats",
+            "festive offer",
+            "bumper offer",
         )
         if (promotionalTitleKeywords.any { title.contains(it) }) return true
         if (title.contains("@ ₹") || title.contains("@ rs") || title.contains("@ inr")) return true
@@ -210,7 +278,9 @@ object PromotionalDetector {
         val ctas = listOf(
             "shop now", "buy now", "order now", "grab now", "grab today", "grab ultra-light",
             "avail now", "claim now", "claim your", "tap to claim", "recharge now",
-            "apply now", "book now", "explore now", "scratch now", "spin now"
+            "apply now", "book now", "explore now", "scratch now", "spin now",
+            "apply today", "avail today", "check eligibility", "increase limit", "enhance limit",
+            "click here to", "tap here to", "upgrade now",
         )
         return ctas.any { lowerCombined.contains(it) }
     }
