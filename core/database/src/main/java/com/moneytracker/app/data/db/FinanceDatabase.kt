@@ -213,48 +213,97 @@ abstract class FinanceDatabase : RoomDatabase() {
                 db.execSQL("DROP TRIGGER IF EXISTS `transactions_ad`")
                 db.execSQL("DROP TRIGGER IF EXISTS `transactions_au`")
                 db.execSQL("DROP TABLE IF EXISTS `transactions_fts`")
-                db.execSQL(
-                    """
-                    CREATE VIRTUAL TABLE IF NOT EXISTS `transactions_fts` USING fts5(
-                        `merchant`, `note`, `smsBody`,
-                        content=`transactions`,
-                        content_rowid=`id`,
-                        tokenize='trigram'
-                    );
-                    """.trimIndent(),
-                )
-                db.execSQL(
-                    """
-                    CREATE TRIGGER IF NOT EXISTS transactions_ai AFTER INSERT ON `transactions` BEGIN
+
+                val useFts5 = try {
+                    db.execSQL(
+                        """
+                        CREATE VIRTUAL TABLE IF NOT EXISTS `transactions_fts` USING fts5(
+                            `merchant`, `note`, `smsBody`,
+                            content=`transactions`,
+                            content_rowid=`id`,
+                            tokenize='trigram'
+                        );
+                        """.trimIndent(),
+                    )
+                    true
+                } catch (_: Exception) {
+                    db.execSQL(
+                        """
+                        CREATE VIRTUAL TABLE IF NOT EXISTS `transactions_fts` USING fts4(
+                            `merchant`, `note`, `smsBody`,
+                            content=`transactions`,
+                            tokenize=unicode61
+                        )
+                        """.trimIndent(),
+                    )
+                    false
+                }
+
+                if (useFts5) {
+                    db.execSQL(
+                        """
+                        CREATE TRIGGER IF NOT EXISTS transactions_ai AFTER INSERT ON `transactions` BEGIN
+                            INSERT INTO `transactions_fts`(`rowid`, `merchant`, `note`, `smsBody`)
+                            VALUES (new.`id`, new.`merchant`, new.`note`, new.`smsBody`);
+                        END;
+                        """.trimIndent(),
+                    )
+                    db.execSQL(
+                        """
+                        CREATE TRIGGER IF NOT EXISTS transactions_ad AFTER DELETE ON `transactions` BEGIN
+                            INSERT INTO `transactions_fts`(`transactions_fts`, `rowid`, `merchant`, `note`, `smsBody`)
+                            VALUES('delete', old.`id`, old.`merchant`, old.`note`, old.`smsBody`);
+                        END;
+                        """.trimIndent(),
+                    )
+                    db.execSQL(
+                        """
+                        CREATE TRIGGER IF NOT EXISTS transactions_au AFTER UPDATE ON `transactions` BEGIN
+                            INSERT INTO `transactions_fts`(`transactions_fts`, `rowid`, `merchant`, `note`, `smsBody`)
+                            VALUES('delete', old.`id`, old.`merchant`, old.`note`, old.`smsBody`);
+                            INSERT INTO `transactions_fts`(`rowid`, `merchant`, `note`, `smsBody`)
+                            VALUES (new.`id`, new.`merchant`, new.`note`, new.`smsBody`);
+                        END;
+                        """.trimIndent(),
+                    )
+                    db.execSQL(
+                        """
                         INSERT INTO `transactions_fts`(`rowid`, `merchant`, `note`, `smsBody`)
-                        VALUES (new.`id`, new.`merchant`, new.`note`, new.`smsBody`);
-                    END;
-                    """.trimIndent(),
-                )
-                db.execSQL(
-                    """
-                    CREATE TRIGGER IF NOT EXISTS transactions_ad AFTER DELETE ON `transactions` BEGIN
-                        INSERT INTO `transactions_fts`(`transactions_fts`, `rowid`, `merchant`, `note`, `smsBody`)
-                        VALUES('delete', old.`id`, old.`merchant`, old.`note`, old.`smsBody`);
-                    END;
-                    """.trimIndent(),
-                )
-                db.execSQL(
-                    """
-                    CREATE TRIGGER IF NOT EXISTS transactions_au AFTER UPDATE ON `transactions` BEGIN
-                        INSERT INTO `transactions_fts`(`transactions_fts`, `rowid`, `merchant`, `note`, `smsBody`)
-                        VALUES('delete', old.`id`, old.`merchant`, old.`note`, old.`smsBody`);
-                        INSERT INTO `transactions_fts`(`rowid`, `merchant`, `note`, `smsBody`)
-                        VALUES (new.`id`, new.`merchant`, new.`note`, new.`smsBody`);
-                    END;
-                    """.trimIndent(),
-                )
-                db.execSQL(
-                    """
-                    INSERT INTO `transactions_fts`(`rowid`, `merchant`, `note`, `smsBody`)
-                    SELECT `id`, `merchant`, `note`, `smsBody` FROM `transactions`;
-                    """.trimIndent(),
-                )
+                        SELECT `id`, `merchant`, `note`, `smsBody` FROM `transactions`;
+                        """.trimIndent(),
+                    )
+                } else {
+                    db.execSQL(
+                        """
+                        CREATE TRIGGER IF NOT EXISTS transactions_ai AFTER INSERT ON `transactions` BEGIN
+                            INSERT INTO `transactions_fts`(`docid`, `merchant`, `note`, `smsBody`)
+                            VALUES (new.`id`, new.`merchant`, new.`note`, new.`smsBody`);
+                        END;
+                        """.trimIndent(),
+                    )
+                    db.execSQL(
+                        """
+                        CREATE TRIGGER IF NOT EXISTS transactions_ad AFTER DELETE ON `transactions` BEGIN
+                            DELETE FROM `transactions_fts` WHERE `docid` = old.`id`;
+                        END;
+                        """.trimIndent(),
+                    )
+                    db.execSQL(
+                        """
+                        CREATE TRIGGER IF NOT EXISTS transactions_au AFTER UPDATE ON `transactions` BEGIN
+                            DELETE FROM `transactions_fts` WHERE `docid` = old.`id`;
+                            INSERT INTO `transactions_fts`(`docid`, `merchant`, `note`, `smsBody`)
+                            VALUES (new.`id`, new.`merchant`, new.`note`, new.`smsBody`);
+                        END;
+                        """.trimIndent(),
+                    )
+                    db.execSQL(
+                        """
+                        INSERT INTO `transactions_fts`(`docid`, `merchant`, `note`, `smsBody`)
+                        SELECT `id`, `merchant`, `note`, `smsBody` FROM `transactions`;
+                        """.trimIndent(),
+                    )
+                }
             }
         }
 

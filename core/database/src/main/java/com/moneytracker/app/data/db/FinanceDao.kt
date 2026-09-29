@@ -187,7 +187,11 @@ interface TransactionDao {
     suspend fun searchTransactionsFts(matchQuery: String, limit: Int = 50): List<TransactionRecord> {
         val sanitized = sanitizeFts5Query(matchQuery)
         if (sanitized.isBlank()) return emptyList()
-        return queryTransactionsFtsRaw(sanitized, limit)
+        return try {
+            queryTransactionsFtsRaw(sanitized, limit)
+        } catch (_: Exception) {
+            emptyList()
+        }
     }
 
     companion object {
