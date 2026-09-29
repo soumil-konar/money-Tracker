@@ -389,6 +389,7 @@ fun MoneyTrackerRoot(
                                 )
                                 1 -> TransactionsScreen(
                                     filter = filter,
+                                    transactions = transactions,
                                     pagedTransactions = pagedTransactions,
                                     cardAccounts = accounts.filter { it.kind == AccountKind.CARD },
                                     searchQuery = searchQuery,

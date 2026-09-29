@@ -1,6 +1,11 @@
 package com.moneytracker.app
 
+import com.moneytracker.app.data.db.TransactionRecord
 import com.moneytracker.app.data.model.DashboardState
+import com.moneytracker.app.data.model.TransactionCategory
+import com.moneytracker.app.data.model.TransactionDirection
+import com.moneytracker.app.data.model.TransactionStatus
+import com.moneytracker.app.ui.asMonthYear
 import com.moneytracker.app.ui.navigation.AppDestination
 import com.moneytracker.app.ui.navigation.bottomDestinations
 import org.junit.Assert.assertEquals
@@ -104,5 +109,82 @@ class MonthSelectorAndNavTest {
         assertFalse(isFabVisible(3, false))
         assertFalse(isFabVisible(0, true))
         assertFalse(isFabVisible(1, true))
+    }
+
+    @Test
+    fun testTransactionsGroupedByMonthAndFolding() {
+        val sepMillis1 = java.time.ZonedDateTime.of(2026, 9, 29, 15, 30, 0, 0, java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val sepMillis2 = java.time.ZonedDateTime.of(2026, 9, 28, 9, 0, 0, 0, java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val augMillis1 = java.time.ZonedDateTime.of(2026, 8, 15, 12, 0, 0, 0, java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+        fun createRecord(
+            id: Long,
+            amount: Double,
+            direction: TransactionDirection,
+            occurredAtMillis: Long,
+            merchant: String,
+            category: TransactionCategory = TransactionCategory.OTHER,
+        ) = TransactionRecord(
+            id = id,
+            amount = amount,
+            direction = direction,
+            occurredAtMillis = occurredAtMillis,
+            merchant = merchant,
+            category = category,
+            accountId = null,
+            sourceSender = "BANK",
+            smsBody = null,
+            confidence = 1.0,
+            status = TransactionStatus.POSTED,
+            note = null,
+            countsTowardBudget = true,
+            accountName = "Main Account",
+            accountKind = null,
+        )
+
+        val sampleTransactions = listOf(
+            createRecord(1L, 1371.0, TransactionDirection.DEBIT, sepMillis1, "UPI Transfer", TransactionCategory.SHOPPING),
+            createRecord(2L, 18622.0, TransactionDirection.DEBIT, sepMillis2, "Amazon", TransactionCategory.SHOPPING),
+            createRecord(3L, 5000.0, TransactionDirection.CREDIT, augMillis1, "Salary", TransactionCategory.SALARY),
+        )
+
+        val grouped = sampleTransactions.groupBy { it.occurredAtMillis.asMonthYear() }
+        assertEquals(2, grouped.size)
+        assertTrue(grouped.containsKey("September 2026"))
+        assertTrue(grouped.containsKey("August 2026"))
+
+        val sepList = grouped["September 2026"]!!
+        assertEquals(2, sepList.size)
+        val sepSignedTotal = sepList.sumOf {
+            if (it.direction == TransactionDirection.CREDIT) it.amount else -it.amount
+        }
+        assertEquals(-19993.0, sepSignedTotal, 0.001)
+
+        val augList = grouped["August 2026"]!!
+        assertEquals(1, augList.size)
+        val augSignedTotal = augList.sumOf {
+            if (it.direction == TransactionDirection.CREDIT) it.amount else -it.amount
+        }
+        assertEquals(5000.0, augSignedTotal, 0.001)
+
+        var collapsed = setOf<String>()
+        assertFalse("September 2026" in collapsed)
+
+        // Fold September
+        collapsed = collapsed + "September 2026"
+        assertTrue("September 2026" in collapsed)
+        assertFalse("August 2026" in collapsed)
+
+        // Unfold September
+        collapsed = collapsed - "September 2026"
+        assertFalse("September 2026" in collapsed)
+
+        // Collapse all
+        collapsed = grouped.keys.toSet()
+        assertEquals(setOf("September 2026", "August 2026"), collapsed)
+
+        // Expand all
+        collapsed = emptySet()
+        assertTrue(collapsed.isEmpty())
     }
 }
