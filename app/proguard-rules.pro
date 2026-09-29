@@ -21,3 +21,8 @@
 -keepclassmembers class * extends com.google.android.gms.internal.aicore.zzex {
   <fields>;
 }
+
+# Koin WorkManager: preserve Worker (Context, WorkerParameters) constructors
+-keepclassmembers class * extends androidx.work.ListenableWorker {
+    public <init>(android.content.Context, androidx.work.WorkerParameters);
+}

@@ -89,6 +89,7 @@ val useCaseModule = module {
             accountDao = get(),
             transactionDao = get(),
             onWidgetUpdate = {
+                com.moneytracker.app.widget.SafeSpendGlanceWidget.updateAllWidgets(androidContext())
                 BalanceWidgetProvider.updateAllWidgets(androidContext())
                 BudgetWidgetProvider.updateAllWidgets(androidContext())
             },

@@ -115,6 +115,7 @@ class FinanceRepository(
         transactionDao = transactionDao,
         onWidgetUpdate = {
             context?.let {
+                com.moneytracker.app.widget.SafeSpendGlanceWidget.updateAllWidgets(it)
                 com.moneytracker.app.widget.BalanceWidgetProvider.updateAllWidgets(it)
                 com.moneytracker.app.widget.BudgetWidgetProvider.updateAllWidgets(it)
             }
@@ -155,6 +156,7 @@ class FinanceRepository(
 
     private fun notifyWidgetUpdate() {
         context?.let {
+            com.moneytracker.app.widget.SafeSpendGlanceWidget.updateAllWidgets(it)
             com.moneytracker.app.widget.BalanceWidgetProvider.updateAllWidgets(it)
             com.moneytracker.app.widget.BudgetWidgetProvider.updateAllWidgets(it)
         }

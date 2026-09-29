@@ -183,13 +183,14 @@ class BalanceWidgetProvider : AppWidgetProvider() {
         const val EXTRA_OPEN_ADD_TRANSACTION = "extra_open_add_transaction"
 
         /**
-         * Broadcasts a widget update request to all active MoneyTracker balance widgets.
+         * Broadcasts a widget update request to all active MoneyTracker widgets.
          */
         fun updateAllWidgets(context: Context) {
             val intent = Intent(context, BalanceWidgetProvider::class.java).apply {
                 action = ACTION_REFRESH_WIDGET
             }
             context.sendBroadcast(intent)
+            SafeSpendGlanceWidget.updateAllWidgets(context)
         }
     }
 }

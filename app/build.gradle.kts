@@ -79,6 +79,8 @@ dependencies {
     implementation("androidx.paging:paging-compose:3.3.2")
     implementation("androidx.fragment:fragment-ktx:1.8.4")
     implementation("androidx.biometric:biometric:1.2.0-alpha05")
+    implementation("androidx.glance:glance-appwidget:1.1.0")
+    implementation("androidx.glance:glance-material3:1.1.0")
     implementation("com.google.android.play:review-ktx:2.0.2")
     implementation("com.google.ai.edge.aicore:aicore:0.0.1-exp02")
     implementation("io.insert-koin:koin-android:3.5.6")

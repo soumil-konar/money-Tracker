@@ -12,13 +12,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     entities = [
         AccountEntity::class,
         TransactionEntity::class,
-        TransactionFtsEntity::class,
         TransactionEmbeddingEntity::class,
         BudgetEntity::class,
         SubscriptionEntity::class,
         ScheduledTransactionEntity::class,
     ],
-    version = 12,
+    version = 13,
     exportSchema = true,
 )
 @TypeConverters(FinanceTypeConverters::class)
@@ -216,7 +215,7 @@ abstract class FinanceDatabase : RoomDatabase() {
                 db.execSQL("DROP TABLE IF EXISTS `transactions_fts`")
                 db.execSQL(
                     """
-                    CREATE VIRTUAL TABLE IF NOT EXISTS `transactions_fts` USING FTS5(
+                    CREATE VIRTUAL TABLE IF NOT EXISTS `transactions_fts` USING fts5(
                         `merchant`, `note`, `smsBody`,
                         content=`transactions`,
                         content_rowid=`id`,
@@ -267,6 +266,112 @@ abstract class FinanceDatabase : RoomDatabase() {
             }
         }
 
+        internal val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Recreate FTS virtual table and triggers.
+                // Room doesn't natively support FTS5, so this table is managed
+                // entirely via raw SQL and excluded from @Database entities.
+                db.execSQL("DROP TRIGGER IF EXISTS `transactions_ai`")
+                db.execSQL("DROP TRIGGER IF EXISTS `transactions_ad`")
+                db.execSQL("DROP TRIGGER IF EXISTS `transactions_au`")
+                db.execSQL("DROP TABLE IF EXISTS `transactions_fts`")
+
+                // Try FTS5 first, fall back to FTS4 if the module isn't available
+                val useFts5 = try {
+                    db.execSQL(
+                        """
+                        CREATE VIRTUAL TABLE IF NOT EXISTS `transactions_fts` USING fts5(
+                            `merchant`, `note`, `smsBody`,
+                            content=`transactions`,
+                            content_rowid=`id`,
+                            tokenize='trigram'
+                        );
+                        """.trimIndent(),
+                    )
+                    true
+                } catch (_: Exception) {
+                    db.execSQL(
+                        """
+                        CREATE VIRTUAL TABLE IF NOT EXISTS `transactions_fts` USING fts4(
+                            `merchant`, `note`, `smsBody`,
+                            content=`transactions`,
+                            tokenize=unicode61
+                        )
+                        """.trimIndent(),
+                    )
+                    false
+                }
+
+                if (useFts5) {
+                    // FTS5 triggers use the special 'delete' command
+                    db.execSQL(
+                        """
+                        CREATE TRIGGER IF NOT EXISTS transactions_ai AFTER INSERT ON `transactions` BEGIN
+                            INSERT INTO `transactions_fts`(`rowid`, `merchant`, `note`, `smsBody`)
+                            VALUES (new.`id`, new.`merchant`, new.`note`, new.`smsBody`);
+                        END;
+                        """.trimIndent(),
+                    )
+                    db.execSQL(
+                        """
+                        CREATE TRIGGER IF NOT EXISTS transactions_ad AFTER DELETE ON `transactions` BEGIN
+                            INSERT INTO `transactions_fts`(`transactions_fts`, `rowid`, `merchant`, `note`, `smsBody`)
+                            VALUES('delete', old.`id`, old.`merchant`, old.`note`, old.`smsBody`);
+                        END;
+                        """.trimIndent(),
+                    )
+                    db.execSQL(
+                        """
+                        CREATE TRIGGER IF NOT EXISTS transactions_au AFTER UPDATE ON `transactions` BEGIN
+                            INSERT INTO `transactions_fts`(`transactions_fts`, `rowid`, `merchant`, `note`, `smsBody`)
+                            VALUES('delete', old.`id`, old.`merchant`, old.`note`, old.`smsBody`);
+                            INSERT INTO `transactions_fts`(`rowid`, `merchant`, `note`, `smsBody`)
+                            VALUES (new.`id`, new.`merchant`, new.`note`, new.`smsBody`);
+                        END;
+                        """.trimIndent(),
+                    )
+                    db.execSQL(
+                        """
+                        INSERT INTO `transactions_fts`(`rowid`, `merchant`, `note`, `smsBody`)
+                        SELECT `id`, `merchant`, `note`, `smsBody` FROM `transactions`;
+                        """.trimIndent(),
+                    )
+                } else {
+                    // FTS4 triggers use docid and simple delete
+                    db.execSQL(
+                        """
+                        CREATE TRIGGER IF NOT EXISTS transactions_ai AFTER INSERT ON `transactions` BEGIN
+                            INSERT INTO `transactions_fts`(`docid`, `merchant`, `note`, `smsBody`)
+                            VALUES (new.`id`, new.`merchant`, new.`note`, new.`smsBody`);
+                        END;
+                        """.trimIndent(),
+                    )
+                    db.execSQL(
+                        """
+                        CREATE TRIGGER IF NOT EXISTS transactions_ad AFTER DELETE ON `transactions` BEGIN
+                            DELETE FROM `transactions_fts` WHERE `docid` = old.`id`;
+                        END;
+                        """.trimIndent(),
+                    )
+                    db.execSQL(
+                        """
+                        CREATE TRIGGER IF NOT EXISTS transactions_au AFTER UPDATE ON `transactions` BEGIN
+                            DELETE FROM `transactions_fts` WHERE `docid` = old.`id`;
+                            INSERT INTO `transactions_fts`(`docid`, `merchant`, `note`, `smsBody`)
+                            VALUES (new.`id`, new.`merchant`, new.`note`, new.`smsBody`);
+                        END;
+                        """.trimIndent(),
+                    )
+                    db.execSQL(
+                        """
+                        INSERT INTO `transactions_fts`(`docid`, `merchant`, `note`, `smsBody`)
+                        SELECT `id`, `merchant`, `note`, `smsBody` FROM `transactions`;
+                        """.trimIndent(),
+                    )
+                }
+            }
+        }
+
         fun create(context: Context): FinanceDatabase =
             Room.databaseBuilder(
                 context,
@@ -275,7 +380,7 @@ abstract class FinanceDatabase : RoomDatabase() {
             ).addMigrations(
                 MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
                 MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
-                MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12,
+                MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13,
             ).fallbackToDestructiveMigration()
             .build()
     }
