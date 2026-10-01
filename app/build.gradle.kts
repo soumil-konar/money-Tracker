@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("androidx.baselineprofile")
 }
 
 android {
@@ -69,7 +70,15 @@ android {
     }
 }
 
+baselineProfile {
+    // Saves generated profiles into src/main/generated/baselineProfiles
+    saveInSrc = true
+    automaticGenerationDuringBuild = false
+}
+
 dependencies {
+    baselineProfile(project(":baselineprofile"))
+
     implementation(project(":core:model"))
     implementation(project(":core:parser"))
     implementation(project(":core:database"))
