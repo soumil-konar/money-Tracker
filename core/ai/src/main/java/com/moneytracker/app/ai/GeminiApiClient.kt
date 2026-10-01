@@ -11,6 +11,7 @@ import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -157,7 +158,8 @@ open class GeminiApiClient {
             }
 
             val responseBody = postHttpRequest(
-                endpointUrl = "$baseUrl/$model:generateContent?key=$apiKey",
+                endpointUrl = "$baseUrl/$model:generateContent",
+                apiKey = apiKey,
                 jsonPayload = requestJson.toString(),
             )
 
@@ -205,7 +207,8 @@ open class GeminiApiClient {
             }
 
             val response = postHttpRequest(
-                endpointUrl = "$baseUrl/$model:generateContent?key=$apiKey",
+                endpointUrl = "$baseUrl/$model:generateContent",
+                apiKey = apiKey,
                 jsonPayload = requestJson.toString(),
             )
 
@@ -238,8 +241,8 @@ open class GeminiApiClient {
                 put("outputDimensionality", outputDimensionality)
             }
 
-            val endpoint = "$baseUrl/$model:embedContent?key=$apiKey"
-            val responseBody = postHttpRequest(endpointUrl = endpoint, jsonPayload = payload.toString())
+            val endpoint = "$baseUrl/$model:embedContent"
+            val responseBody = postHttpRequest(endpointUrl = endpoint, apiKey = apiKey, jsonPayload = payload.toString())
             val root = JSONObject(responseBody)
             val embeddingObj = root.optJSONObject("embedding")
                 ?: return@withContext Result.failure(IllegalStateException("No embedding returned: $responseBody"))
@@ -323,7 +326,8 @@ open class GeminiApiClient {
             for (candidate in candidateModels) {
                 try {
                     responseBody = postHttpRequest(
-                        endpointUrl = "$baseUrl/$candidate:generateContent?key=$apiKey",
+                        endpointUrl = "$baseUrl/$candidate:generateContent",
+                        apiKey = apiKey,
                         jsonPayload = requestJson.toString(),
                     )
                     break
@@ -362,7 +366,7 @@ open class GeminiApiClient {
         }
     }
 
-    private fun executeParseRequest(
+    private suspend fun executeParseRequest(
         smsBody: String,
         sender: String,
         apiKey: String,
@@ -469,7 +473,8 @@ Output:
         }
 
         val responseBody = postHttpRequest(
-            endpointUrl = "$baseUrl/$model:generateContent?key=$apiKey",
+            endpointUrl = "$baseUrl/$model:generateContent",
+            apiKey = apiKey,
             jsonPayload = requestPayload.toString(),
         )
 
@@ -620,8 +625,9 @@ Output:
         }
     }
 
-    private fun postHttpRequest(
+    private suspend fun postHttpRequest(
         endpointUrl: String,
+        apiKey: String,
         jsonPayload: String,
         connectTimeoutMs: Int = CONNECT_TIMEOUT_MS,
         readTimeoutMs: Int = READ_TIMEOUT_MS,
@@ -637,6 +643,7 @@ Output:
                     requestMethod = "POST"
                     setRequestProperty("Content-Type", "application/json")
                     setRequestProperty("Accept", "application/json")
+                    setRequestProperty("x-goog-api-key", apiKey)
                     connectTimeout = connectTimeoutMs
                     readTimeout = readTimeoutMs
                     doOutput = true
@@ -672,12 +679,7 @@ Output:
                     if (isTransient && attempt < maxRetries) {
                         val jitter = Random.nextLong(0, (currentBackoff * 0.3).toLong().coerceAtLeast(50L))
                         val sleepDuration = currentBackoff + jitter
-                        try {
-                            Thread.sleep(sleepDuration)
-                        } catch (_: InterruptedException) {
-                            Thread.currentThread().interrupt()
-                            throw GeminiApiException.NetworkUnavailableException("Gemini API request interrupted.")
-                        }
+                        delay(sleepDuration)
                         currentBackoff *= 2
                         continue
                     }
@@ -698,18 +700,15 @@ Output:
                 }
 
                 return response
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (domainEx: GeminiApiException) {
                 throw domainEx
             } catch (timeout: java.net.SocketTimeoutException) {
                 lastException = timeout
                 if (attempt < maxRetries) {
                     val jitter = Random.nextLong(0, (currentBackoff * 0.3).toLong().coerceAtLeast(50L))
-                    try {
-                        Thread.sleep(currentBackoff + jitter)
-                    } catch (_: InterruptedException) {
-                        Thread.currentThread().interrupt()
-                        throw GeminiApiException.NetworkTimeoutException("Gemini API request interrupted.", timeout)
-                    }
+                    delay(currentBackoff + jitter)
                     currentBackoff *= 2
                 } else {
                     throw GeminiApiException.NetworkTimeoutException(
@@ -721,12 +720,7 @@ Output:
                 lastException = ioe
                 if (attempt < maxRetries) {
                     val jitter = Random.nextLong(0, (currentBackoff * 0.3).toLong().coerceAtLeast(50L))
-                    try {
-                        Thread.sleep(currentBackoff + jitter)
-                    } catch (_: InterruptedException) {
-                        Thread.currentThread().interrupt()
-                        throw GeminiApiException.NetworkUnavailableException("Gemini API request interrupted.", ioe)
-                    }
+                    delay(currentBackoff + jitter)
                     currentBackoff *= 2
                 } else {
                     throw GeminiApiException.NetworkUnavailableException(

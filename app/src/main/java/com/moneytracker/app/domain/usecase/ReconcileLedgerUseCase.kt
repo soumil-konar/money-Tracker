@@ -42,8 +42,8 @@ class ReconcileLedgerUseCase(
 
     suspend fun reconcileSingleAccount(accountId: Long): Boolean {
         val account = accountDao.findById(accountId) ?: return false
-        val allAccountTxs = transactionDao.getAllTransactions()
-            .filter { it.accountId == accountId && it.status == TransactionStatus.POSTED }
+        val anchorTime = account.balanceUpdatedAtMillis ?: 0L
+        val allAccountTxs = transactionDao.getPostedTransactionsSince(accountId, anchorTime)
             .sortedWith(compareBy({ it.occurredAtMillis }, { it.id }))
 
         // 1. Check for the most recent verified bank SMS transaction
@@ -91,17 +91,17 @@ class ReconcileLedgerUseCase(
                 occurredAtMillis = verifiedAnchorTx.occurredAtMillis,
             )
             val anchorBalance = proof.balance ?: verifiedAnchorTx.availableBalance ?: 0.0
-            val anchorTime = verifiedAnchorTx.occurredAtMillis
+            val txAnchorTime = verifiedAnchorTx.occurredAtMillis
 
             // Sum all subsequent transactions strictly after the anchor snapshot
             val subsequentTxs = allAccountTxs.filter {
-                it.occurredAtMillis > anchorTime || (it.occurredAtMillis == anchorTime && it.id > verifiedAnchorTx.id)
+                it.occurredAtMillis > txAnchorTime || (it.occurredAtMillis == txAnchorTime && it.id > verifiedAnchorTx.id)
             }
             val subsequentDelta = subsequentTxs.sumOf { tx ->
                 if (tx.direction == TransactionDirection.CREDIT) tx.amount else -tx.amount
             }
             val calculatedBalance = (anchorBalance + subsequentDelta).coerceAtLeast(0.0)
-            val latestTime = maxOf(anchorTime, subsequentTxs.lastOrNull()?.occurredAtMillis ?: anchorTime)
+            val latestTime = maxOf(txAnchorTime, subsequentTxs.lastOrNull()?.occurredAtMillis ?: txAnchorTime)
 
             accountDao.updateVerifiedBalance(
                 accountId = accountId,
@@ -113,6 +113,28 @@ class ReconcileLedgerUseCase(
             )
             onWidgetUpdate?.invoke()
             return true
+        }
+
+        if (account.isBalanceVerified) {
+            val subsequentTxs = allAccountTxs.filter { it.occurredAtMillis > anchorTime }
+            if (subsequentTxs.isNotEmpty()) {
+                val subsequentDelta = subsequentTxs.sumOf { tx ->
+                    if (tx.direction == TransactionDirection.CREDIT) tx.amount else -tx.amount
+                }
+                val calculatedBalance = (account.currentBalance + subsequentDelta).coerceAtLeast(0.0)
+                val latestTime = maxOf(anchorTime, subsequentTxs.lastOrNull()?.occurredAtMillis ?: anchorTime)
+
+                accountDao.updateVerifiedBalance(
+                    accountId = accountId,
+                    balance = calculatedBalance,
+                    updatedAt = latestTime,
+                    proofSnippet = account.balanceProofSnippet,
+                    proofSource = account.balanceProofSource,
+                    isVerified = true,
+                )
+                onWidgetUpdate?.invoke()
+                return true
+            }
         }
 
         // 2. If no bank statement proof exists, check if user manually configured/edited a baseline balance

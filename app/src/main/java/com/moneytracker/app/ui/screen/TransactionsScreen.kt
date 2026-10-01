@@ -89,6 +89,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.paging.compose.LazyPagingItems
+import androidx.paging.compose.itemKey
 import com.moneytracker.app.data.db.AccountEntity
 import com.moneytracker.app.data.db.TransactionRecord
 import com.moneytracker.app.data.model.AccountKind
@@ -139,13 +140,7 @@ fun TransactionsScreen(
     var showNotificationSection by rememberSaveable { mutableStateOf(false) }
     var selectedReminderForDetails by remember { mutableStateOf<ScheduledTransactionRecord?>(null) }
 
-    val sourceTransactions = if (transactions.isNotEmpty()) {
-        transactions
-    } else if (pagedTransactions != null && pagedTransactions.itemCount > 0) {
-        (0 until pagedTransactions.itemCount).mapNotNull { pagedTransactions.peek(it) }
-    } else {
-        transactions
-    }
+    val sourceTransactions = transactions
 
     val visibleTransactions = remember(sourceTransactions, filter, selectedCardAccountId, selectedDateMillis) {
         val base = if (filter == TransactionFilter.CARD && selectedCardAccountId != null) {
@@ -637,7 +632,55 @@ fun TransactionsScreen(
             }
         }
 
-        if (visibleTransactions.isEmpty()) {
+        if (pagedTransactions != null) {
+            if (pagedTransactions.itemCount == 0) {
+                item(key = "transactions_empty_state") {
+                    Box(modifier = Modifier.animateItem()) {
+                        MotionReveal(index = 4) {
+                            SectionCard(
+                                title = "No transactions yet",
+                                subtitle = "SMS imports and manual entries will appear here.",
+                            ) {
+                                var addEmptyCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+                                Button(
+                                    modifier = Modifier.onGloballyPositioned { coords ->
+                                        addEmptyCoordinates = coords
+                                    },
+                                    onClick = {
+                                        haptics.click()
+                                        val bounds = addEmptyCoordinates?.takeIf { it.isAttached }?.boundsInRoot()
+                                        onAddTransactionClick(bounds)
+                                    },
+                                ) {
+                                    Text("Add transaction")
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                items(
+                    count = pagedTransactions.itemCount,
+                    key = pagedTransactions.itemKey { it.id }
+                ) { index ->
+                    val item = pagedTransactions[index]
+                    if (item != null) {
+                        TransactionRow(
+                            transaction = item,
+                            onEditTransaction = onEditTransaction,
+                            onTransferToCashWallet = onTransferToCashWallet,
+                            onAnalyzeWithAi = onAnalyzeWithAi,
+                            isAiAnalyzing = isAiAnalyzing,
+                            onApproveReview = onApproveReview,
+                            onDeleteTransaction = onDeleteTransaction,
+                            onToggleBudgetInclusion = onToggleBudgetInclusion,
+                        )
+                    } else {
+                        TransactionItemPlaceholder()
+                    }
+                }
+            }
+        } else if (visibleTransactions.isEmpty()) {
             item(key = "transactions_empty_state") {
                 Box(modifier = Modifier.animateItem()) {
                     MotionReveal(index = 4) {
@@ -690,90 +733,138 @@ fun TransactionsScreen(
                         items = monthTransactions,
                         key = { it.id },
                     ) { transaction ->
-                        var cardCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
-                        Card(
-                            modifier = Modifier
-                                .animateItem()
-                                .fillMaxWidth()
-                                .onGloballyPositioned { coords -> cardCoordinates = coords }
-                                .clickable {
-                                    haptics.click()
-                                    val bounds = cardCoordinates?.takeIf { it.isAttached }?.boundsInRoot()
-                                    onEditTransaction(transaction, bounds)
-                                },
-                            shape = RoundedCornerShape(22.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            ),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-                        ) {
-                            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                                TransactionItem(
-                                    transaction = transaction,
-                                    onTransferToCash = if (transaction.canTransferToCash && onTransferToCashWallet != null) {
-                                        {
-                                            haptics.click()
-                                            onTransferToCashWallet(transaction.id)
-                                        }
-                                    } else null,
-                                )
-                                Spacer(modifier = Modifier.height(10.dp))
-                                if (transaction.status == TransactionStatus.REVIEW) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                    ) {
-                                        if (onAnalyzeWithAi != null && !transaction.smsBody.isNullOrBlank()) {
-                                            OutlinedButton(
-                                                onClick = {
-                                                    haptics.click()
-                                                    onAnalyzeWithAi(transaction.id)
-                                                },
-                                                enabled = !isAiAnalyzing,
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Outlined.AutoAwesome,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(16.dp),
-                                                )
-                                                Spacer(modifier = Modifier.size(4.dp))
-                                                Text("AI Fix")
-                                            }
-                                        }
-                                        Button(
-                                            onClick = {
-                                                haptics.success()
-                                                onApproveReview(transaction.id)
-                                            },
-                                            modifier = Modifier.weight(1f),
-                                        ) {
-                                            Text("Approve")
-                                        }
-                                        TransactionCardActions(
-                                            transaction = transaction,
-                                            onDelete = { onDeleteTransaction(transaction) },
-                                            onToggleBudgetInclusion = { onToggleBudgetInclusion(transaction) },
-                                        )
-                                    }
-                                } else {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.End,
-                                    ) {
-                                        TransactionCardActions(
-                                            transaction = transaction,
-                                            onDelete = { onDeleteTransaction(transaction) },
-                                            onToggleBudgetInclusion = { onToggleBudgetInclusion(transaction) },
-                                        )
-                                    }
-                                }
-                            }
-                        }
+                        TransactionRow(
+                            transaction = transaction,
+                            onEditTransaction = onEditTransaction,
+                            onTransferToCashWallet = onTransferToCashWallet,
+                            onAnalyzeWithAi = onAnalyzeWithAi,
+                            isAiAnalyzing = isAiAnalyzing,
+                            onApproveReview = onApproveReview,
+                            onDeleteTransaction = onDeleteTransaction,
+                            onToggleBudgetInclusion = onToggleBudgetInclusion,
+                        )
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+fun TransactionRow(
+    transaction: TransactionRecord,
+    modifier: Modifier = Modifier,
+    onEditTransaction: ((TransactionRecord, Rect?) -> Unit)? = null,
+    onTransferToCashWallet: ((Long) -> Unit)? = null,
+    onAnalyzeWithAi: ((Long) -> Unit)? = null,
+    isAiAnalyzing: Boolean = false,
+    onApproveReview: ((Long) -> Unit)? = null,
+    onDeleteTransaction: ((TransactionRecord) -> Unit)? = null,
+    onToggleBudgetInclusion: ((TransactionRecord) -> Unit)? = null,
+) {
+    val haptics = LocalAppHaptics.current
+    var cardCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .onGloballyPositioned { coords -> cardCoordinates = coords }
+            .clickable {
+                haptics.click()
+                val bounds = cardCoordinates?.takeIf { it.isAttached }?.boundsInRoot()
+                onEditTransaction?.invoke(transaction, bounds)
+            },
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+            TransactionItem(
+                transaction = transaction,
+                onTransferToCash = if (transaction.canTransferToCash && onTransferToCashWallet != null) {
+                    {
+                        haptics.click()
+                        onTransferToCashWallet(transaction.id)
+                    }
+                } else null,
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            if (transaction.status == TransactionStatus.REVIEW) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    if (onAnalyzeWithAi != null && !transaction.smsBody.isNullOrBlank()) {
+                        OutlinedButton(
+                            onClick = {
+                                haptics.click()
+                                onAnalyzeWithAi(transaction.id)
+                            },
+                            enabled = !isAiAnalyzing,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.AutoAwesome,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(modifier = Modifier.size(4.dp))
+                            Text("AI Fix")
+                        }
+                    }
+                    if (onApproveReview != null) {
+                        Button(
+                            onClick = {
+                                haptics.success()
+                                onApproveReview(transaction.id)
+                            },
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text("Approve")
+                        }
+                    }
+                    if (onDeleteTransaction != null && onToggleBudgetInclusion != null) {
+                        TransactionCardActions(
+                            transaction = transaction,
+                            onDelete = { onDeleteTransaction(transaction) },
+                            onToggleBudgetInclusion = { onToggleBudgetInclusion(transaction) },
+                        )
+                    }
+                }
+            } else {
+                if (onDeleteTransaction != null && onToggleBudgetInclusion != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        TransactionCardActions(
+                            transaction = transaction,
+                            onDelete = { onDeleteTransaction(transaction) },
+                            onToggleBudgetInclusion = { onToggleBudgetInclusion(transaction) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TransactionItemPlaceholder(
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(84.dp),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)),
+    ) {
+        Box(modifier = Modifier.fillMaxSize())
     }
 }
 

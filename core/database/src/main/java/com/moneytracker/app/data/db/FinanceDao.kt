@@ -147,6 +147,9 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions ORDER BY occurredAtMillis DESC, id DESC")
     suspend fun getAllTransactions(): List<TransactionEntity>
 
+    @Query("SELECT * FROM transactions WHERE accountId = :accountId AND status = 'POSTED' AND occurredAtMillis >= :anchorTime ORDER BY occurredAtMillis ASC")
+    suspend fun getPostedTransactionsSince(accountId: Long, anchorTime: Long): List<TransactionRecord>
+
     @Query("SELECT * FROM transactions WHERE occurredAtMillis >= :sinceMillis ORDER BY occurredAtMillis DESC")
     suspend fun getRecentTransactions(sinceMillis: Long): List<TransactionEntity>
 

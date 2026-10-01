@@ -203,6 +203,9 @@ class FakeTransactionDao : TransactionDao {
     override suspend fun fingerprintExists(fingerprint: String): Boolean = false
     override suspend fun findSimilarTransaction(amount: Double, direction: TransactionDirection, occurredAtMillis: Long, timeToleranceMillis: Long): TransactionEntity? = null
     override suspend fun getAllTransactions(): List<TransactionEntity> = emptyList()
+    override suspend fun getPostedTransactionsSince(accountId: Long, anchorTime: Long): List<TransactionRecord> =
+        allRecords.filter { it.accountId == accountId && it.status == TransactionStatus.POSTED && it.occurredAtMillis >= anchorTime }
+            .sortedBy { it.occurredAtMillis }
     override suspend fun getRecentTransactions(sinceMillis: Long): List<TransactionEntity> = emptyList()
     override suspend fun insert(transaction: TransactionEntity): Long = 0L
     override suspend fun updateStatus(transactionId: Long, status: String) {}
