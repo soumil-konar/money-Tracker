@@ -40,8 +40,21 @@ android {
         jvmTarget = "17"
     }
 
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("playStore") {
+            dimension = "distribution"
+            buildConfigField("Boolean", "SMS_INGESTION_ENABLED", "false")
+        }
+        create("sideload") {
+            dimension = "distribution"
+            buildConfigField("Boolean", "SMS_INGESTION_ENABLED", "true")
+        }
+    }
+
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     packaging {
