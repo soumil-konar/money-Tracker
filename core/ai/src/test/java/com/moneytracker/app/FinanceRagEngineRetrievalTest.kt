@@ -198,13 +198,16 @@ class FakeTransactionDao : TransactionDao {
 
     override fun observeTransactions(): Flow<List<TransactionRecord>> = throw NotImplementedError()
     override fun pagedTransactions(): PagingSource<Int, TransactionRecord> = throw NotImplementedError()
+    override fun getPagedTransactions(): PagingSource<Int, TransactionRecord> = throw NotImplementedError()
     override fun pagedFilteredTransactions(accountId: Long?, direction: String?, searchQuery: String): PagingSource<Int, TransactionRecord> = throw NotImplementedError()
     override fun observePostedTransactions(): Flow<List<TransactionRecord>> = throw NotImplementedError()
     override suspend fun fingerprintExists(fingerprint: String): Boolean = false
     override suspend fun findSimilarTransaction(amount: Double, direction: TransactionDirection, occurredAtMillis: Long, timeToleranceMillis: Long): TransactionEntity? = null
     override suspend fun getAllTransactions(): List<TransactionEntity> = emptyList()
-    override suspend fun getPostedTransactionsSince(accountId: Long, anchorTime: Long): List<TransactionRecord> =
-        allRecords.filter { it.accountId == accountId && it.status == TransactionStatus.POSTED && it.occurredAtMillis >= anchorTime }
+    override suspend fun getLatestBalanceAnchor(accountId: Long): TransactionRecord? =
+        allRecords.lastOrNull { it.accountId == accountId && it.availableBalance != null }
+    override suspend fun getPostedTransactionsSince(accountId: Long, anchorTimeMillis: Long): List<TransactionRecord> =
+        allRecords.filter { it.accountId == accountId && it.status == TransactionStatus.POSTED && it.occurredAtMillis >= anchorTimeMillis }
             .sortedBy { it.occurredAtMillis }
     override suspend fun getRecentTransactions(sinceMillis: Long): List<TransactionEntity> = emptyList()
     override suspend fun insert(transaction: TransactionEntity): Long = 0L

@@ -46,6 +46,12 @@ data class TransactionRecord(
     val availableBalance: Double? = null,
 )
 
+val TransactionRecord.balanceSnapshot: Double?
+    get() = availableBalance
+
+val AccountEntity.initialBalance: Double
+    get() = currentBalance
+
 val TransactionRecord.isAtmWithdrawal: Boolean
     get() = direction == TransactionDirection.DEBIT &&
         (merchant.contains("ATM", ignoreCase = true) ||

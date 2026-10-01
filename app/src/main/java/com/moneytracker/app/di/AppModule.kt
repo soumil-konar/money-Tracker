@@ -86,8 +86,9 @@ val coreServicesModule = module {
 val useCaseModule = module {
     single {
         ReconcileLedgerUseCase(
-            accountDao = get(),
+            database = get(),
             transactionDao = get(),
+            accountDao = get(),
             onWidgetUpdate = {
                 com.moneytracker.app.widget.SafeSpendGlanceWidget.updateAllWidgets(androidContext())
                 BalanceWidgetProvider.updateAllWidgets(androidContext())

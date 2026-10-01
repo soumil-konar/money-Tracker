@@ -34,8 +34,11 @@ import com.moneytracker.app.data.model.TransactionStatus
 import com.moneytracker.app.data.repo.FinanceRepository
 import com.moneytracker.app.data.db.canTransferToCash
 import androidx.lifecycle.viewModelScope
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
+import com.moneytracker.app.data.db.TransactionDao
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flatMapLatest
@@ -66,6 +69,7 @@ class MainViewModel(
     val detectTransferPairsUseCase: DetectTransferPairsUseCase = repository.detectTransferPairsUseCase,
     val generateSpendingInsightsUseCase: GenerateSpendingInsightsUseCase = repository.generateSpendingInsightsUseCase,
     val syncGmailAlertsUseCase: SyncGmailAlertsUseCase = repository.syncGmailAlertsUseCase,
+    private val transactionDao: TransactionDao = repository.transactionDao,
 ) : ViewModel() {
 
     private val messageEvents = MutableSharedFlow<String>()
@@ -85,25 +89,16 @@ class MainViewModel(
     val selectedAccount: StateFlow<Long?> = selectedAccountId
     val isAiAnalyzing: StateFlow<Boolean> = _isAiAnalyzing
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val pagedTransactions: Flow<PagingData<TransactionRecord>> = combine(
-        selectedFilter,
-        currentSearchQuery,
-        selectedAccountId,
-    ) { filter, query, accountId ->
-        val direction = when (filter) {
-            TransactionFilter.SPENT -> TransactionDirection.DEBIT.name
-            TransactionFilter.INCOME -> TransactionDirection.CREDIT.name
-            else -> null
-        }
-        Triple(accountId, direction, query.trim())
-    }.flatMapLatest { (accountId, direction, query) ->
-        repository.pagedFilteredTransactions(
-            accountId = accountId,
-            direction = direction,
-            searchQuery = query,
-        )
-    }.cachedIn(viewModelScope)
+    val pagedTransactions: Flow<PagingData<TransactionRecord>> = Pager(
+        PagingConfig(
+            pageSize = 30,
+            prefetchDistance = 15,
+            enablePlaceholders = true,
+            maxSize = 200,
+        ),
+    ) {
+        transactionDao.getPagedTransactions()
+    }.flow.cachedIn(viewModelScope)
 
     val aiTestStatus: StateFlow<String?> = _aiTestStatus
     private val _emailTestStatus = MutableStateFlow<String?>(null)

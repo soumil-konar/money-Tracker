@@ -92,7 +92,7 @@ class FinanceRepository(
     private val budgetDao: BudgetDao,
     private val scheduledTransactionDao: ScheduledTransactionDao,
     private val subscriptionDao: SubscriptionDao,
-    private val transactionDao: TransactionDao,
+    val transactionDao: TransactionDao,
     private val embeddingDao: TransactionEmbeddingDao,
     private val ragEngine: FinanceRagEngine,
     private val parser: SmsParser,
@@ -110,17 +110,7 @@ class FinanceRepository(
     private val context: android.content.Context? = null,
     val categoryPreferences: com.moneytracker.app.data.local.CategoryPreferences? = null,
     val userPreferences: com.moneytracker.app.data.local.UserPreferences? = null,
-    val reconcileLedgerUseCase: ReconcileLedgerUseCase = ReconcileLedgerUseCase(
-        accountDao = accountDao,
-        transactionDao = transactionDao,
-        onWidgetUpdate = {
-            context?.let {
-                com.moneytracker.app.widget.SafeSpendGlanceWidget.updateAllWidgets(it)
-                com.moneytracker.app.widget.BalanceWidgetProvider.updateAllWidgets(it)
-                com.moneytracker.app.widget.BudgetWidgetProvider.updateAllWidgets(it)
-            }
-        },
-    ),
+    val reconcileLedgerUseCase: ReconcileLedgerUseCase,
     val detectTransferPairsUseCase: DetectTransferPairsUseCase = DetectTransferPairsUseCase(
         transactionDao = transactionDao,
         accountDao = accountDao,

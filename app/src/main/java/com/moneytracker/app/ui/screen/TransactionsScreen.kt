@@ -88,7 +88,11 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.paging.LoadState
 import androidx.paging.compose.LazyPagingItems
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.itemContentType
 import androidx.paging.compose.itemKey
 import com.moneytracker.app.data.db.AccountEntity
 import com.moneytracker.app.data.db.TransactionRecord
@@ -96,6 +100,7 @@ import com.moneytracker.app.data.model.AccountKind
 import com.moneytracker.app.data.model.TransactionDirection
 import com.moneytracker.app.data.model.TransactionFilter
 import com.moneytracker.app.data.model.TransactionStatus
+import com.moneytracker.app.ui.MainViewModel
 import com.moneytracker.app.ui.asCurrency
 import com.moneytracker.app.ui.asMonthYear
 import com.moneytracker.app.ui.asShortDate
@@ -103,6 +108,65 @@ import com.moneytracker.app.ui.components.MotionReveal
 import com.moneytracker.app.ui.components.SectionCard
 import com.moneytracker.app.ui.components.TransactionItem
 import com.moneytracker.app.ui.haptics.LocalAppHaptics
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TransactionsScreen(
+    viewModel: MainViewModel,
+    modifier: Modifier = Modifier,
+    filter: TransactionFilter = TransactionFilter.ALL,
+    transactions: List<TransactionRecord> = emptyList(),
+    cardAccounts: List<AccountEntity> = emptyList(),
+    searchQuery: String = "",
+    onSearchQueryChange: (String) -> Unit = {},
+    onFilterSelected: (TransactionFilter) -> Unit = {},
+    onAddTransactionClick: (Rect?) -> Unit = {},
+    onApproveReview: (Long) -> Unit = {},
+    onAnalyzeWithAi: ((Long) -> Unit)? = null,
+    isAiAnalyzing: Boolean = false,
+    onEditTransaction: (TransactionRecord, Rect?) -> Unit = { _, _ -> },
+    onDeleteTransaction: (TransactionRecord) -> Unit = {},
+    onToggleBudgetInclusion: (TransactionRecord) -> Unit = {},
+    onTransferToCashWallet: ((Long) -> Unit)? = null,
+    onDismissAtmPrompt: ((Long) -> Unit)? = null,
+    untransferredAtmTransactions: List<TransactionRecord> = emptyList(),
+    pendingReminders: List<ScheduledTransactionRecord> = emptyList(),
+    onMarkBillPaid: (Long) -> Unit = {},
+    onConfirmBillPayment: (Long, Boolean) -> Unit = { _, _ -> },
+    onDeleteReminder: (Long) -> Unit = {},
+    onSelectedAccountIdChange: ((Long?) -> Unit)? = null,
+    selectedAccountId: Long? = null,
+    listState: LazyListState = rememberLazyListState(),
+) {
+    val pagedTransactions = viewModel.pagedTransactions.collectAsLazyPagingItems()
+    TransactionsScreen(
+        filter = filter,
+        transactions = transactions,
+        pagedTransactions = pagedTransactions,
+        cardAccounts = cardAccounts,
+        searchQuery = searchQuery,
+        onSearchQueryChange = onSearchQueryChange,
+        onFilterSelected = onFilterSelected,
+        onAddTransactionClick = onAddTransactionClick,
+        onApproveReview = onApproveReview,
+        onAnalyzeWithAi = onAnalyzeWithAi,
+        isAiAnalyzing = isAiAnalyzing,
+        onEditTransaction = onEditTransaction,
+        onDeleteTransaction = onDeleteTransaction,
+        onToggleBudgetInclusion = onToggleBudgetInclusion,
+        onTransferToCashWallet = onTransferToCashWallet,
+        onDismissAtmPrompt = onDismissAtmPrompt,
+        untransferredAtmTransactions = untransferredAtmTransactions,
+        pendingReminders = pendingReminders,
+        onMarkBillPaid = onMarkBillPaid,
+        onConfirmBillPayment = onConfirmBillPayment,
+        onDeleteReminder = onDeleteReminder,
+        onSelectedAccountIdChange = onSelectedAccountIdChange,
+        selectedAccountId = selectedAccountId,
+        listState = listState,
+        modifier = modifier,
+    )
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -633,52 +697,135 @@ fun TransactionsScreen(
         }
 
         if (pagedTransactions != null) {
-            if (pagedTransactions.itemCount == 0) {
-                item(key = "transactions_empty_state") {
-                    Box(modifier = Modifier.animateItem()) {
-                        MotionReveal(index = 4) {
-                            SectionCard(
-                                title = "No transactions yet",
-                                subtitle = "SMS imports and manual entries will appear here.",
+            when (val refresh = pagedTransactions.loadState.refresh) {
+                is LoadState.Loading -> {
+                    item(key = "paging_refresh_loading") {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 32.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                    }
+                }
+                is LoadState.Error -> {
+                    item(key = "paging_refresh_error") {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                            ),
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
-                                var addEmptyCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
-                                Button(
-                                    modifier = Modifier.onGloballyPositioned { coords ->
-                                        addEmptyCoordinates = coords
-                                    },
-                                    onClick = {
-                                        haptics.click()
-                                        val bounds = addEmptyCoordinates?.takeIf { it.isAttached }?.boundsInRoot()
-                                        onAddTransactionClick(bounds)
-                                    },
-                                ) {
-                                    Text("Add transaction")
+                                Text(
+                                    text = refresh.error.localizedMessage ?: "Failed to load transactions",
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Button(onClick = { pagedTransactions.retry() }) {
+                                    Text("Retry")
                                 }
                             }
                         }
                     }
                 }
-            } else {
-                items(
-                    count = pagedTransactions.itemCount,
-                    key = pagedTransactions.itemKey { it.id }
-                ) { index ->
-                    val item = pagedTransactions[index]
-                    if (item != null) {
-                        TransactionRow(
-                            transaction = item,
-                            onEditTransaction = onEditTransaction,
-                            onTransferToCashWallet = onTransferToCashWallet,
-                            onAnalyzeWithAi = onAnalyzeWithAi,
-                            isAiAnalyzing = isAiAnalyzing,
-                            onApproveReview = onApproveReview,
-                            onDeleteTransaction = onDeleteTransaction,
-                            onToggleBudgetInclusion = onToggleBudgetInclusion,
-                        )
+                is LoadState.NotLoading -> {
+                    if (pagedTransactions.itemCount == 0) {
+                        item(key = "transactions_empty_state") {
+                            Box(modifier = Modifier.animateItem()) {
+                                MotionReveal(index = 4) {
+                                    SectionCard(
+                                        title = "No transactions yet",
+                                        subtitle = "SMS imports and manual entries will appear here.",
+                                    ) {
+                                        var addEmptyCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+                                        Button(
+                                            modifier = Modifier.onGloballyPositioned { coords ->
+                                                addEmptyCoordinates = coords
+                                            },
+                                            onClick = {
+                                                haptics.click()
+                                                val bounds = addEmptyCoordinates?.takeIf { it.isAttached }?.boundsInRoot()
+                                                onAddTransactionClick(bounds)
+                                            },
+                                        ) {
+                                            Text("Add transaction")
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     } else {
-                        TransactionItemPlaceholder()
+                        items(
+                            count = pagedTransactions.itemCount,
+                            key = pagedTransactions.itemKey { it.id },
+                            contentType = pagedTransactions.itemContentType { "transaction" },
+                        ) { index ->
+                            val item = pagedTransactions[index]
+                            if (item != null) {
+                                TransactionRow(
+                                    transaction = item,
+                                    onEditTransaction = onEditTransaction,
+                                    onTransferToCashWallet = onTransferToCashWallet,
+                                    onAnalyzeWithAi = onAnalyzeWithAi,
+                                    isAiAnalyzing = isAiAnalyzing,
+                                    onApproveReview = onApproveReview,
+                                    onDeleteTransaction = onDeleteTransaction,
+                                    onToggleBudgetInclusion = onToggleBudgetInclusion,
+                                )
+                            } else {
+                                TransactionItemPlaceholder()
+                            }
+                        }
                     }
                 }
+            }
+
+            when (val append = pagedTransactions.loadState.append) {
+                is LoadState.Loading -> {
+                    item(key = "paging_append_loading") {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                        }
+                    }
+                }
+                is LoadState.Error -> {
+                    item(key = "paging_append_error") {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = append.error.localizedMessage ?: "Failed to load more transactions",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            TextButton(onClick = { pagedTransactions.retry() }) {
+                                Text("Retry")
+                            }
+                        }
+                    }
+                }
+                is LoadState.NotLoading -> Unit
             }
         } else if (visibleTransactions.isEmpty()) {
             item(key = "transactions_empty_state") {
