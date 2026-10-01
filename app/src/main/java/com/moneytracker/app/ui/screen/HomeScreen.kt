@@ -51,12 +51,16 @@ import androidx.compose.material.icons.automirrored.outlined.TrendingUp
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.WbSunny
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.toImmutableList
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -128,6 +132,7 @@ fun HomeScreen(
     modifier: Modifier = Modifier,
 ) {
     val haptics = LocalAppHaptics.current
+    val state = dashboard
     var showMonthPicker by remember { mutableStateOf(false) }
     val topGreeting = remember(userName) {
         TimeOfDayGreetingProvider.getTopGreeting(userName)
@@ -254,51 +259,14 @@ fun HomeScreen(
         }
 
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                BentoMetricCard(
-                    title = "Monthly Inflow",
-                    value = dashboard.monthIncome.asCurrency(),
-                    icon = Icons.Outlined.ArrowDownward,
-                    iconTint = MaterialTheme.colorScheme.tertiary,
-                    subtitle = "Income",
-                    modifier = Modifier.weight(1f),
-                )
-                BentoMetricCard(
-                    title = "Net Cashflow",
-                    value = (if (dashboard.monthNetCashflow >= 0) "+" else "") + dashboard.monthNetCashflow.asCurrency(),
-                    icon = Icons.Outlined.Savings,
-                    iconTint = if (dashboard.monthNetCashflow >= 0) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
-                    subtitle = if (dashboard.monthNetCashflow >= 0) "Surplus" else "Deficit",
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
-
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                BentoMetricCard(
-                    title = "Credit Card Spend",
-                    value = dashboard.cardSpendThisMonth.asCurrency(),
-                    icon = Icons.Outlined.CreditCard,
-                    iconTint = MaterialTheme.colorScheme.secondary,
-                    subtitle = "Bank: ${dashboard.bankSpendThisMonth.asCurrency()}",
-                    modifier = Modifier.weight(1f),
-                )
-                BentoMetricCard(
-                    title = "Pending Review",
-                    value = "${dashboard.reviewCount} items",
-                    icon = Icons.Outlined.AssignmentTurnedIn,
-                    iconTint = if (dashboard.reviewCount > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    subtitle = "Subs: ${dashboard.activeSubscriptionsCount}",
-                    modifier = Modifier.weight(1f),
-                )
-            }
+            BalanceBentoCard(
+                monthIncome = state.monthIncome,
+                monthNetCashflow = state.monthNetCashflow,
+                cardSpendThisMonth = state.cardSpendThisMonth,
+                bankSpendThisMonth = state.bankSpendThisMonth,
+                reviewCount = state.reviewCount,
+                activeSubscriptionsCount = state.activeSubscriptionsCount,
+            )
         }
 
         if (dashboard.accounts.isNotEmpty()) {
@@ -467,53 +435,11 @@ fun HomeScreen(
         }
 
         item {
-            SectionCard(
-                title = "Spend mix",
-                subtitle = "Category share this month",
-            ) {
-                if (dashboard.categoryBreakdown.isEmpty()) {
-                    EmptyContent(
-                        message = "No spending distribution yet. Import SMS or add transactions manually.",
-                        onAction = onAddTransactionClick,
-                        actionLabel = "Add transaction",
-                    )
-                } else {
-                    val themeState = LocalExpressiveTheme.current
-                    val displayedSlices = remember(dashboard.categoryBreakdown) {
-                        if (dashboard.categoryBreakdown.size <= 7) {
-                            dashboard.categoryBreakdown
-                        } else {
-                            val top = dashboard.categoryBreakdown.take(6)
-                            val remaining = dashboard.categoryBreakdown.drop(6).sumOf { it.amount }
-                            top + com.moneytracker.app.data.model.CategorySlice(
-                                category = TransactionCategory.OTHER,
-                                amount = remaining,
-                            )
-                        }
-                    }
-                    val sliceColors = remember(displayedSlices, themeState) {
-                        CategoryThemeColors.getColorsForSlices(
-                            categories = displayedSlices.map { it.category },
-                            accent = themeState.accent,
-                            isDark = themeState.isDark,
-                        )
-                    }
-
-                    SpendingPieChart(
-                        slices = displayedSlices,
-                        reloadKey = chartReloadKey,
-                        categoryColors = sliceColors,
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    CategoryLegend(
-                        slices = displayedSlices.map { slice ->
-                            val color = sliceColors[slice.category]
-                                ?: CategoryThemeColors.getColor(slice.category, themeState.accent, themeState.isDark)
-                            color to "${slice.category.label} ${slice.amount.asCurrency()}"
-                        },
-                    )
-                }
-            }
+            CategoryBreakdownCard(
+                categoryBreakdown = state.categoryBreakdown,
+                chartReloadKey = chartReloadKey,
+                onAddTransactionClick = onAddTransactionClick,
+            )
         }
 
         item {
@@ -521,7 +447,7 @@ fun HomeScreen(
                 title = "Cashflow trajectory",
                 subtitle = "Last 7 days income vs expense",
             ) {
-                if (dashboard.trendPoints.all { it.expense == 0.0 && it.income == 0.0 }) {
+                if (state.trendPoints.all { it.expense == 0.0 && it.income == 0.0 }) {
                     EmptyContent(
                         message = "The chart will start filling once transactions arrive.",
                         onAction = {
@@ -531,46 +457,55 @@ fun HomeScreen(
                     )
                 } else {
                     CashflowTrendChart(
-                        points = dashboard.trendPoints,
+                        points = state.trendPoints,
                         reloadKey = chartReloadKey,
                     )
                 }
             }
         }
 
-        item {
-            SectionCard(
-                title = "Recent transactions",
-                subtitle = "Latest posted and review items",
-            ) {
-                if (dashboard.recentTransactions.isEmpty()) {
+        if (state.recentTransactions.isEmpty()) {
+            item {
+                SectionCard(
+                    title = "Recent transactions",
+                    subtitle = "Latest posted and review items",
+                ) {
                     EmptyContent(
                         message = "Nothing has been tracked yet.",
                         onAction = onAddTransactionClick,
                         actionLabel = "Add first transaction",
                     )
-                } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                        dashboard.recentTransactions.forEach { transaction ->
-                            var itemCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
-                            TransactionItem(
-                                transaction = transaction,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .onGloballyPositioned { itemCoords = it }
-                                    .then(
-                                        if (onEditTransaction != null) {
-                                            Modifier.clickable {
-                                                haptics.click()
-                                                val bounds = itemCoords?.takeIf { it.isAttached }?.boundsInRoot()
-                                                onEditTransaction(transaction, bounds)
-                                            }
-                                        } else Modifier
-                                    ),
-                            )
-                        }
-                    }
                 }
+            }
+        } else {
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp),
+                ) {
+                    Text(
+                        text = "Recent transactions",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Latest posted and review items",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            items(
+                items = state.recentTransactions,
+                key = { it.id },
+            ) { transaction ->
+                RecentTransactionItem(
+                    transaction = transaction,
+                    onEditTransaction = onEditTransaction,
+                )
             }
         }
     }
@@ -583,6 +518,158 @@ fun HomeScreen(
                 onSelectMonth(it)
             },
         )
+    }
+}
+
+@Composable
+fun BalanceBentoCard(
+    monthIncome: Double,
+    monthNetCashflow: Double,
+    cardSpendThisMonth: Double,
+    bankSpendThisMonth: Double,
+    reviewCount: Int,
+    activeSubscriptionsCount: Int,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            BentoMetricCard(
+                title = "Monthly Inflow",
+                value = monthIncome.asCurrency(),
+                icon = Icons.Outlined.ArrowDownward,
+                iconTint = MaterialTheme.colorScheme.tertiary,
+                subtitle = "Income",
+                modifier = Modifier.weight(1f),
+            )
+            BentoMetricCard(
+                title = "Net Cashflow",
+                value = (if (monthNetCashflow >= 0) "+" else "") + monthNetCashflow.asCurrency(),
+                icon = Icons.Outlined.Savings,
+                iconTint = if (monthNetCashflow >= 0) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
+                subtitle = if (monthNetCashflow >= 0) "Surplus" else "Deficit",
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            BentoMetricCard(
+                title = "Credit Card Spend",
+                value = cardSpendThisMonth.asCurrency(),
+                icon = Icons.Outlined.CreditCard,
+                iconTint = MaterialTheme.colorScheme.secondary,
+                subtitle = "Bank: ${bankSpendThisMonth.asCurrency()}",
+                modifier = Modifier.weight(1f),
+            )
+            BentoMetricCard(
+                title = "Pending Review",
+                value = "$reviewCount items",
+                icon = Icons.Outlined.AssignmentTurnedIn,
+                iconTint = if (reviewCount > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                subtitle = "Subs: $activeSubscriptionsCount",
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+fun CategoryBreakdownCard(
+    categoryBreakdown: ImmutableList<CategorySlice>,
+    chartReloadKey: Int = 0,
+    onAddTransactionClick: (Rect?) -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
+    SectionCard(
+        title = "Spend mix",
+        subtitle = "Category share this month",
+        modifier = modifier,
+    ) {
+        if (categoryBreakdown.isEmpty()) {
+            EmptyContent(
+                message = "No spending distribution yet. Import SMS or add transactions manually.",
+                onAction = onAddTransactionClick,
+                actionLabel = "Add transaction",
+            )
+        } else {
+            val themeState = LocalExpressiveTheme.current
+            val displayedSlices = remember(categoryBreakdown) {
+                if (categoryBreakdown.size <= 7) {
+                    categoryBreakdown
+                } else {
+                    val top = categoryBreakdown.take(6)
+                    val remaining = categoryBreakdown.drop(6).sumOf { it.amount }
+                    (top + CategorySlice(
+                        category = TransactionCategory.OTHER,
+                        amount = remaining,
+                    )).toImmutableList()
+                }
+            }
+            val sliceColors = remember(displayedSlices, themeState) {
+                CategoryThemeColors.getColorsForSlices(
+                    categories = displayedSlices.map { it.category },
+                    accent = themeState.accent,
+                    isDark = themeState.isDark,
+                )
+            }
+
+            SpendingPieChart(
+                slices = displayedSlices,
+                reloadKey = chartReloadKey,
+                categoryColors = sliceColors,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            CategoryLegend(
+                slices = displayedSlices.map { slice ->
+                    val color = sliceColors[slice.category]
+                        ?: CategoryThemeColors.getColor(slice.category, themeState.accent, themeState.isDark)
+                    color to "${slice.category.label} ${slice.amount.asCurrency()}"
+                },
+            )
+        }
+    }
+}
+
+@Composable
+fun RecentTransactionItem(
+    transaction: TransactionRecord,
+    onEditTransaction: ((TransactionRecord, Rect?) -> Unit)? = null,
+    modifier: Modifier = Modifier,
+) {
+    val haptics = LocalAppHaptics.current
+    var itemCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .onGloballyPositioned { itemCoords = it }
+            .then(
+                if (onEditTransaction != null) {
+                    Modifier.clickable {
+                        haptics.click()
+                        val bounds = itemCoords?.takeIf { it.isAttached }?.boundsInRoot()
+                        onEditTransaction(transaction, bounds)
+                    }
+                } else Modifier
+            ),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+    ) {
+        Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+            TransactionItem(
+                transaction = transaction,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
     }
 }
 

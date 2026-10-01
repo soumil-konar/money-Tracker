@@ -43,6 +43,8 @@ import com.moneytracker.app.parser.SmsParser
 import com.moneytracker.app.sms.SmsImportManager
 import java.security.MessageDigest
 import java.time.Instant
+import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.toImmutableList
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
@@ -1049,9 +1051,9 @@ class FinanceRepository(
             budgetLimit = budget,
             reviewCount = reviewCount,
             activeSubscriptionsCount = subscriptions.count { it.state == SubscriptionState.ACTIVE },
-            categoryBreakdown = categoryBreakdown,
-            trendPoints = emptyList(),
-            recentTransactions = recentTransactions,
+            categoryBreakdown = categoryBreakdown.toImmutableList(),
+            trendPoints = persistentListOf(),
+            recentTransactions = recentTransactions.toImmutableList(),
             spendingInsights = resolvedInsights,
             isAiLoading = isAiLoading,
             accounts = accountsList,

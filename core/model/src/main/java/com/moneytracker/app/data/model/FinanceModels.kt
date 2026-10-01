@@ -1,9 +1,12 @@
 package com.moneytracker.app.data.model
 
+import androidx.compose.runtime.Immutable
 import com.moneytracker.app.data.db.AccountEntity
 import com.moneytracker.app.data.db.TransactionRecord
 import java.time.LocalDate
 import java.time.YearMonth
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.persistentListOf
 
 enum class TransactionDirection {
     CREDIT,
@@ -239,6 +242,7 @@ data class ContextualNudge(
     val iconType: String = "info",
 ) : java.io.Serializable
 
+@Immutable
 data class DashboardState(
     val trackedBalance: Double = 0.0,
     val monthSpent: Double = 0.0,
@@ -251,16 +255,17 @@ data class DashboardState(
     val budgetLimit: Double? = null,
     val reviewCount: Int = 0,
     val activeSubscriptionsCount: Int = 0,
-    val categoryBreakdown: List<CategorySlice> = emptyList(),
-    val trendPoints: List<TrendPoint> = emptyList(),
-    val recentTransactions: List<TransactionRecord> = emptyList(),
-    val spendingInsights: List<String> = emptyList(),
-    val contextualNudges: List<ContextualNudge> = emptyList(),
+    val categoryBreakdown: ImmutableList<CategorySlice> = persistentListOf(),
+    val trendPoints: ImmutableList<TrendPoint> = persistentListOf(),
+    val recentTransactions: ImmutableList<TransactionRecord> = persistentListOf(),
+    val spendingInsights: List<String> = persistentListOf(),
+    val contextualNudges: List<ContextualNudge> = persistentListOf(),
     val isAiLoading: Boolean = false,
-    val accounts: List<AccountEntity> = emptyList(),
+    val accounts: List<AccountEntity> = persistentListOf(),
     val selectedYearMonth: YearMonth = YearMonth.now(),
 )
 
+@Immutable
 data class CategorySlice(
     val category: TransactionCategory,
     val amount: Double,
@@ -274,6 +279,7 @@ data class CategoryBudgetProgress(
     val progressPercent: Float,
 )
 
+@Immutable
 data class TrendPoint(
     val date: LocalDate,
     val income: Double,

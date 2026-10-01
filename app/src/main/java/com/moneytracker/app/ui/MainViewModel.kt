@@ -53,6 +53,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.toImmutableList
 
 import com.moneytracker.app.data.network.NetworkConnectivityObserver
 import com.moneytracker.app.domain.usecase.DetectTransferPairsUseCase
@@ -177,11 +179,23 @@ class MainViewModel(
     val userName: StateFlow<String> = repository.userName
     val hasPromptedForName: StateFlow<Boolean> = repository.hasPromptedForName
 
-    val dashboard: StateFlow<DashboardState> = repository.dashboard.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5_000),
-        initialValue = DashboardState(),
-    )
+    val dashboard: StateFlow<DashboardState> = repository.dashboard
+        .map { state ->
+            state.copy(
+                categoryBreakdown = state.categoryBreakdown.toImmutableList(),
+                trendPoints = state.trendPoints.toImmutableList(),
+                recentTransactions = state.recentTransactions.toImmutableList(),
+            )
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = DashboardState(
+                categoryBreakdown = persistentListOf(),
+                trendPoints = persistentListOf(),
+                recentTransactions = persistentListOf(),
+            ),
+        )
 
     val selectedYearMonth: StateFlow<YearMonth> = repository.selectedYearMonth
 
